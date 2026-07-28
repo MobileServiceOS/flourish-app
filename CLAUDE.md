@@ -51,6 +51,27 @@ A test asserts the private token is absent from `dist/` — see
    up an **Oxtail at $0.00**. Unresolved modifiers throw and the order is
    refused — a rejected order is recoverable, a free plate isn't.
 
+### Sales tax
+
+`TAX_RATE` in `src/lib/money.js` is **8.5%**, and that constant is the only
+place the rate appears. It used to be a bare `0.08875` in three files, which is
+how the number shown at checkout and the number charged to a card drift apart.
+A test fails the build if a rate literal reappears outside `money.js`.
+
+Two things to know:
+
+- **This rate is only the estimate shown to the customer.** The atomic order
+  deliberately carries no tax field; Clover applies the merchant tax rules when
+  it prices the order. So `TAX_RATE` must match the rate configured in the
+  Clover dashboard, or the checkout total and the till disagree.
+- **The card is charged what Clover priced**, falling back to the local estimate
+  only when Clover does not return a total. Clover is the register — if the two
+  ever disagree, the card follows the order, not the app.
+
+For reference, the combined New York City rate on prepared food is 8.875%
+(4% state + 4.5% city + 0.375% MCTD). 8.5% was set deliberately on request; if
+that turns out to be wrong the difference is owed at filing time.
+
 ### Order of operations when placing an order
 
 Push the order to Clover **first**, charge **second**. A charged customer with no
@@ -74,7 +95,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 165 tests
+npm test            # 182 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

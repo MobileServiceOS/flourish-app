@@ -82,3 +82,28 @@ describe("order confirmation", () => {
     expect(await screen.findByRole("button", { name: /cart, empty/i })).toBeInTheDocument();
   });
 });
+
+describe("tax shown to the customer", () => {
+  it("names the rate and totals correctly at 8.5%", async () => {
+    const { user } = await renderApp();
+    // Beef Patty is $3.00 flat
+    await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+    await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
+    await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
+
+    expect(await screen.findByText("Tax (8.5%)")).toBeInTheDocument();
+    expect(screen.getByText("$0.26")).toBeInTheDocument();          // 3.00 * 0.085 = 0.255 -> 0.26
+
+    // default tip is 10% of subtotal = $0.30, so total = 3.00 + 0.26 + 0.30
+    const rows = [...document.querySelectorAll(".rowline")].map((r) => r.textContent);
+    expect(rows).toContain("Tax (8.5%)$0.26");
+    expect(rows).toContain("Total$3.56");
+
+    // and the CTA quotes that same total once the form is valid
+    const n = screen.getByLabelText("Name");
+    await user.clear(n); await user.type(n, "Nevaeh Reid");
+    const p = screen.getByLabelText("Phone number");
+    await user.clear(p); await user.type(p, "3478599413");
+    expect(screen.getByRole("button", { name: /\$3\.56/ })).toBeEnabled();
+  });
+});

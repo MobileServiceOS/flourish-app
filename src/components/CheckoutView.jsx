@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { MapPin, Check, Clock, Award, ChevronRight, CreditCard, Store, AlertCircle } from "lucide-react";
-import { cents, money } from "../lib/money.js";
+import { cents, money, taxOn, TAX_LABEL } from "../lib/money.js";
 import {
   isOpen, nextOpening, pickupSlots, asapReadyAt, formatTime, describeOpening,
   closingOn, HOURS_LINE,
@@ -29,7 +29,7 @@ export default function CheckoutView({
   const tips = [0, 0.1, 0.15, 0.2];
   const base = Math.max(0, subtotal - discount);
   const tip = cents(subtotal * tips[tipIdx]);   // tip on pre-discount value
-  const tax = cents(base * 0.08875);
+  const tax = taxOn(base);
   const total = cents(base + tax + tip);
 
   /* Pickup slots are recomputed on a one-minute tick: someone can sit on this
@@ -154,7 +154,7 @@ export default function CheckoutView({
               <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>−{money(discount)}</span>
             </div>
           )}
-          <div className="rowline"><span style={{ color: "var(--muted)" }}>Tax</span><span>{money(tax)}</span></div>
+          <div className="rowline"><span style={{ color: "var(--muted)" }}>Tax ({TAX_LABEL})</span><span>{money(tax)}</span></div>
           <div className="rowline"><span style={{ color: "var(--muted)" }}>Tip</span><span>{money(tip)}</span></div>
           <div style={{ borderTop: "1px solid var(--line)", margin: "8px 0" }} />
           <div className="rowline" style={{ fontWeight: 700, fontSize: 16 }}><span>Total</span><span>{money(total)}</span></div>
