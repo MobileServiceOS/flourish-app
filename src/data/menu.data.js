@@ -29,9 +29,9 @@ export const MENU = [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "VQZ0T4XK707EC", name: "Snapper Fish", emoji: "🐠",
-        desc: "Brown stew, escovitch, or steamed", base: 0.0, lo: 14.0, hi: 30.0, groups: [
+        desc: "Brown stew, escovitch, or steamed", base: 0.0, lo: 20.0, hi: 30.0, groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
-        { gid: "AJY3FTT4BRPHP", name: "Fish", kind: "variant", mods: [{ n: "Brown Stew Fish", p: 30.0 }, { n: "Escovitch", p: 30.0 }, { n: "Steam Fish", p: 30.0 }, { n: "Whiting Fish", p: 14.0 }, { n: "Snapper Fish (Add On. No Sides)", p: 20.0 }] }
+        { gid: "AJY3FTT4BRPHP", name: "Fish", kind: "variant", mods: [{ n: "Brown Stew Fish", p: 30.0 }, { n: "Escovitch", p: 30.0 }, { n: "Steam Fish", p: 30.0 }, { n: "Whiting Fish", p: 14.0, oos: true }, { n: "Snapper Fish (Add On. No Sides)", p: 20.0 }] }
       ] },
     { id: "ZTAQ37M4E9S4C", name: "Stew Peas", emoji: "🫘",
         desc: "Red peas simmered in coconut milk", base: 0.0, lo: 15.0, hi: 18.0, groups: [
@@ -48,7 +48,7 @@ export const MENU = [
       ] },
     { id: "JAD3BJK9BSTW8", name: "Pasta", emoji: "🍝",
         desc: "Plain, chicken, shrimp, steak, or oxtail", base: 0.0, lo: 15.0, hi: 25.0, groups: [
-        { gid: "D0F1SFXHWSQWT", name: "Pasta", kind: "variant", mods: [{ n: "Plain Pasta", p: 15.0 }, { n: "Chicken", p: 18.0 }, { n: "Shrimp", p: 20.0 }, { n: "Garlic", p: 15.0 }, { n: "Penne Alla Vodka", p: 15.0 }, { n: "Steak", p: 25.0 }, { n: "Oxtail", p: 25.0 }] }
+        { gid: "D0F1SFXHWSQWT", name: "Pasta", kind: "variant", mods: [{ n: "Plain Pasta", p: 15.0 }, { n: "Chicken", p: 18.0 }, { n: "Shrimp", p: 20.0 }, { n: "Garlic", p: 15.0 }, { n: "Penne Alla Vodka", p: 18 }, { n: "Steak", p: 25.0 }, { n: "Oxtail", p: 24 }] }
       ] },
     { id: "PEB98GZ1MBF6P", name: "Lobster Tail (No Meal)", emoji: "🦞",
         desc: "Lobster tail on its own, no sides", base: 25.0, lo: 25.0, hi: 25.0, groups: [
@@ -68,9 +68,9 @@ export const MENU = [
         { gid: "4BY3GKC2SVJ90", name: "Shrimp", kind: "variant", mods: [{ n: "Garlic", p: 20.0 }, { n: "Curried", p: 20.0 }, { n: "Pepper", p: 20.0 }, { n: "Sweet Chili", p: 20.0 }, { n: "Grilled", p: 20.0 }, { n: "Fried", p: 20.0 }] }
       ] },
     { id: "8FW3GVMJKCGZG", name: "Pork", emoji: "🥓",
-        desc: "Stew or jerk, medium or large", base: 0.0, lo: 14.0, hi: 20.0, groups: [
+        desc: "Stew or jerk, medium or large", base: 0.0, lo: 20.0, hi: 25.0, groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
-        { gid: "907Z8BF726CQ4", name: "Pork", kind: "variant", mods: [{ n: "Medium Stew", p: 14.0 }, { n: "Large Stew", p: 17.0 }, { n: "Medium Jerk", p: 15.0 }, { n: "Large Jerk", p: 20.0 }] }
+        { gid: "907Z8BF726CQ4", name: "Pork", kind: "variant", mods: [{ n: "Medium Stew", p: 20 }, { n: "Large Stew", p: 25 }, { n: "Medium Jerk", p: 20 }, { n: "Large Jerk", p: 25 }] }
       ] },
     { id: "PSGB77QNZR2WM", name: "Blue Crab", emoji: "🦀",
         desc: "Blue crab with two sides", base: 20.0, lo: 20.0, hi: 20.0, groups: [
@@ -118,7 +118,7 @@ export const MENU = [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "1PBGJ1BWC3Z52", name: "Chicken & Waffles", emoji: "🧇",
-        desc: "Fried chicken over waffles, six flavors", base: 15.99, lo: 15.99, hi: 15.99, groups: [
+        desc: "Fried chicken over waffles, six flavors", base: 15.0, lo: 15.0, hi: 15.0, groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
         { gid: "3VQCJ6J8Q465P", name: "Waffles Flavors", kind: "flavor", mods: [{ n: "Red Velvet", p: 0.0 }, { n: "Strawberry", p: 0.0 }, { n: "Easter Bun", p: 0.0 }, { n: "Cinnamin", p: 0.0 }, { n: "Buttermilk", p: 0.0 }, { n: "Coconut Toto", p: 0.0 }] }
       ] },
@@ -133,7 +133,7 @@ export const MENU = [
       ] },
     { id: "6NX7XK602V0ZM", name: "Side", emoji: "🍚",
         desc: "One side on its own", base: 0.0, lo: 1.0, hi: 15.0, groups: [
-        { gid: "S032100JQ3P4T", name: "Side", kind: "variant", mods: [{ n: "Mac & Cheese", p: 6.0 }, { n: "Seafood Mac & Cheese", p: 8.0 }, { n: "Rice & Peas", p: 5.0 }, { n: "White Rice", p: 5.0 }, { n: "Fried Chicken", p: 6.0 }, { n: "Mashed Potatoes", p: 5.0 }, { n: "Steam Veggies", p: 3.0 }, { n: "Festival", p: 1.0 }, { n: "Pasta", p: 10.0 }, { n: "Shrimp X1", p: 2.0 }, { n: "Chicken Breast", p: 5.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish  X1", p: 2.5 }, { n: "Chicken Mac & Cheese", p: 6.99 }, { n: "Waffles", p: 8.0 }, { n: "Candied Yams", p: 5.0 }, { n: "Corn Bread", p: 1.5 }, { n: "Jerk Chicken", p: 6.0 }, { n: "Plantain", p: 3.0 }, { n: "Fried Chicken (1 Piece)", p: 2.0 }, { n: "Pepper Shrimp", p: 15.0 }] }
+        { gid: "S032100JQ3P4T", name: "Side", kind: "variant", mods: [{ n: "Mac & Cheese", p: 6.0 }, { n: "Seafood Mac & Cheese", p: 8.0 }, { n: "Rice & Peas", p: 5.0 }, { n: "White Rice", p: 5.0 }, { n: "Fried Chicken", p: 6.0 }, { n: "Mashed Potatoes", p: 5.0 }, { n: "Steam Veggies", p: 3.0 }, { n: "Festival", p: 1.0 }, { n: "Pasta", p: 10.0 }, { n: "Shrimp X1", p: 2.0 }, { n: "Chicken Breast", p: 5.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish  X1", p: 2.5 }, { n: "Chicken Mac & Cheese", p: 7 }, { n: "Waffles", p: 8.0 }, { n: "Candied Yams", p: 5.0 }, { n: "Corn Bread", p: 1.5 }, { n: "Jerk Chicken", p: 6.0 }, { n: "Plantain", p: 3.0 }, { n: "Fried Chicken (1 Piece)", p: 2.0 }, { n: "Pepper Shrimp", p: 15.0 }] }
       ] },
     { id: "S0GK9MD2NE414", name: "Salmon (1 Piece)", emoji: "🐟",
         desc: "One piece of salmon, no sides", base: 15.0, lo: 15.0, hi: 15.0, groups: [
@@ -146,8 +146,8 @@ export const MENU = [
         { gid: "N4PVGZF59CYJ8", name: "Curry Chicken", kind: "variant", mods: [{ n: "Medium", p: 13.0 }, { n: "Large", p: 15.0 }] }
       ] },
     { id: "KW21XBQ6XVTGA", name: "Lunch Specials", emoji: "☀️",
-        desc: "Smaller plates at lunch prices", base: 0.0, lo: 2.0, hi: 13.5, groups: [
-        { gid: "F0Q8615QD5HMM", name: "Lunch Specials", kind: "variant", mods: [{ n: "Curry Goat", p: 12.0 }, { n: "Curried Chicken", p: 7.99 }, { n: "Fried Chicken", p: 7.99 }, { n: "Jerk Chicken", p: 7.99 }, { n: "Oxtail", p: 13.5 }, { n: "Stew Chicken", p: 7.99 }, { n: "Wings", p: 10.5 }, { n: "Extra Side", p: 2.0 }] }
+        desc: "Smaller plates at lunch prices", base: 0.0, lo: 2.0, hi: 8.0, groups: [
+        { gid: "F0Q8615QD5HMM", name: "Lunch Specials", kind: "variant", mods: [{ n: "Curry Goat", p: 12.0, oos: true }, { n: "Curried Chicken", p: 8 }, { n: "Fried Chicken", p: 8 }, { n: "Jerk Chicken", p: 8 }, { n: "Oxtail", p: 13.5, oos: true }, { n: "Stew Chicken", p: 8 }, { n: "Wings", p: 10.5, oos: true }, { n: "Extra Side", p: 2.0 }] }
       ] },
     { id: "QDCGERYM91BP0", name: "Beef Patty", emoji: "🥟",
         desc: "Flaky crust, seasoned beef", base: 3.0, lo: 3.0, hi: 3.0, groups: [

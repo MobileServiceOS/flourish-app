@@ -98,7 +98,7 @@ npm test          # once
 npm run test:watch
 ```
 
-203 tests. They cover the things that cost money if they break: pickup-slot
+211 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the
@@ -120,6 +120,12 @@ the customer is charged. Export and regenerate instead:
 
 That rewrites `src/data/menu.data.js` with live Clover item and modifier-group ids,
 so every order maps 1:1 onto the register.
+
+**Prices come from the printed menu, not from Clover.** Where the two disagree the
+menu wins, via the `MENU_PRICE` / `ITEM_MENU_PRICE` / `NOT_ON_PRINTED_MENU` maps in
+that script. Clover still charges what Clover says, so those changes have to be
+entered in the Clover dashboard too — the script prints the list every run, and
+`PRINTED-MENU-PRICES.md` has it written out.
 
 Clover's export carries no description field, so the one-line menu copy lives in
 the `DESC` map at the top of `scripts/generate-menu.mjs`, keyed by Clover item id.

@@ -100,6 +100,58 @@ const MISFILED_AS_SIZE = {
   "KR1HHY64E4QPJ::Seafood": "sold as its own item, Fri & Sat only",
 };
 
+/* ============================================================================
+   PRINTED MENU IS THE PRICE AUTHORITY
+
+   The house charges what the printed menu says. Where Clover disagrees, these
+   maps win and the app shows the menu price.
+
+   !! THE REGISTER STILL RINGS THE CLOVER PRICE. !!
+   Clover prices its own orders — this app deliberately sends no line prices —
+   so until the Clover dashboard is updated to match, the counter and the app
+   will disagree on these items. The script prints the exact list of changes to
+   make in Clover every time it runs. See PRINTED-MENU-PRICES.md.
+   ============================================================================ */
+
+/* Modifier price from the printed menu. Keyed "<group id>::<modifier name>". */
+const MENU_PRICE = {
+  // Pork — Clover is $5-$8 under the menu on every plate
+  "907Z8BF726CQ4::Medium Stew": 20,
+  "907Z8BF726CQ4::Large Stew": 25,
+  "907Z8BF726CQ4::Medium Jerk": 20,
+  "907Z8BF726CQ4::Large Jerk": 25,
+  // Pasta
+  "D0F1SFXHWSQWT::Penne Alla Vodka": 18,
+  "D0F1SFXHWSQWT::Oxtail": 24,
+  // Sides
+  "S032100JQ3P4T::Chicken Mac & Cheese": 7.0,
+  // Lunch specials — the chicken plates are $8 on the menu
+  "F0Q8615QD5HMM::Curried Chicken": 8.0,
+  "F0Q8615QD5HMM::Fried Chicken": 8.0,
+  "F0Q8615QD5HMM::Jerk Chicken": 8.0,
+  "F0Q8615QD5HMM::Stew Chicken": 8.0,
+};
+
+/* Flat-priced items whose base disagrees with the menu. Keyed by Clover id. */
+const ITEM_MENU_PRICE = {
+  "1PBGJ1BWC3Z52": 15.0,   // Chicken & Waffles — Clover has $15.99
+};
+
+/* On the register but not on the printed menu, so not sold in the app.
+   Keyed "<group id>::<modifier name>". */
+const NOT_ON_PRINTED_MENU = new Set([
+  "AJY3FTT4BRPHP::Whiting Fish",     // $14 full meal, not a listed dish
+  "F0Q8615QD5HMM::Curry Goat",       // lunch specials the menu does not list
+  "F0Q8615QD5HMM::Oxtail",
+  "F0Q8615QD5HMM::Wings",
+]);
+
+/* Salmon is $22 in Clover and $22 on the menu — left exactly as it is.
+   Its flavour list differs between the two (Clover: Sweet Chili, Grilled,
+   Steamed, Honey Garlic, Jerk / menu: Pepper, Garlic, Curry in place of Steamed
+   and Jerk) but that is a flavour question, not a price one, and nobody has
+   said which list is right. Untouched on purpose. */
+
 // One line of menu copy per item, keyed by Clover id — ids rather than names
 // because "Blue Crab" is two different items at two different prices.
 // Clover has no description field in the export, so this map is the source of
@@ -222,6 +274,8 @@ const items = new Map();
 
 /* ---------- build, correcting anything that would mischarge ---------- */
 const issues = [];
+const priceEdits = [];   // where the printed menu overrode Clover
+const offMenu = [];      // sold on the register, not on the printed menu
 const out = [];
 
 for (const it of items.values()) {
@@ -239,6 +293,26 @@ for (const it of items.values()) {
   if (base > 0 && variants.length) {
     issues.push(`${it.name}: base $${base} plus a priced size group — rings up double at the register`);
     base = 0;
+  }
+
+  // Printed-menu price wins over Clover, and anything not on the menu is hidden.
+  for (const g of gs) {
+    for (const m of g.mods) {
+      const key = `${g.gid}::${m.n}`;
+      if (NOT_ON_PRINTED_MENU.has(key)) {
+        m.oos = true;
+        offMenu.push(`${it.name}: "${m.n}" (${m.p}) is on the register but not the printed menu`);
+        continue;
+      }
+      if (MENU_PRICE[key] !== undefined && MENU_PRICE[key] !== m.p) {
+        priceEdits.push({ item: it.name, group: g.name, option: m.n, clover: m.p, menu: MENU_PRICE[key] });
+        m.p = MENU_PRICE[key];
+      }
+    }
+  }
+  if (ITEM_MENU_PRICE[it.id] !== undefined && ITEM_MENU_PRICE[it.id] !== base) {
+    priceEdits.push({ item: it.name, group: "(item price)", option: it.name, clover: base, menu: ITEM_MENU_PRICE[it.id] });
+    base = ITEM_MENU_PRICE[it.id];
   }
 
   for (const g of variants) {
@@ -357,6 +431,18 @@ if (missingModifierIds) {
     "  If your export has a modifier id column under another name, add it to the\n" +
     "  lookup in this script."
   );
+}
+
+if (priceEdits.length || offMenu.length) {
+  console.log("\n  PRINTED MENU APPLIED — the register does NOT know about these yet.");
+  console.log("  Clover prices its own orders, so until you make these changes in the");
+  console.log("  Clover dashboard the counter and the app will disagree.\n");
+  for (const e of priceEdits) {
+    const dir = e.menu > e.clover ? "raise" : "lower";
+    console.log(`    ${dir.padEnd(5)} ${e.item} / ${e.group} / ${e.option}:  ${e.clover} -> ${e.menu}`);
+  }
+  for (const o of offMenu) console.log(`    hide  ${o}`);
+  console.log("");
 }
 
 if (issues.length) {

@@ -9,13 +9,26 @@ A commission-free pickup ordering app for **Flourish bx inc**, 4035 Laconia Ave,
 Bronx NY 10466. Pickup only — no delivery, no service fees, no platform cut.
 React + Vite, wrapped with Capacitor for iOS/Android.
 
-## The one rule
+## The two rules
 
-**Clover is the register. Whatever Clover says is what the customer is charged.**
+**1. The printed menu sets the price.** Where Clover disagrees, the menu wins and
+the app shows the menu price. The overrides live in `MENU_PRICE`,
+`ITEM_MENU_PRICE` and `NOT_ON_PRINTED_MENU` at the top of
+`scripts/generate-menu.mjs`.
 
-`src/data/menu.data.js` is generated from a Clover inventory export and must
-never be hand-edited. If a price looks wrong, it's wrong *in Clover* — fix it
-there and regenerate. Menu copy, Popular ids and day-locks live in maps at the
+**2. Clover still charges the customer.** The app sends no line prices; Clover
+prices its own orders, and the card is charged the total Clover returns. So rule
+1 only reaches the app until the Clover dashboard is updated to match — until
+then the app and the counter disagree on nine items. The generator prints the
+exact changes needed on every run. See `PRINTED-MENU-PRICES.md`.
+
+These two pull against each other by design, and rule 2 is the one that moves
+money. Do not "fix" a price mismatch by making the app charge its own total: the
+order in Clover would then disagree with the card, and the till goes out.
+
+`src/data/menu.data.js` is generated and must never be hand-edited. A price that
+looks wrong is either wrong in Clover or missing from the printed-menu maps —
+fix it in one of those two places and regenerate. Menu copy, Popular ids and day-locks live in maps at the
 top of `scripts/generate-menu.mjs` so a regen keeps them. Items the kitchen has
 stopped making go in `DELISTED` there, by Clover id — they stay in the Clover
 inventory long after they come off the menu.
@@ -116,7 +129,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 203 tests
+npm test            # 211 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

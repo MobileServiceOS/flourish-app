@@ -151,7 +151,7 @@ describe("a price range that is really two sizes says so", () => {
     const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
     // Pork is Medium/Large Stew and Medium/Large Jerk — four options, not two sizes
     const pork = within(lunch).getByRole("button", { name: /^Pork,/ });
-    expect(pork).toHaveAccessibleName(/\$14\.00 to \$20\.00/);
+    expect(pork).toHaveAccessibleName(/\$20\.00 to \$25\.00/);   // printed-menu prices
     expect(pork.textContent).not.toContain("Med ");
   });
 

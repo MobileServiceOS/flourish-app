@@ -65,6 +65,11 @@ because the sandbox tokens currently in `.env.local` return 401.
 
 ## Blocked
 
+- [ ] **Enter the printed-menu prices in Clover.** The app now shows menu prices
+      but Clover still rings its own, so the app and the counter disagree on
+      nine items — including two where a customer is quoted less than they are
+      charged. The exact list is in `PRINTED-MENU-PRICES.md`.
+
 - [ ] **Verify the integration against live Clover.** Built and unit-tested, but
       never exercised against a real merchant: the tokens in `.env.local` return
       401 on every endpoint and both hosts. Needs fresh sandbox credentials from
