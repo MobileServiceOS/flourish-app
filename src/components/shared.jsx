@@ -1,7 +1,6 @@
 /* Pieces used by more than one screen. */
 import React, { useState, useEffect, useRef } from "react";
 import { Check, ChevronLeft } from "lucide-react";
-import { IMG } from "../lib/restaurant.js";
 
 export function Hummingbird({ style, size = 44, flip }) {
   return (
@@ -30,13 +29,18 @@ export function Splash() {
   );
 }
 
+/* An item photo if we have one, the emoji tile if we don't. The emoji is a
+   real design choice here, not a placeholder, so it is what most rows show.
+   `img` is a path under public/, e.g. "/items/oxtail.jpg". */
 export function Thumb({ item }) {
   const [err, setErr] = useState(false);
-  const src = item.img || IMG(item.id);
-  if (src && !err) {
-    return <img className="thumb" src={src} alt={item.name} onError={() => setErr(true)} />;
+  if (item.img && !err) {
+    return (
+      <img className="thumb" src={item.img} alt={item.name} loading="lazy" decoding="async"
+        width={82} height={82} onError={() => setErr(true)} />
+    );
   }
-  return <div className="thumb">{item.emoji || "🍽️"}</div>;
+  return <div className="thumb" role="img" aria-label={item.name}>{item.emoji || "🍽️"}</div>;
 }
 
 /* Modal plumbing shared by the item sheet and the staff sheet: Escape closes,

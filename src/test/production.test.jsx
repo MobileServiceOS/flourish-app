@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { formatPhone, phoneDigits, isValidPhone, isValidName } from "../lib/phone.js";
@@ -227,11 +227,14 @@ describe("share preview metadata", () => {
     );
   });
 
-  it("points og:image at a real image, not a placeholder", () => {
-    const img = meta("property", "og:image");
-    expect(img).toContain("img.cdn4dd.com");
-    expect(img).toContain("width=1200,height=672");
+  it("points og:image at our own absolute URL, not a placeholder", () => {
+    expect(meta("property", "og:image")).toBe("https://flourishbx.com/og-image.jpg");
     expect(html).not.toContain("flourish.app/og-image.png");
+  });
+
+  it("ships that image so the URL will actually resolve", () => {
+    const img = resolve(dirname(fileURLToPath(import.meta.url)), "../../public/og-image.jpg");
+    expect(statSync(img).size).toBeGreaterThan(10_000);
   });
 
   it("uses the brand theme colour", () => {
@@ -241,5 +244,48 @@ describe("share preview metadata", () => {
   it("mirrors the card onto Twitter", () => {
     expect(meta("name", "twitter:card")).toBe("summary_large_image");
     expect(meta("name", "twitter:image")).toBe(meta("property", "og:image"));
+  });
+});
+
+/* DoorDash was where the menu and photos were read from once. Nothing the app
+   serves to a customer should depend on a competitor's CDN staying up, or on
+   ids from their namespace lining up with Clover's — which they never did. */
+describe("no runtime dependency on DoorDash", () => {
+  const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.name === "test" ? []
+      : e.isDirectory() ? walk(resolve(dir, e.name))
+      : /\.(jsx?|css|html)$/.test(e.name) ? [resolve(dir, e.name)] : []);
+
+  it("has no DoorDash URL anywhere in the shipped source", () => {
+    // Hosts, not the word — a comment explaining why we do not use it is fine.
+    const HOST = /cdn4dd\.com|doordash-static|doordash\.com/i;
+    const offenders = walk(SRC)
+      .filter((f) => HOST.test(readFileSync(f, "utf8")))
+      .map((f) => f.slice(SRC.length + 1));
+    expect(offenders).toEqual([]);
+  });
+
+  it("has no DoorDash URL in index.html", () => {
+    expect(readFileSync(resolve(SRC, "../index.html"), "utf8"))
+      .not.toMatch(/cdn4dd\.com|doordash-static|doordash\.com/i);
+  });
+
+  it("falls back to the emoji tile rather than a broken image", async () => {
+    const { Thumb } = await import("../components/shared.jsx");
+    const { container } = render(<Thumb item={{ id: "X", name: "Oxtail", emoji: "🍖" }} />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toBe("🍖");
+  });
+
+  it("uses a local path when an item does have a photo", async () => {
+    const { Thumb } = await import("../components/shared.jsx");
+    const { container } = render(
+      <Thumb item={{ id: "X", name: "Oxtail", emoji: "🍖", img: "/items/oxtail.jpg" }} />
+    );
+    const img = container.querySelector("img");
+    expect(img).toHaveAttribute("src", "/items/oxtail.jpg");
+    expect(img).toHaveAttribute("alt", "Oxtail");
   });
 });

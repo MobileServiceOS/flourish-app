@@ -2,8 +2,15 @@
    Pure data and pure functions — no React in here. */
 import { MENU, POPULAR_IDS } from "../data/menu.data.js";
 
-export const IMG = (id) =>
-  `https://img.cdn4dd.com/cdn-cgi/image/fit=contain,width=600,height=600,format=auto/https://doordash-static.s3.amazonaws.com/media/photosV2/${id}-retina-large.jpg`;
+/* Item photos live in public/items/ and are referenced by an `img` field on the
+   item in menu.data.js. No `img` means the emoji tile, which is a deliberate
+   fallback rather than a broken image.
+
+   There used to be a helper here that built a DoorDash CDN URL out of the
+   Clover item id. Those are different id namespaces, so it 403'd on every
+   item — 43 failed cross-origin requests per menu render, always landing on
+   the emoji anyway. DoorDash was where the menu was read from, not somewhere
+   to serve customer traffic from. */
 
 export const DOW = new Date().getDay(); // 0=Sun ... 6=Sat
 export const TODAY_IS_FRIDAY = DOW === 5;

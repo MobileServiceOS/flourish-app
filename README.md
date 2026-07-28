@@ -40,6 +40,8 @@ same wifi, no build needed. This is the fastest way to check how it really feels
 ```
 flourish-app/
 ├─ index.html                  page shell, share-preview meta, font preloads
+├─ public/
+│  └─ og-image.jpg             the share-preview image, served from our domain
 ├─ package.json                dependencies and commands
 ├─ vite.config.js              dev server + build + test config
 ├─ capacitor.config.ts         native app id and name
@@ -115,6 +117,24 @@ up free, an item that double-charges, an add-on filed as a size. Those are hidde
 in the app and listed for you to fix at the source. See `CLOVER-FIXES.md`.
 
 ---
+
+## Item photos
+
+Most rows show the emoji tile — that's a design choice, not a missing asset.
+To give an item a real photo, drop the file in `public/items/` and add an `img`
+path to that item in the `DESC`-style maps in `scripts/generate-menu.mjs`:
+
+```js
+img: "/items/oxtail.jpg"
+```
+
+Keep them square and around 600×600. If the file is missing the row falls back
+to the emoji rather than showing a broken image.
+
+**Serve everything from our own domain.** Nothing the customer loads should come
+from a delivery platform's CDN — that is a dependency on a competitor staying up,
+and their image ids don't line up with Clover's anyway. A test fails the build if
+a `cdn4dd.com` or `doordash-static` URL reappears in the source.
 
 ## Building the native app
 
