@@ -11,7 +11,8 @@ import { cents, money } from "./lib/money.js";
 import { TIERS, REWARDS, rewardOf, discountFor, tierFor, nextTier } from "./lib/loyalty.js";
 import { loadAccount, saveAccount } from "./lib/storage.js";
 import {
-  isOpen, nextOpening, pickupSlots, asapReadyAt, formatTime, describeOpening, HOURS_LINE,
+  isOpen, nextOpening, pickupSlots, asapReadyAt, formatTime, describeOpening,
+  closingOn, HOURS_LINE,
 } from "./lib/hours.js";
 import { formatPhone, phoneDigits, isValidPhone, isValidName } from "./lib/phone.js";
 
@@ -66,6 +67,29 @@ const POPULAR = {
 /* A chip label — Seafood Fridays reads "(Fri)" on the six days it isn't on. */
 const chipLabel = (cat) =>
   cat === SEAFOOD_CAT && !TODAY_IS_FRIDAY ? `${cat} (Fri)` : cat;
+
+export const SHARE_URL = "https://flourishbx.com";
+export const SHARE_TEXT =
+  "Order pickup from Flourish BX — real Caribbean food, no delivery app markup. " + SHARE_URL;
+
+/* Native share sheet on a phone, clipboard on a desktop browser. Resolves to
+   what actually happened so the button can say so; a cancelled share sheet
+   throws AbortError and should leave the label alone. */
+export async function shareFlourish(nav = globalThis.navigator) {
+  try {
+    if (nav?.share) {
+      await nav.share({ title: "Flourish BX", text: SHARE_TEXT, url: SHARE_URL });
+      return "shared";
+    }
+    if (nav?.clipboard?.writeText) {
+      await nav.clipboard.writeText(SHARE_TEXT);
+      return "copied";
+    }
+  } catch (e) {
+    if (e?.name === "AbortError") return null;   // customer backed out
+  }
+  return null;
+}
 
 function Hummingbird({ style, size = 44, flip }) {
   return (
@@ -172,7 +196,16 @@ export default function App() {
       setActiveCat(filteredMenu[0].cat);
     }
   }, [filteredMenu, activeCat, query]);
-  const activeMenu = query ? filteredMenu : [POPULAR, ...MENU];
+  /* On Fridays the seafood leads — it's what people come in for, and it's the
+     chip that starts selected, so it has to be the section sitting at the top
+     or the scroll-spy would immediately move the highlight off it. */
+  const activeMenu = useMemo(() => {
+    if (query) return filteredMenu;
+    const base = [POPULAR, ...MENU];
+    if (!TODAY_IS_FRIDAY) return base;
+    const seafood = base.find((c) => c.cat === SEAFOOD_CAT);
+    return seafood ? [seafood, ...base.filter((c) => c !== seafood)] : base;
+  }, [query, filteredMenu]);
 
   const cartCount = cart.reduce((n, l) => n + l.qty, 0);
   const subtotal = cart.reduce((s, l) => s + l.price * l.qty, 0);
@@ -196,9 +229,31 @@ export default function App() {
     flash(`${v.name} applied`);
   };
 
-  const addToCart = (line) => {
+  const addToCart = (line, { silent = false } = {}) => {
     setCart((c) => [...c, { ...line, key: Date.now() + Math.random() }]);
-    flash(`${line.name} added`);
+    if (!silent) flash(`${line.name} added`);
+  };
+
+  /* Reorder puts the whole previous order back, modifiers and all.
+     The line is copied wholesale minus its old cart key — carrying itemId,
+     modifiers, note, plate and save forward is what lets a reordered line
+     still earn rewards and still map onto a Clover order. Anything 86'd today
+     or off-schedule is left out and named, rather than silently dropped. */
+  const reorder = (order) => {
+    const skipped = [];
+    let added = 0;
+    for (const line of order.lines) {
+      const item = ALL_ITEMS.find((i) => i.id === line.itemId);
+      const offToday = item?.days && !item.days.includes(DOW);
+      if (soldOut.has(line.itemId) || offToday) { skipped.push(line.name); continue; }
+      const { key, ...rest } = line;
+      addToCart(rest, { silent: true });
+      added++;
+    }
+    setView("cart");
+    if (!added) flash("Nothing from that order is available today");
+    else if (skipped.length) flash(`Added — ${skipped.join(", ")} unavailable today`);
+    else flash(`Reordered ${order.num}`);
   };
   // One-tap add for items with zero choices (plain drinks, plain sides)
   const quickAdd = (it) => {
@@ -252,10 +307,10 @@ export default function App() {
 
       {view === "menu" && <MenuView {...{ activeCat, scrollToCat, setDetail, catRefs, soldOut, openStaff: () => setStaffOpen(true), flash, quickAdd, search, setSearch, menu: activeMenu }} />}
       {view === "rewards" && (account
-        ? <RewardsView {...{ account, points, vouchers, orders, redeem, signOut }}
-            onReorder={(o)=>{o.lines.forEach(l=>addToCart({name:l.name,meta:l.meta,price:l.price,qty:l.qty}));setView("cart");}} />
+        ? <RewardsView {...{ account, points, vouchers, orders, redeem, signOut }} onReorder={reorder} />
         : <SignInView onSignIn={signIn} />)}
-      {view === "orders" && <OrdersView orders={orders} active={active} onReorder={(o)=>{o.lines.forEach(l=>addToCart({name:l.name,meta:l.meta,price:l.price,qty:l.qty}));setView("cart");}} onTrack={()=>active&&setView("track")} />}
+      {view === "orders" && <OrdersView orders={orders} active={active} onReorder={reorder}
+        onBrowse={() => setView("menu")} onTrack={() => active && setView("track")} />}
       {view === "cart" && <CartView {...{ cart, subtotal, saved, account, setQty, removeLine, setView,
           vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher: () => setApplied(null) }} />}
       {view === "checkout" && (
@@ -394,9 +449,17 @@ function MenuView({ activeCat, scrollToCat, setDetail, catRefs, soldOut, openSta
         )}
       </div>
       {TODAY_IS_FRIDAY && !search && (
-        <div className="promo-banner">
-          <Sparkles size={15} /> Seafood Fridays: platters, shrimp, and specials available today only.
-        </div>
+        <button className="promo-banner" onClick={() => scrollToCat(SEAFOOD_CAT)}
+          aria-label="It's Seafood Friday. Jump to the Seafood Fridays menu.">
+          <span className="promo-emoji" aria-hidden="true">🐟</span>
+          <span>
+            <strong>It's Seafood Friday!</strong>
+            <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 2 }}>
+              Crab legs, lobster and shrimp platters — today only. Tap to see them.
+            </span>
+          </span>
+          <ChevronRight size={18} style={{ marginLeft: "auto", flex: "0 0 auto" }} aria-hidden="true" />
+        </button>
       )}
 
       <div className="cat-nav" ref={navRef} role="tablist" aria-label="Menu sections">
@@ -692,12 +755,18 @@ function CartView({ cart, subtotal, saved, account, setQty, removeLine, setView,
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{l.name}</div>
                 {l.meta && <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 3 }}>{l.meta}</div>}
-                {l.note && <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>Note: {l.note}</div>}
+                {l.note && <div className="note-chip" style={{ marginTop: 6 }}>Note: {l.note}</div>}
                 <div className="stepper" style={{ marginTop: 10 }}>
-                  <button className="step-b" onClick={() => setQty(l.key, -1)}><Minus size={15} /></button>
-                  <span style={{ fontWeight: 700 }}>{l.qty}</span>
-                  <button className="step-b" onClick={() => setQty(l.key, 1)}><Plus size={15} /></button>
-                  <button onClick={() => removeLine(l.key)}
+                  <button className="step-b" onClick={() => setQty(l.key, -1)}
+                    aria-label={`Decrease ${l.name} quantity`}>
+                    <Minus size={15} aria-hidden="true" />
+                  </button>
+                  <span style={{ fontWeight: 700 }} aria-label={`${l.name} quantity`}>{l.qty}</span>
+                  <button className="step-b" onClick={() => setQty(l.key, 1)}
+                    aria-label={`Increase ${l.name} quantity`}>
+                    <Plus size={15} aria-hidden="true" />
+                  </button>
+                  <button onClick={() => removeLine(l.key)} aria-label={`Remove ${l.name}`}
                     style={{ marginLeft: 6, background: "none", border: 0, color: "var(--muted)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
                     Remove
                   </button>
@@ -769,21 +838,37 @@ function CartView({ cart, subtotal, saved, account, setQty, removeLine, setView,
 function CheckoutView({ subtotal, points, account, goJoin, discount = 0, appliedVoucher, onBack, onPay }) {
   const [name, setName] = useState(account ? account.name : "");
   const [phone, setPhone] = useState(account ? account.phone : "");
-  const [pickup, setPickup] = useState("ASAP");
   const [tipIdx, setTipIdx] = useState(1);
   const tips = [0, 0.1, 0.15, 0.2];
   const base = Math.max(0, subtotal - discount);
   const tip = cents(subtotal * tips[tipIdx]);   // tip on pre-discount value
   const tax = cents(base * 0.08875);
   const total = cents(base + tax + tip);
-  // Bridged to the real slot picker in the next step; onPay already takes { label, at }.
-  const times = ["ASAP", "15 min", "30 min", "45 min", "1 hour"];
-  const TIME_OFFSETS = { "ASAP": 15, "15 min": 15, "30 min": 30, "45 min": 45, "1 hour": 60 };
-  const pickupChoice = () => ({
-    label: pickup,
-    at: new Date(Date.now() + TIME_OFFSETS[pickup] * 60_000),
-  });
-  const ready = name.trim() && phone.replace(/\D/g, "").length >= 10;
+
+  /* Pickup slots are recomputed on a one-minute tick: someone can sit on this
+     screen long enough for the first slot to pass, and we must not sell a time
+     that has already gone by, or a time after close. */
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const open = isOpen(now);
+  const slots = useMemo(() => pickupSlots(now), [now]);
+  const [slotIso, setSlotIso] = useState("");        // "" = ASAP
+  // If the chosen slot has drifted into the past, fall back to ASAP.
+  useEffect(() => {
+    if (slotIso && !slots.some((s) => s.toISOString() === slotIso)) setSlotIso("");
+  }, [slots, slotIso]);
+
+  const pickupChoice = () => (slotIso
+    ? { label: formatTime(new Date(slotIso)), at: new Date(slotIso) }
+    : { label: "ASAP", at: asapReadyAt(now) });
+
+  const nameOk = isValidName(name);
+  const phoneOk = isValidPhone(phone);
+  const ready = nameOk && phoneOk && open && subtotal > 0;
 
   return (
     <>
@@ -807,11 +892,45 @@ function CheckoutView({ subtotal, points, account, goJoin, discount = 0, applied
         </Section>
 
         <Section title="Pickup time">
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {times.map((t) => (
-              <button key={t} className={`chip ${pickup === t ? "on" : ""}`} onClick={() => setPickup(t)}>{t}</button>
-            ))}
-          </div>
+          {open ? (
+            <>
+              <button className={`slot-asap ${slotIso === "" ? "on" : ""}`} onClick={() => setSlotIso("")}
+                aria-pressed={slotIso === ""}>
+                <Clock size={17} aria-hidden="true" />
+                <span>
+                  <strong>ASAP (~15 min)</strong>
+                  <span style={{ display: "block", fontSize: 12, opacity: .85 }}>
+                    Ready around {formatTime(asapReadyAt(now))}
+                  </span>
+                </span>
+                {slotIso === "" && <Check size={17} style={{ marginLeft: "auto" }} aria-hidden="true" />}
+              </button>
+
+              <label htmlFor="slot" className="slot-label">Or schedule it</label>
+              <select id="slot" className="field" value={slotIso}
+                onChange={(e) => setSlotIso(e.target.value)}>
+                <option value="">ASAP (~15 min)</option>
+                {slots.map((s) => {
+                  const iso = s.toISOString();
+                  return <option key={iso} value={iso}>{formatTime(s)}</option>;
+                })}
+              </select>
+              <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 8 }}>
+                {slots.length
+                  ? `${slots.length} pickup time${slots.length > 1 ? "s" : ""} left today · kitchen closes at ${formatTime(closingOn(now))}`
+                  : "No scheduled times left today — ASAP only."}
+              </div>
+            </>
+          ) : (
+            <div className="closed-card" role="status">
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>We're closed right now</div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.45 }}>
+                Flourish opens {describeOpening(nextOpening(now), now)}. Your cart will still be
+                here — nothing is lost.
+              </div>
+              <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 8 }}>{HOURS_LINE}</div>
+            </div>
+          )}
         </Section>
 
         <Section title="Add a tip">
@@ -862,7 +981,10 @@ function CheckoutView({ subtotal, points, account, goJoin, discount = 0, applied
         </div>
 
         <button className="pill-btn" disabled={!ready} onClick={() => onPay(pickupChoice(), tip)}>
-          {ready ? `Pay ${money(total)}` : "Enter name & phone"}
+          {!open ? `Closed until ${formatTime(nextOpening(now))}`
+            : ready ? `Pay ${money(total)}`
+            : !nameOk ? "Enter your name"
+            : "Enter your phone number"}
         </button>
         <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 11, marginTop: 10 }}>
           Demo checkout · live version charges through Clover
@@ -1047,7 +1169,7 @@ function SignInView({ onSignIn }) {
 
 /* ---------- REWARDS / ACCOUNT ---------- */
 function RewardsView({ account, points, vouchers, orders, redeem, signOut, onReorder }) {
-  const [shared, setShared] = useState(false);
+  const [shared, setShared] = useState(null);   // null | "shared" | "copied"
   const tier = tierFor(points);
   const next = nextTier(points);
   const pct = next ? Math.min(100, ((points - tier.min) / (next.min - tier.min)) * 100) : 100;
@@ -1076,26 +1198,19 @@ function RewardsView({ account, points, vouchers, orders, redeem, signOut, onReo
         </div>
         <div className="card" style={{ padding: 16, marginBottom: 18, borderRadius: 22, border: "1px solid var(--line)", background: "#fff" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <Gift size={20} color="var(--leaf-ink)" />
+            <Share2 size={20} color="var(--leaf-ink)" aria-hidden="true" />
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>Refer a friend</div>
-              <div style={{ color: "var(--muted)", fontSize: 13 }}>Share a code and both of you earn rewards on your next pickup.</div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Tell someone</div>
+              <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                The more people order direct, the less the delivery apps take.
+              </div>
             </div>
           </div>
           <button className="pill-btn ghost" style={{ width: "100%", color: "var(--ink)", padding: "14px 16px", fontWeight: 700 }}
-            onClick={async () => {
-              const text = `Flourish pickup orders at 4035 Laconia Ave. Use code FLOURISH when you order and earn rewards!`;
-              try {
-                if (navigator.share) await navigator.share({ title: 'Flourish pickup', text });
-                else await navigator.clipboard.writeText(text);
-                setShared(true);
-                setTimeout(() => setShared(false), 1800);
-              } catch (e) {
-                setShared(true);
-                setTimeout(() => setShared(false), 1800);
-              }
-            }}>
-            {shared ? 'Link copied' : 'Share a referral'}
+            onClick={() => shareFlourish().then(setShared).then(() => setTimeout(() => setShared(null), 1800))}>
+            {shared === "shared" ? "Thanks for sharing"
+              : shared === "copied" ? "Copied to clipboard"
+              : "Share Flourish"}
           </button>
         </div>
 
@@ -1181,12 +1296,16 @@ function RewardsView({ account, points, vouchers, orders, redeem, signOut, onReo
 }
 
 /* ---------- ORDERS ---------- */
-function OrdersView({ orders, onReorder }) {
+function OrdersView({ orders, onReorder, onBrowse }) {
   return (
     <>
       <SubHeader title="Your Orders" />
       <div style={{ padding: "4px 16px 24px" }}>
-        {orders.length === 0 && <Empty icon={<Receipt size={30} />} title="No orders yet" text="Your past pickups will show up here." />}
+        {orders.length === 0 && (
+          <Empty icon={<Receipt size={30} />} title="No orders yet"
+            text="Your past pickups will show up here, ready to reorder in one tap."
+            cta="Start your first order" onCta={onBrowse} />
+        )}
         {orders.map((o) => (
           <div key={o.num} className="card" style={{ padding: 16, marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1198,11 +1317,17 @@ function OrdersView({ orders, onReorder }) {
                 {o.status === "preparing" ? "Preparing" : "Completed"}
               </span>
             </div>
-            <div style={{ color: "var(--muted)", fontSize: 13, margin: "10px 0" }}>
-              {o.lines.map((l) => `${l.qty}× ${l.name}`).join(", ")}
+            <div style={{ margin: "10px 0" }}>
+              {o.lines.map((l, i) => (
+                <div key={i} style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>
+                  {l.qty}× {l.name}{l.meta ? ` · ${l.meta}` : ""}
+                  {l.note && <span className="note-chip" style={{ marginLeft: 6 }}>{l.note}</span>}
+                </div>
+              ))}
             </div>
-            <button className="pill-btn ghost" onClick={() => onReorder(o)}>
-              <RotateCcw size={15} style={{ verticalAlign: -2, marginRight: 6 }} /> Reorder
+            <button className="pill-btn ghost" onClick={() => onReorder(o)}
+              aria-label={`Reorder ${o.num}`}>
+              <RotateCcw size={15} style={{ verticalAlign: -2, marginRight: 6 }} aria-hidden="true" /> Reorder
             </button>
           </div>
         ))}
