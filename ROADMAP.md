@@ -31,6 +31,10 @@ because the sandbox tokens currently in `.env.local` return 401.
 - [x] Pickup time picker on a 15-minute grid, with a real closed state
 - [x] Share Flourish via the native share sheet
 - [x] Special instructions carried through to cart, confirmation and history
+- [x] Order-ready notification, scheduled on the device at the estimated ready
+      time. No server, no device tokens, nothing to pay per message. Permission
+      is asked on the confirmation screen, where the reason is obvious, and a
+      refusal is handled without nagging.
 
 ### Production readiness
 - [x] Empty states for cart, orders and search
@@ -40,7 +44,7 @@ because the sandbox tokens currently in `.env.local` return 401.
 - [x] WCAG AA contrast, verified by a test that recomputes from the stylesheet
 - [x] Share-preview meta tags, self-hosted image
 - [x] `App.jsx` split into nine screens plus shared pieces
-- [x] Test suite (165 tests) — there was none before
+- [x] Test suite — there was none before
 
 ### Clover integration
 - [x] Server proxy holding the private token (`server/`)
@@ -66,10 +70,11 @@ because the sandbox tokens currently in `.env.local` return 401.
       401 on every endpoint and both hosts. Needs fresh sandbox credentials from
       the Clover dashboard. Until then no order, charge, print or inventory call
       has been confirmed end to end.
-- [ ] **Ring-test the four pricing bugs in `CLOVER-FIXES.md`.** Baked Chicken
+- [ ] **Ring-test the five pricing bugs in `CLOVER-FIXES.md`.** Baked Chicken
       double-charges; goat soup rings up free; a $1.50 add-on sits in the Wings
-      size group; pork prices disagree with the printed menu. The app works
-      around all four, but they still mis-ring at the counter.
+      size group; pork prices disagree with the printed menu; seafood stew peas is
+      filed as a size of regular stew peas. The app works around all five, but
+      they still mis-ring at the counter.
 
 ## Next
 
@@ -81,10 +86,16 @@ because the sandbox tokens currently in `.env.local` return 401.
       fine on localhost, not fine on the internet, where anyone could POST to
       `/api/clover/pay`. Needs at minimum an app-level shared secret and rate
       limiting.
-- [ ] Real push notifications when an order is ready, replacing "we'll text you"
-- [ ] Catering request screen — 62 catering items are priced by quote in Clover
-      and deliberately excluded from the pickup flow
+- [ ] Server-sent push the moment Clover flips the order to ready, replacing the
+      scheduled local notification. Needs an Apple Developer account, an APNs
+      key, and somewhere to keep device tokens — the proxy is stateless today.
 
 ## Not planned
 
-- Delivery. The entire point is that ordering direct avoids the platforms.
+- **Delivery.** The entire point is that ordering direct avoids the platforms.
+- **Catering.** 62 catering items sit in the same Clover inventory, all $0 and priced
+  by quote. It is not a pickup flow and stays a phone call. The generator skips any
+  item with "(Catering" in its name so they never reach customers — leave that filter
+  in place.
+- **SMS.** Order-ready alerts are notifications, not texts. Push costs nothing to
+  send; Twilio is about $0.008 a message, forever.

@@ -88,8 +88,8 @@ export default function CheckoutView({
             aria-describedby="co-phone-hint" />
           <div id="co-phone-hint" className={`field-hint${touched.phone && !phoneOk ? " bad" : ""}`}>
             {touched.phone && !phoneOk
-              ? "We need all 10 digits to text you when it's ready."
-              : "We'll text this number when your order is ready."}
+              ? "We need all 10 digits so staff can reach you about this order."
+              : "So staff can reach you about this order."}
           </div>
         </Section>
 

@@ -51,7 +51,7 @@ export default function SignInView({ onSignIn }) {
           </div>
         </Section>
         <div style={{ color: "var(--muted)", fontSize: 11.5, margin: "10px 2px 0", lineHeight: 1.45 }}>
-          We use your number to look up your points and text you when your order is ready. Nothing else.
+          We use your number to look up your points and to reach you about an order. Nothing else.
         </div>
 
         <button className="pill-btn" style={{ marginTop: 16 }} disabled={!ok}

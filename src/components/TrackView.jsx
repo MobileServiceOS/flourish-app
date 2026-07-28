@@ -5,6 +5,7 @@ import { formatTime } from "../lib/hours.js";
 import { PHONE_E164, PHONE_HUMAN, MAPS_URL } from "../lib/restaurant.js";
 import { useOrderStatus } from "../hooks/clover.js";
 import { Hummingbird } from "./shared.jsx";
+import NotifyPrompt from "./NotifyPrompt.jsx";
 
 /* ---------- ORDER CONFIRMATION + TRACKING ---------- */
 /* Everything a customer needs after paying, without leaving the screen:
@@ -82,8 +83,13 @@ export default function TrackView({ order, setView, live = false }) {
           ))}
           <div style={{ borderTop: "1px solid var(--line)", margin: "12px 0" }} />
           <div style={{ color: "var(--muted)", fontSize: 13 }} aria-live="polite">
-            {stage < 2 ? "We'll text you the moment it's ready." : "Come grab it at 4035 Laconia Ave 🌺"}
+            {stage < 2
+              ? "This updates on its own while you wait."
+              : "Come grab it at 4035 Laconia Ave 🌺"}
           </div>
+          {stage < 2 && (
+            <NotifyPrompt orderNum={order.num} readyAt={readyAt} itemCount={itemCount} />
+          )}
           {order.printed === false && (
             <div className="field-hint" style={{ marginTop: 6 }}>
               The kitchen printer didn't answer, so staff are working from the register screen.

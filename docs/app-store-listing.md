@@ -89,7 +89,7 @@ PICKUP ONLY
 4035 Laconia Ave, Bronx, NY 10466
 Open 9AM to 10PM, until 11PM on Friday and Saturday.
 
-We'll text you when your food is ready.
+The app tells you when your food is ready.
 ```
 
 ---

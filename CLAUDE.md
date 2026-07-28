@@ -72,6 +72,25 @@ For reference, the combined New York City rate on prepared food is 8.875%
 (4% state + 4.5% city + 0.375% MCTD). 8.5% was set deliberately on request; if
 that turns out to be wrong the difference is owed at filing time.
 
+### Order-ready notifications
+
+`src/lib/notify.js` schedules a **local** notification on the device for the
+estimated ready time. No server, no device tokens, no APNs account, nothing paid
+per message. It survives three environments: Capacitor when native, the browser
+Notification API otherwise, and silently nothing where neither exists.
+
+The permission prompt lives on the confirmation screen, not at launch — the
+customer is waiting for food there, so the reason is obvious and iOS only lets
+you ask once. A refusal is final and handled without nagging; the in-app live
+status is always the fallback.
+
+Known limitation, stated in the UI: it fires on a timer, not when the kitchen
+actually finishes. Stage 2 replaces the schedule with a server-sent push the
+moment Clover flips the order to ready. `notify.js` is the seam for that.
+
+**Never promise a text message.** The app sends no SMS and there is no Twilio
+integration. A test fails the build if "we'll text you" wording reappears.
+
 ### Order of operations when placing an order
 
 Push the order to Clover **first**, charge **second**. A charged customer with no
@@ -95,7 +114,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 182 tests
+npm test            # 198 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

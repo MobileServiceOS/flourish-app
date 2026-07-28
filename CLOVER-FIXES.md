@@ -134,6 +134,7 @@ Garlic, Jerk; the printed menu lists Pepper, Garlic, and Curry instead of Steame
 ## Not in the app, on purpose
 
 - **Catering Orders (62 items)** — all $0 with no modifiers, priced by quote. Catering isn't
-  a pickup flow; it belongs on a phone call or a form. Say the word and I'll build a catering
-  request screen that emails you instead of trying to price it.
+  a pickup flow and is not going in the app; it stays a phone call. The generator skips any
+  item with "(Catering" in its name, so these never reach customers even though they sit in
+  the same Clover inventory.
 - **Gift card, Boil Food** — no price set in Clover.
