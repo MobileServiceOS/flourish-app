@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "server": "node server/index.js",
-    "dev:all": "concurrently -n web,api -c magenta,cyan \"npm run dev\" \"npm run server\""
+    "dev:all": "concurrently -n web,api -c magenta,cyan \"npm run dev\" \"npm run server\"",
+    "icons": "python3 scripts/make-icons.py"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.0",

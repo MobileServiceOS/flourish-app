@@ -40,7 +40,13 @@ same wifi, no build needed. This is the fastest way to check how it really feels
 ```
 flourish-app/
 ├─ index.html                  page shell, share-preview meta, font preloads
+├─ brand/
+│  └─ logo.png                 full-resolution master (5000x5000) — not shipped
 ├─ public/
+│  ├─ logo-512.png             splash + header
+│  ├─ logo-1024.png            App Store icon, no alpha
+│  ├─ logo-192.png             web manifest
+│  ├─ icons/                   favicon, apple-touch-icon, PWA — npm run icons
 │  └─ og-image.jpg             the share-preview image, served from our domain
 ├─ package.json                dependencies and commands
 ├─ vite.config.js              dev server + build + test config
@@ -63,7 +69,7 @@ flourish-app/
    ├─ App.jsx                  state owner and router — nothing else
    ├─ styles.css               full stylesheet
    ├─ components/
-   │  ├─ Splash.jsx            launch screen — blooming flower animation
+   │  ├─ Splash.jsx            launch screen — logo framed by blooming petals
    │  ├─ MenuView.jsx          menu, search, category chips
    │  ├─ ItemSheet.jsx         size / flavor / sides / special instructions
    │  ├─ CartView.jsx          lines, rewards, totals
@@ -99,7 +105,7 @@ npm test          # once
 npm run test:watch
 ```
 
-238 tests. They cover the things that cost money if they break: pickup-slot
+243 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the
@@ -142,6 +148,15 @@ up free, an item that double-charges, an add-on filed as a size. Those are hidde
 in the app and listed for you to fix at the source. See `CLOVER-FIXES.md`.
 
 ---
+
+## Brand assets
+
+The logo master lives in `brand/logo.png`. Everything the app loads is derived
+from it — run `npm run icons` after replacing it. See `brand/README.md`.
+
+Apple rejects an app icon with an alpha channel, so the derived icons are
+composited onto the paper colour first and the generator fails loudly if any
+still has one.
 
 ## Item photos
 

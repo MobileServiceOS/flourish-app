@@ -68,6 +68,8 @@ because the sandbox tokens currently in `.env.local` return 401.
 
 ## Blocked
 
+- [ ] **App icon into Xcode.** `npm run icons` writes the full catalog, but only
+      once `npx cap add ios` has created the platform. Run that first.
 - [ ] **Enter the printed-menu prices in Clover.** The app now shows menu prices
       but Clover still rings its own, so the app and the counter disagree on
       nine items — including two where a customer is quoted less than they are
@@ -86,6 +88,7 @@ because the sandbox tokens currently in `.env.local` return 401.
 
 ## Next
 
+- [x] Logo wired into the splash, the menu header, the favicon and the icon set
 - [ ] Photos for the six Popular items — every row currently shows its emoji
       tile. Drop files in `public/items/` and add `img` paths.
 - [ ] Host the proxy. Railway, Fly.io or a Firebase Cloud Function; it needs

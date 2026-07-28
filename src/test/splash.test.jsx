@@ -72,12 +72,22 @@ describe("the bloom", () => {
     expect(new Set([...dots].map((d) => d.style.animationDelay)).size).toBeGreaterThan(1);
   });
 
-  it("shows the wordmark and a mirrored pair of hummingbirds, as in the logo", () => {
+  it("puts the real logo at the centre, not a drawn wordmark", () => {
+    render(<Splash />);
+    const logo = screen.getByRole("img", { name: "Flourish" });
+    expect(logo).toHaveAttribute("src", "/logo-512.png");
+    // the logo carries its own hummingbirds; drawing more would crowd it
+    expect(document.querySelectorAll(".splash-bird")).toHaveLength(0);
+  });
+
+  it("frames the logo with the petals rather than hiding it behind them", () => {
     const { container } = render(<Splash />);
-    expect(screen.getByText("Flourish")).toBeInTheDocument();
-    expect(container.querySelectorAll(".splash-bird")).toHaveLength(2);
-    expect(container.querySelector(".splash-bird--l")).toBeInTheDocument();
-    expect(container.querySelector(".splash-bird--r")).toBeInTheDocument();
+    const ring = container.querySelector(".bloom--main");
+    const logo = container.querySelector(".splash-logo");
+    // both present, and the logo paints above the ring
+    expect(ring).toBeInTheDocument();
+    expect(logo).toBeInTheDocument();
+    expect(logo.compareDocumentPosition(ring) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
 
   it("announces itself to a screen reader without describing the animation", () => {
@@ -98,12 +108,11 @@ describe("the bloom", () => {
 });
 
 describe("reduced motion", () => {
-  it("drops the flowers, the pollen and the bird, keeping the wordmark", () => {
+  it("drops the petals and the pollen, keeping the logo still", () => {
     const { container } = render(<Splash reduced />);
     expect(container.querySelectorAll(".petal")).toHaveLength(0);
     expect(container.querySelector(".pollen")).toBeNull();
-    expect(container.querySelector(".splash-bird")).toBeNull();
-    expect(screen.getByText("Flourish")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Flourish" })).toBeInTheDocument();
   });
 
   it("holds for well under a second instead of the full bloom", () => {

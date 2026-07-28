@@ -89,9 +89,12 @@ that turns out to be wrong the difference is owed at filing time.
 
 ### Launch screen
 
-`src/components/Splash.jsx` is the blooming-flower animation: SVG petals whose
-transform-origin sits at the flower centre, so scaling one from 0 unfurls it
-outward. Pure CSS keyframes, staggered 0.05s per petal. No animation library.
+`src/components/Splash.jsx` puts the real logo at the centre with a ring of SVG
+petals unfurling around it — their transform-origin is the ring centre, so
+scaling one from 0 opens it outward. Pure CSS keyframes, staggered 0.05s per
+petal, no animation library. The petals sit *outside* the artwork rather than
+behind it: the logo has its own flowers and hummingbirds, and doubling them up
+looks like clutter.
 
 It holds until **both** the bloom has had its ~2.5s **and** the account has come
 back, so a slow storage read never cuts it short and a fast one never flashes
@@ -145,7 +148,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 238 tests
+npm test            # 243 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

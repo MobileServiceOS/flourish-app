@@ -1,68 +1,55 @@
-/* Launch screen — flowers blooming open.
+/* Launch screen — the logo, with flowers blooming open around it.
 
-   Pure SVG and CSS keyframes. No animation library, no canvas: the whole thing
-   is a handful of paths whose transform-origin sits at the centre of the
-   flower, so scaling one from 0 to 1 unfurls it outward from the middle.
+   The petals are a ring, not a flower: they sit outside the logo's edge and
+   unfurl outward, framing the artwork rather than competing with it. The logo
+   already contains its own flowers, leaves and pair of hummingbirds, so nothing
+   here duplicates them.
 
    Timeline:
-     0.0 - 1.0s   main bloom, petals staggered 0.05s apart
+     0.0 - 1.0s   the ring of petals unfurls, staggered 0.05s apart
+     0.35 - 1.25s the logo fades up in the centre as they open
      0.8 - 1.5s   two smaller blooms offset for depth
-     1.0 - 1.8s   wordmark fades up out of the bloom's centre
-     1.5 - 2.0s   hummingbird sweeps in from the right
-     2.0 - 2.5s   everything fades, revealing the app
+     1.5 - 2.0s   pollen still drifting, everything settled
+     2.0 - 2.5s   fades out, revealing the app
 
-   The exit is a class rather than a keyframe on a timer. If the account is
-   still loading at 2.0s the bloom simply holds, instead of fading to an empty
-   screen and sitting there.
-
-   prefers-reduced-motion drops all of it and shows the wordmark still. */
+   Pure CSS keyframes and SVG. The exit is a class rather than a keyframe on a
+   timer, so a slow account read holds the frame instead of fading to nothing. */
 import React from "react";
-import { Hummingbird } from "./shared.jsx";
 
-const PETAL = "M60 60 C 50 44, 51.5 26, 60 15.5 C 68.5 26, 70 44, 60 60 Z";
+/* A petal in the outer band: from r=26 to r=2 of a 120 viewBox, so the middle
+   stays clear for the logo. transform-origin at the centre means scaling from 0
+   unfurls it outward. */
+const PETAL = "M60 26 C 51 19, 52.5 9, 60 2 C 67.5 9, 69 19, 60 26 Z";
 
-/** One flower. `id` keeps each gradient unique in the document. */
-function Bloom({ id, size, petals = 8, delay = 0, className = "", style }) {
+function Ring({ id, size, petals = 8, delay = 0, className = "", style }) {
   return (
     <svg className={`bloom ${className}`} width={size} height={size} viewBox="0 0 120 120"
       style={style} aria-hidden="true" focusable="false">
       <defs>
-        {/* userSpaceOnUse so the sweep runs across the whole flower rather than
+        {/* userSpaceOnUse so the sweep runs across the whole ring rather than
             restarting inside every petal's own box. */}
         <linearGradient id={`petal-${id}`} x1="8" y1="8" x2="112" y2="112" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stopColor="#8E5BC4" />
           <stop offset="52%" stopColor="#E89AC7" />
           <stop offset="100%" stopColor="#AED86A" />
         </linearGradient>
-        <radialGradient id={`core-${id}`}>
-          <stop offset="0%" stopColor="#FFE9A3" />
-          <stop offset="100%" stopColor="#FFD700" />
-        </radialGradient>
       </defs>
-
       {Array.from({ length: petals }, (_, i) => (
         <path key={i} className="petal" d={PETAL} fill={`url(#petal-${id})`}
           style={{
-            // the petal's own place in the circle, held in a variable so the
-            // keyframe can rotate *from* slightly inside it
             "--a": `${(360 / petals) * i}deg`,
             // rounded, or float noise puts "0.35000000000000003s" in the DOM
             animationDelay: `${Math.round((delay + i * 0.05) * 100) / 100}s`,
           }} />
       ))}
-
-      <circle className="bloom-core" cx="60" cy="60" r="8.5" fill={`url(#core-${id})`}
-        style={{ animationDelay: `${delay + 0.32}s` }} />
     </svg>
   );
 }
 
-/* Pollen. Fixed offsets rather than random so every launch looks the same and
-   the frames are reproducible. */
 const POLLEN = [
-  { x: -46, d: 0.55, t: 2.4, s: 3 }, { x: -22, d: 0.80, t: 2.9, s: 2 },
-  { x: -6,  d: 0.65, t: 2.6, s: 2.5 }, { x: 14, d: 0.95, t: 3.1, s: 2 },
-  { x: 30,  d: 0.72, t: 2.7, s: 3 },  { x: 52, d: 1.05, t: 2.5, s: 2 },
+  { x: -62, d: 0.55, t: 2.4, s: 3 }, { x: -34, d: 0.80, t: 2.9, s: 2 },
+  { x: -12, d: 0.65, t: 2.6, s: 2.5 }, { x: 16, d: 0.95, t: 3.1, s: 2 },
+  { x: 40,  d: 0.72, t: 2.7, s: 3 },  { x: 66, d: 1.05, t: 2.5, s: 2 },
 ];
 
 export default function Splash({ leaving = false, reduced = false }) {
@@ -73,8 +60,9 @@ export default function Splash({ leaving = false, reduced = false }) {
       <div className="splash-stage">
         {!reduced && (
           <>
-            <Bloom id="a" size={112} petals={7} delay={0.82} className="bloom--tl" />
-            <Bloom id="b" size={92} petals={7} delay={1.02} className="bloom--br" />
+            <Ring id="main" size={360} petals={8} className="bloom--main" />
+            <Ring id="a" size={104} petals={7} delay={0.82} className="bloom--tl" />
+            <Ring id="b" size={86} petals={7} delay={1.02} className="bloom--br" />
 
             <div className="pollen" aria-hidden="true">
               {POLLEN.map((p, i) => (
@@ -89,26 +77,13 @@ export default function Splash({ leaving = false, reduced = false }) {
           </>
         )}
 
-        {!reduced && <Bloom id="main" size={220} petals={8} className="bloom--main" />}
-
-        <div className="splash-word">
-          <div className="splash-mark wordmark">Flourish</div>
-          <div className="splash-sub">Bronx, NY</div>
-        </div>
-
-        {/* Two birds converging on the bloom, mirrored — the logo's composition,
-            where a pair face each other across the flowers. */}
-        {!reduced && (
-          <>
-            <div className="splash-bird splash-bird--l" aria-hidden="true">
-              <Hummingbird size={54} />
-            </div>
-            <div className="splash-bird splash-bird--r" aria-hidden="true">
-              <Hummingbird size={54} flip />
-            </div>
-          </>
-        )}
+        {/* The artwork itself. alt rather than aria-hidden so the launch screen
+            still says what it is if the images fail to load. */}
+        <img className="splash-logo" src="/logo-512.png" alt="Flourish"
+          width={190} height={190} decoding="async" fetchPriority="high" />
       </div>
+
+      <div className="splash-sub">Bronx, NY</div>
     </div>
   );
 }

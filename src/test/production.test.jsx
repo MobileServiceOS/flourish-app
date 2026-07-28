@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync, statSync, readdirSync } from "node:fs";
+import { readFileSync, statSync, readdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { formatPhone, phoneDigits, isValidPhone, isValidName } from "../lib/phone.js";
@@ -64,7 +64,7 @@ describe("launch", () => {
     render(<App />);
 
     expect(screen.getByRole("status", { name: /loading flourish/i })).toBeInTheDocument();
-    expect(screen.getByText("Flourish")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Flourish" })).toBeInTheDocument();
     // the sign-up pitch must never appear for a customer who already has an account
     expect(screen.queryByText(/Join Flourish Rewards/)).not.toBeInTheDocument();
 
@@ -288,5 +288,38 @@ describe("no runtime dependency on DoorDash", () => {
     const img = container.querySelector("img");
     expect(img).toHaveAttribute("src", "/items/oxtail.jpg");
     expect(img).toHaveAttribute("alt", "Oxtail");
+  });
+});
+
+/* The logo drives the splash, the header, the favicon and the App Store icon.
+   A missing file there is a blank launch screen, so it is worth a test. */
+describe("brand assets", () => {
+  const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  const bytes = (p) => statSync(resolve(ROOT, p)).size;
+
+  it("ships the sizes the app actually loads", () => {
+    for (const f of ["public/logo-512.png", "public/logo-1024.png", "public/logo-192.png"]) {
+      expect(existsSync(resolve(ROOT, f)), f).toBe(true);
+      expect(bytes(f), f).toBeGreaterThan(5_000);
+    }
+  });
+
+  it("keeps the full-resolution master out of public/, so it is not shipped", () => {
+    expect(existsSync(resolve(ROOT, "brand/logo.png"))).toBe(true);
+    expect(existsSync(resolve(ROOT, "public/logo.png"))).toBe(false);
+  });
+
+  it("has no alpha channel on the icons Apple inspects", () => {
+    // PNG colour type lives at byte 25: 6 = RGBA, 4 = grey+alpha. Apple rejects both.
+    const colourType = (p) => readFileSync(resolve(ROOT, p))[25];
+    for (const f of ["public/logo-1024.png", "public/logo-192.png", "public/icons/icon-180.png"]) {
+      expect([4, 6], `${f} still has an alpha channel`).not.toContain(colourType(f));
+    }
+  });
+
+  it("links a favicon and an apple-touch-icon", () => {
+    const html = readFileSync(resolve(ROOT, "index.html"), "utf8");
+    expect(html).toContain('rel="apple-touch-icon"');
+    expect(html).toMatch(/rel="icon"[^>]*icon-32\.png/);
   });
 });

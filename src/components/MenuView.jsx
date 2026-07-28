@@ -4,7 +4,7 @@ import { UE, hasChoices } from "../data/menu.data.js";
 import { money } from "../lib/money.js";
 import { HOURS_LINE } from "../lib/hours.js";
 import { DOW, TODAY_IS_FRIDAY, daysLabel, chipLabel, SEAFOOD_CAT, sizePrices } from "../lib/restaurant.js";
-import { Hummingbird, Thumb, Empty } from "./shared.jsx";
+import { Thumb, Empty } from "./shared.jsx";
 
 /* ---------- MENU ---------- */
 export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, soldOut, openStaff, flash, quickAdd, search, setSearch, menu, sandbox = false }) {
@@ -50,12 +50,13 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
   return (
     <>
       <header className="hdr">
-        <Hummingbird style={{ top: 8, left: -6 }} size={54} />
-        <Hummingbird style={{ top: 2, right: -4 }} size={48} flip />
+        {/* The logo carries its own hummingbirds, so the decorative pair that
+            used to sit here would only crowd it. */}
         <div className="hdr-row">
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>Order pickup from</div>
-            <div className="wordmark" style={{ fontSize: 42 }}>Flourish</div>
+            <img className="hdr-logo" src="/logo-512.png" alt="Flourish"
+              width={200} height={92} decoding="async" fetchPriority="high" />
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
             <button onClick={openStaff} title="Staff" aria-label="Staff: mark items sold out"
