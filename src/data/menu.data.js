@@ -29,9 +29,9 @@ export const MENU = [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "VQZ0T4XK707EC", name: "Snapper Fish", emoji: "🐠",
-        desc: "Brown stew, escovitch, or steamed", base: 0.0, lo: 20.0, hi: 30.0, groups: [
+        desc: "Brown stew, escovitch, or steamed", base: 0.0, lo: 30.0, hi: 30.0, groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
-        { gid: "AJY3FTT4BRPHP", name: "Fish", kind: "variant", mods: [{ n: "Brown Stew Fish", p: 30.0 }, { n: "Escovitch", p: 30.0 }, { n: "Steam Fish", p: 30.0 }, { n: "Whiting Fish", p: 14.0, oos: true }, { n: "Snapper Fish (Add On. No Sides)", p: 20.0 }] }
+        { gid: "AJY3FTT4BRPHP", name: "Fish", kind: "variant", mods: [{ n: "Brown Stew Fish", p: 30.0 }, { n: "Escovitch", p: 30.0 }, { n: "Steam Fish", p: 30.0 }, { n: "Whiting Fish", p: 14.0, oos: true }, { n: "Snapper Fish (Add On. No Sides)", p: 20.0, oos: true }] }
       ] },
     { id: "ZTAQ37M4E9S4C", name: "Stew Peas", emoji: "🫘",
         desc: "Red peas simmered in coconut milk", base: 0.0, lo: 15.0, hi: 18.0, groups: [
@@ -55,7 +55,7 @@ export const MENU = [
       ] },
     { id: "H9520PFNBT2NY", name: "Salmon", emoji: "🐟",
         desc: "Honey garlic, jerk, sweet chili, grilled, or steamed", base: 0.0, lo: 22.0, hi: 22.0, groups: [
-        { gid: "ZR29AF0E4JPXA", name: "Salmon", kind: "variant", mods: [{ n: "Sweet Chili", p: 22.0 }, { n: "Grilled", p: 22.0 }, { n: "Steamed", p: 22.0 }, { n: "Honey Garlic", p: 22.0 }, { n: "Jerk", p: 22.0 }] },
+        { gid: "ZR29AF0E4JPXA", name: "Salmon", kind: "variant", mods: [{ n: "Sweet Chili", p: 22.0 }, { n: "Grilled", p: 22.0 }, { n: "Steamed", p: 22.0, oos: true }, { n: "Honey Garlic", p: 22.0 }, { n: "Jerk", p: 22.0, oos: true }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "AYBW9QMTC6154", name: "Ackee & Shrimp", emoji: "🍤",
@@ -65,7 +65,7 @@ export const MENU = [
     { id: "VHHCS7EDV70HC", name: "Shrimp", emoji: "🍤",
         desc: "Sweet chili, garlic, curried, pepper, grilled, or fried", base: 0.0, lo: 20.0, hi: 20.0, groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
-        { gid: "4BY3GKC2SVJ90", name: "Shrimp", kind: "variant", mods: [{ n: "Garlic", p: 20.0 }, { n: "Curried", p: 20.0 }, { n: "Pepper", p: 20.0 }, { n: "Sweet Chili", p: 20.0 }, { n: "Grilled", p: 20.0 }, { n: "Fried", p: 20.0 }] }
+        { gid: "4BY3GKC2SVJ90", name: "Shrimp", kind: "variant", mods: [{ n: "Garlic", p: 20.0 }, { n: "Curried", p: 20.0 }, { n: "Pepper", p: 20.0 }, { n: "Sweet Chili", p: 20.0 }, { n: "Grilled", p: 20.0 }, { n: "Fried", p: 20.0, oos: true }] }
       ] },
     { id: "8FW3GVMJKCGZG", name: "Pork", emoji: "🥓",
         desc: "Stew or jerk, medium or large", base: 0.0, lo: 20.0, hi: 25.0, groups: [
@@ -129,7 +129,7 @@ export const MENU = [
       ] },
     { id: "9WV3BMMSC8G5E", name: "Soup", emoji: "🥣",
         desc: "Chicken, goat, or seafood", base: 0.0, lo: 5.0, hi: 15.0, groups: [
-        { gid: "H2749PVKFN4EY", name: "Soup", kind: "variant", mods: [{ n: "Medium Chicken", p: 5.0 }, { n: "Large Chicken", p: 10.0 }, { n: "Medium Goat", p: 0.0, oos: true }, { n: "Large Goat", p: 0.0, oos: true }, { n: "Medium Seafood", p: 10.0 }, { n: "Large Seafood", p: 15.0 }] }
+        { gid: "H2749PVKFN4EY", name: "Soup", kind: "variant", mods: [{ n: "Medium Chicken", p: 5.0 }, { n: "Large Chicken", p: 10.0 }, { n: "Medium Goat", p: 5.0 }, { n: "Large Goat", p: 10.0 }, { n: "Medium Seafood", p: 10.0 }, { n: "Large Seafood", p: 15.0 }] }
       ] },
     { id: "6NX7XK602V0ZM", name: "Side", emoji: "🍚",
         desc: "One side on its own", base: 0.0, lo: 1.0, hi: 15.0, groups: [

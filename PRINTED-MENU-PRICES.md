@@ -92,6 +92,51 @@ the printed menu and take them out of `NOT_ON_PRINTED_MENU` in
 
 ---
 
+## From the printed trifold (photographed 28 Jul 2026)
+
+### Goat head soup was unsellable
+
+Modifier Groups → **Soup** (`H2749PVKFN4EY`)
+
+| Option | Clover now | Set to |
+|---|---|---|
+| Medium Goat | **$0.00** | **$5.00** |
+| Large Goat | **$0.00** | **$10.00** |
+
+Both were priced $0, so the app hid them rather than give the dish away. The menu
+prices them $5 / $10 and they are now on sale in the app. **Until Clover is fixed
+they still ring up free at the counter.**
+
+### More options the menu does not list
+
+Already hidden in the app, still sellable on the register:
+
+| Where | Option | Price |
+|---|---|---|
+| Fish (`AJY3FTT4BRPHP`) | Snapper Fish (Add On. No Sides) | $20.00 |
+| Salmon (`ZR29AF0E4JPXA`) | Steamed | $22.00 |
+| Salmon (`ZR29AF0E4JPXA`) | Jerk | $22.00 |
+| Shrimp (`4BY3GKC2SVJ90`) | Fried | $20.00 |
+
+Fish is now the flat **$30** the menu prints.
+
+### Needs creating in Clover — the app cannot add these
+
+The menu sells things Clover has no record of, and an order line needs a real
+Clover modifier id, so these cannot be added from this end:
+
+| Where | Missing | Menu price |
+|---|---|---|
+| Salmon (`ZR29AF0E4JPXA`) | **Pepper** | $20 |
+| Salmon (`ZR29AF0E4JPXA`) | **Garlic** | $20 |
+| Salmon (`ZR29AF0E4JPXA`) | **Curry** | $20 |
+| Pork Ribs (`433FBT50JEVY8`) | a size group — menu is **$15 / $18**, Clover is flat **$18** | |
+
+Until they exist in Clover, the app sells salmon in three flavours instead of
+six, and pork ribs at one size instead of two.
+
+---
+
 ## Left alone on purpose
 
 **Salmon — $22.** Clover and the printed menu agree on the price, so nothing

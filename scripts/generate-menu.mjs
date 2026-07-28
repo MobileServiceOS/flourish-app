@@ -125,6 +125,9 @@ const MENU_PRICE = {
   "D0F1SFXHWSQWT::Oxtail": 24,
   // Sides
   "S032100JQ3P4T::Chicken Mac & Cheese": 7.0,
+  // Goat head soup — Clover has both sizes at $0, the menu prices them
+  "H2749PVKFN4EY::Medium Goat": 5.0,
+  "H2749PVKFN4EY::Large Goat": 10.0,
   // Lunch specials — the chicken plates are $8 on the menu
   "F0Q8615QD5HMM::Curried Chicken": 8.0,
   "F0Q8615QD5HMM::Fried Chicken": 8.0,
@@ -141,6 +144,10 @@ const ITEM_MENU_PRICE = {
    Keyed "<group id>::<modifier name>". */
 const NOT_ON_PRINTED_MENU = new Set([
   "AJY3FTT4BRPHP::Whiting Fish",     // $14 full meal, not a listed dish
+  "AJY3FTT4BRPHP::Snapper Fish (Add On. No Sides)",   // menu lists fish at $30 only
+  "ZR29AF0E4JPXA::Steamed",          // salmon flavours the menu does not list
+  "ZR29AF0E4JPXA::Jerk",
+  "4BY3GKC2SVJ90::Fried",            // shrimp flavour the menu does not list
   "F0Q8615QD5HMM::Curry Goat",       // lunch specials the menu does not list
   "F0Q8615QD5HMM::Oxtail",
   "F0Q8615QD5HMM::Wings",
