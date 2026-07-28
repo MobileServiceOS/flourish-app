@@ -45,6 +45,11 @@ flourish-app/
 ├─ package.json                dependencies and commands
 ├─ vite.config.js              dev server + build + test config
 ├─ capacitor.config.ts         native app id and name
+├─ server/                     Clover proxy — holds the private token
+│  ├─ index.js                 entry point
+│  ├─ app.js                   routes
+│  ├─ clover.js                API client
+│  └─ env.js                   config, never logs a secret
 ├─ scripts/
 │  └─ generate-menu.mjs        Clover export -> menu data
 └─ src/
@@ -65,7 +70,11 @@ flourish-app/
    │                           Hummingbird, Thumb, Splash, useSheet
    ├─ data/
    │  └─ menu.data.js          GENERATED — never hand-edit
+   ├─ hooks/
+   │  └─ clover.js             health, inventory sync, order polling
    ├─ lib/
+   │  ├─ clover.js             browser API client (no secrets)
+   │  ├─ cloverOrder.js        cart -> Clover order, pure and tested
    │  ├─ money.js              cent-accurate rounding
    │  ├─ loyalty.js            tiers, rewards, discount rules
    │  ├─ hours.js              opening hours and pickup slots
@@ -83,10 +92,13 @@ npm test          # once
 npm run test:watch
 ```
 
-94 tests. They cover the things that cost money if they break: pickup-slot
+165 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
-that recomputes every text colour pairing straight out of `styles.css`.
+that recomputes every text colour pairing straight out of `styles.css`. On the
+Clover side they cover order payload construction, reward discounts, tax being
+left to Clover, modifier mapping, and every error state including a declined
+card and a proxy that isn't running.
 
 ---
 
@@ -175,27 +187,74 @@ Accessibility: every control has an accessible name, the sheets are real modal
 dialogs (Escape closes, focus is trapped and restored), items can be added from
 the keyboard, and every text colour clears WCAG AA — checked by a test, not by eye.
 
-## What is not wired yet
+## Clover integration
 
-**Clover payments and order push.** Checkout currently simulates and prints nothing
-to the kitchen. To finish it you need, from the Clover Dashboard
-(gear icon → View all settings):
+Orders, payments, inventory and customers are wired to Clover through a small
+proxy server. Run both halves:
+
+```bash
+npm run dev:all      # frontend on 5173 + proxy on 3001
+```
+
+or separately with `npm run dev` and `npm run server`.
+
+**The frontend alone still works.** With no proxy running the app is in *preview
+mode*: browsing, search and the cart all work, and the checkout says so instead
+of failing. That's a tested state, not an accident.
+
+### Why there's a server
+
+`CLOVER_PRIVATE_TOKEN` can create orders and charge cards. Vite inlines every
+`VITE_*` variable into the browser bundle, so that token deliberately has **no**
+`VITE_` prefix and never leaves the server. The browser only gets the public
+token, which can tokenize a card but not charge one — and card numbers go
+straight from Clover's hosted iframes to Clover without passing through our code.
+
+### Credentials
+
+From the Clover Dashboard (gear icon → View all settings):
 
 1. **Business Operations → API tokens** — Read/Write on Orders, Inventory,
    Customers, Merchant, Payments
-2. **Ecommerce → Ecommerce API Tokens** — type "Hosted iFrame + API/SDK",
-   for in-app card payment
+2. **Ecommerce → Ecommerce API Tokens** — type "Hosted iFrame + API/SDK"
 3. **Merchant ID** — About Your Business → Merchants
 
 Both token pages require two-factor auth enabled and location access allowed.
 
-Put them in `.env.local` (already gitignored — never commit these):
+Put them in `.env.local` (gitignored — never commit these):
 
 ```
 VITE_CLOVER_MERCHANT_ID=
 VITE_CLOVER_PUBLIC_TOKEN=
 CLOVER_PRIVATE_TOKEN=
+CLOVER_API_BASE=https://apisandbox.dev.clover.com
 ```
 
-Test against a sandbox merchant at `sandbox.dev.clover.com` before going near the
-live register.
+### Switching sandbox → production
+
+Change one line in `.env.local` and restart the server:
+
+```
+CLOVER_API_BASE=https://api.clover.com
+CLOVER_ALLOW_PRODUCTION=yes
+```
+
+The second line is a deliberate guard: the server **refuses to start** against a
+non-sandbox host without it, so a stray edit can't quietly start billing real
+cards. While the base contains `sandbox`, a red **SANDBOX** badge shows in the
+app header; it disappears on its own in production.
+
+> **Heads up:** the credentials currently in `.env.local` return `401
+> Unauthorized` on every Clover endpoint, so the integration is built and
+> unit-tested but has never been confirmed against a live merchant. Regenerate
+> them in the sandbox dashboard. See `ROADMAP.md`.
+
+### Deploying
+
+The proxy has to be hosted somewhere — Railway, Fly.io or a Firebase Cloud
+Function all work. It needs `CLOVER_PRIVATE_TOKEN` set as a secret, and the app's
+`/api` calls pointed at it.
+
+**Before it goes public, put authentication on it.** Right now it's open, which
+is fine on localhost and not fine on the internet — anyone who could reach
+`/api/clover/pay` could charge cards. See `ROADMAP.md`.

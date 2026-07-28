@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { MapPin, Check, Clock, Award, ChevronRight } from "lucide-react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { MapPin, Check, Clock, Award, ChevronRight, CreditCard, Store, AlertCircle } from "lucide-react";
 import { cents, money } from "../lib/money.js";
 import {
   isOpen, nextOpening, pickupSlots, asapReadyAt, formatTime, describeOpening,
@@ -7,9 +7,20 @@ import {
 } from "../lib/hours.js";
 import { formatPhone, isValidPhone, isValidName } from "../lib/phone.js";
 import { SubHeader, Section } from "./shared.jsx";
+import CardForm from "./CardForm.jsx";
 
 /* ---------- CHECKOUT ---------- */
-export default function CheckoutView({ subtotal, points, account, goJoin, discount = 0, appliedVoucher, onBack, onPay }) {
+export default function CheckoutView({
+  subtotal, points, account, goJoin, discount = 0, appliedVoucher, onBack, onPay,
+  cloverStatus = "preview", cloverReason = null, submitting = false, payError = null, onClearError,
+}) {
+  /* Card is only offered when the proxy is actually reachable. In preview mode
+     there is nothing that can charge a card, so the choice is hidden rather
+     than offered and then failed. */
+  const canTakeCard = cloverStatus === "online";
+  const [method, setMethod] = useState("pickup");   // "card" | "pickup"
+  const cardRef = useRef(null);
+  useEffect(() => { if (!canTakeCard) setMethod("pickup"); }, [canTakeCard]);
   const [name, setName] = useState(account ? account.name : "");
   // The account stores bare digits; show them the way they typed them.
   const [phone, setPhone] = useState(account ? formatPhone(account.phone) : "");
@@ -168,19 +179,76 @@ export default function CheckoutView({ subtotal, points, account, goJoin, discou
           </button>
         )}
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "14px 4px", color: "var(--muted)", fontSize: 12.5 }}>
-          <div style={{ width: 20, height: 20, borderRadius: 6, background: "#000", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}></div>
-          Pay with Apple Pay, Google Pay, or card at checkout
-        </div>
+        <Section title="How you'd like to pay">
+          {cloverStatus === "preview" && (
+            <div className="notice" role="status">
+              <AlertCircle size={16} aria-hidden="true" style={{ flex: "0 0 auto" }} />
+              <span>
+                App is in preview mode — ordering is not connected yet.
+                {cloverReason === "CREDENTIALS_REJECTED" && " The register rejected our credentials."}
+                {cloverReason === "PROXY_DOWN" && " Start the order server with npm run server."}
+              </span>
+            </div>
+          )}
 
-        <button className="pill-btn" disabled={!ready} onClick={() => onPay(pickupChoice(), tip)}>
-          {!open ? `Closed until ${formatTime(nextOpening(now))}`
-            : ready ? `Pay ${money(total)}`
-            : !nameOk ? "Enter your name"
-            : "Enter your phone number"}
+          <div role="radiogroup" aria-label="Payment method">
+            {canTakeCard && (
+              <button role="radio" aria-checked={method === "card"}
+                className={`pay-opt ${method === "card" ? "on" : ""}`}
+                onClick={() => { setMethod("card"); onClearError?.(); }}>
+                <CreditCard size={18} aria-hidden="true" />
+                <span>
+                  <strong>Pay now by card</strong>
+                  <span className="pay-sub">Apple Pay, Google Pay or card</span>
+                </span>
+                {method === "card" && <Check size={17} style={{ marginLeft: "auto" }} aria-hidden="true" />}
+              </button>
+            )}
+
+            <button role="radio" aria-checked={method === "pickup"}
+              className={`pay-opt ${method === "pickup" ? "on" : ""}`}
+              onClick={() => { setMethod("pickup"); onClearError?.(); }}>
+              <Store size={18} aria-hidden="true" />
+              <span>
+                <strong>Pay at pickup</strong>
+                <span className="pay-sub">We'll have it ready. Pay at the counter.</span>
+              </span>
+              {method === "pickup" && <Check size={17} style={{ marginLeft: "auto" }} aria-hidden="true" />}
+            </button>
+          </div>
+
+          {method === "card" && <div style={{ marginTop: 12 }}><CardForm ref={cardRef} /></div>}
+        </Section>
+
+        {payError && (
+          <div className="pay-error" role="alert" style={{ marginTop: 14 }}>
+            <strong>{payError.message}</strong>
+            {payError.declineReason && (
+              <div style={{ fontWeight: 400, marginTop: 3 }}>
+                Reason: {String(payError.declineReason).replace(/_/g, " ")}
+              </div>
+            )}
+            {payError.retryable && (
+              <button className="pill-btn ghost" style={{ marginTop: 10 }}
+                onClick={() => onPay(pickupChoice(), tip, method, cardRef.current)}>
+                Try again
+              </button>
+            )}
+          </div>
+        )}
+
+        <button className="pill-btn" disabled={!ready || submitting}
+          onClick={() => onPay(pickupChoice(), tip, method, cardRef.current)}>
+          {submitting ? "Sending to the kitchen…"
+            : !open ? `Closed until ${formatTime(nextOpening(now))}`
+            : !ready ? (!nameOk ? "Enter your name" : "Enter your phone number")
+            : method === "card" ? `Pay ${money(total)}`
+            : `Place order · ${money(total)} at pickup`}
         </button>
         <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 11, marginTop: 10 }}>
-          Demo checkout · live version charges through Clover
+          {cloverStatus === "online"
+            ? "Your order goes straight to the kitchen register."
+            : "Preview mode · orders are not sent to the kitchen"}
         </div>
       </div>
     </>

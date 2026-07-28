@@ -5,7 +5,9 @@ import { daysLabel } from "../lib/restaurant.js";
 import { useSheet } from "./shared.jsx";
 
 /* ---------- STAFF: KITCHEN / 86 CONTROL ---------- */
-export default function StaffSheet({ soldOut, toggleSold, onClose }) {
+export default function StaffSheet({
+  soldOut, toggleSold, onClose, fromClover = new Set(), connected = false, lastSync = null,
+}) {
   const outCount = soldOut.size;
   const sheetRef = useSheet(onClose);
   return (
@@ -20,7 +22,14 @@ export default function StaffSheet({ soldOut, toggleSold, onClose }) {
               <h3 className="serif" id="staff-title" style={{ fontWeight: 700, fontSize: 22, margin: 0 }}>Kitchen</h3>
             </div>
             <p style={{ color: "var(--muted)", fontSize: 13, margin: "6px 0 0" }}>
-              Flip an item off and it disappears from the customer app instantly. Flip it back on when you restock.
+              {connected
+                ? "Flip an item off and it goes to the register too, so every channel sees it. Flip it back on when you restock."
+                : "Flip an item off and it disappears from the customer app instantly. Not connected to the register right now, so this stays on this device."}
+            </p>
+            <p style={{ color: "var(--muted)", fontSize: 11.5, margin: "6px 0 0" }}>
+              {connected
+                ? `Stock synced from Clover${lastSync ? ` at ${lastSync.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "…"}`
+                : "Offline — local only"}
             </p>
           </div>
           <button className="x-btn" onClick={onClose} aria-label="Close kitchen controls">
@@ -57,7 +66,7 @@ export default function StaffSheet({ soldOut, toggleSold, onClose }) {
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: out ? "var(--rose-ink)" : "var(--leaf-ink)" }}>
-                        {out ? "Sold out" : "In stock"}
+                        {out ? (fromClover.has(it.id) ? "Out of stock" : "Sold out") : "In stock"}
                       </span>
                       <span style={{ width: 46, height: 27, borderRadius: 999, padding: 3, transition: "background .2s",
                         background: out ? "#E0879F" : "var(--leaf-ink)", display: "flex", justifyContent: out ? "flex-start" : "flex-end" }}>

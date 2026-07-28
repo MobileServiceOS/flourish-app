@@ -33,13 +33,16 @@ export default function ItemSheet({ item, onClose, onAdd }) {
   const sideSum = sideG ? sideG.mods[side1].p + sideG.mods[side2].p : 0;
   const unit = cents(item.base + variantSum + sideSum);
 
-  // Exact modifier list for the Clover order push
+  // Exact modifier list for the Clover order push. `mid` is the Clover modifier
+  // id when the inventory export carried one; the server resolves by name when
+  // it didn't.
+  const pick = (g, i) => ({
+    gid: g.gid, name: g.mods[i].n, price: g.mods[i].p,
+    ...(g.mods[i].mid ? { mid: g.mods[i].mid } : {}),
+  });
   const chosen = [
-    ...[...variants, ...flavors].map((g) => ({ gid: g.gid, name: g.mods[sel[g.gid]].n, price: g.mods[sel[g.gid]].p })),
-    ...(sideG ? [
-      { gid: sideG.gid, name: sideG.mods[side1].n, price: sideG.mods[side1].p },
-      { gid: sideG.gid, name: sideG.mods[side2].n, price: sideG.mods[side2].p },
-    ] : []),
+    ...[...variants, ...flavors].map((g) => pick(g, sel[g.gid])),
+    ...(sideG ? [pick(sideG, side1), pick(sideG, side2)] : []),
   ];
   const meta = chosen.map((c) => c.name).join(" · ");
 

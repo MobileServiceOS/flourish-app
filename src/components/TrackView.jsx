@@ -3,19 +3,32 @@ import { Clock, MapPin, Phone, ChevronLeft, Check, Navigation } from "lucide-rea
 import { money } from "../lib/money.js";
 import { formatTime } from "../lib/hours.js";
 import { PHONE_E164, PHONE_HUMAN, MAPS_URL } from "../lib/restaurant.js";
+import { useOrderStatus } from "../hooks/clover.js";
 import { Hummingbird } from "./shared.jsx";
 
 /* ---------- ORDER CONFIRMATION + TRACKING ---------- */
 /* Everything a customer needs after paying, without leaving the screen:
    what they ordered, when it's ready, where to go, and how to call. */
-export default function TrackView({ order, setView }) {
+export default function TrackView({ order, setView, live = false }) {
   const steps = ["Order received", "In the kitchen", "Ready for pickup"];
-  const [stage, setStage] = useState(0);
+
+  /* Real status when we're connected to the register. The old simulation is
+     kept only for preview mode, where there is no Clover order to poll — it is
+     clearly labelled so nobody mistakes a demo for a real ticket. */
+  const tracked = useOrderStatus(order.cloverOrderId, {
+    enabled: live && Boolean(order.cloverOrderId),
+  });
+  const [simStage, setSimStage] = useState(0);
+  const simulated = !(live && order.cloverOrderId);
+
   useEffect(() => {
-    const t1 = setTimeout(() => setStage(1), 2200);
-    const t2 = setTimeout(() => setStage(2), 6000);
+    if (!simulated) return;
+    const t1 = setTimeout(() => setSimStage(1), 2200);
+    const t2 = setTimeout(() => setSimStage(2), 6000);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
+  }, [simulated]);
+
+  const stage = simulated ? simStage : tracked.stage;
 
   const readyAt = order.readyAt ? new Date(order.readyAt) : null;
   const itemCount = order.lines.reduce((n, l) => n + l.qty, 0);
@@ -32,6 +45,13 @@ export default function TrackView({ order, setView }) {
         <div style={{ color: "var(--muted)", fontWeight: 600, marginTop: 4, fontSize: 14 }}>
           Order <strong style={{ color: "var(--ink)" }}>{order.num}</strong> · {itemCount} item{itemCount > 1 ? "s" : ""}
         </div>
+        {/* The register knows the order by its Clover id, so show it — it's what
+            staff need if the customer has to ask about their food. */}
+        {order.cloverOrderId && (
+          <div style={{ color: "var(--muted)", fontSize: 11.5, marginTop: 2 }}>
+            Register #<code>{order.cloverOrderId}</code>
+          </div>
+        )}
       </header>
 
       <div style={{ padding: 20 }}>
@@ -64,6 +84,22 @@ export default function TrackView({ order, setView }) {
           <div style={{ color: "var(--muted)", fontSize: 13 }} aria-live="polite">
             {stage < 2 ? "We'll text you the moment it's ready." : "Come grab it at 4035 Laconia Ave 🌺"}
           </div>
+          {order.printed === false && (
+            <div className="field-hint" style={{ marginTop: 6 }}>
+              The kitchen printer didn't answer, so staff are working from the register screen.
+              Your order is in.
+            </div>
+          )}
+          {tracked.error && !simulated && (
+            <div className="field-hint" style={{ marginTop: 6 }}>
+              Live status is stalled — {tracked.error} Your order is still in.
+            </div>
+          )}
+          {simulated && (
+            <div className="field-hint" style={{ marginTop: 6 }}>
+              Preview mode — this status is simulated.
+            </div>
+          )}
         </div>
 
         {/* what they ordered — notes included, this is the kitchen ticket */}

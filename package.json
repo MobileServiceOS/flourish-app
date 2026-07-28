@@ -13,7 +13,9 @@
     "ios": "npm run sync && npx cap open ios",
     "android": "npm run sync && npx cap open android",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "server": "node server/index.js",
+    "dev:all": "concurrently -n web,api -c magenta,cyan \"npm run dev\" \"npm run server\""
   },
   "dependencies": {
     "@capacitor/app": "^6.0.0",
@@ -21,6 +23,9 @@
     "@capacitor/haptics": "^6.0.0",
     "@capacitor/preferences": "^6.0.0",
     "@capacitor/status-bar": "^6.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
     "lucide-react": "^0.383.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -33,7 +38,9 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.2.4",
     "jsdom": "^25.0.1",
+    "supertest": "^7.2.2",
     "vite": "^5.3.1",
     "vitest": "^2.1.9",
     "xlsx": "^0.18.5"

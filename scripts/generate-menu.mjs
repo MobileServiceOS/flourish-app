@@ -142,6 +142,7 @@ const sheet = (n) => XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: null });
 
 /* ---------- modifier groups ---------- */
 const groups = new Map();
+let missingModifierIds = 0;
 {
   let gid = null, gname = null;
   for (const r of sheet("Modifier Groups")) {
@@ -149,7 +150,18 @@ const groups = new Map();
     gname = r["Modifier Group Name"] ?? gname;
     if (!r["Modifier"]) continue;
     if (!groups.has(gname)) groups.set(gname, { gid, mods: [] });
-    groups.get(gname).mods.push({ n: String(r["Modifier"]).trim(), p: Number(r["Price"]) || 0 });
+
+    // Clover's export has changed this column's name between versions, so try
+    // the ones seen in the wild. Without a modifier id the app cannot build a
+    // Clover order line — see the note printed at the end of this script.
+    const mid = r["Modifier ID"] ?? r["Modifier Id"] ?? r["Clover Modifier ID"] ?? null;
+    if (!mid) missingModifierIds++;
+
+    groups.get(gname).mods.push({
+      n: String(r["Modifier"]).trim(),
+      p: Number(r["Price"]) || 0,
+      ...(mid ? { mid: String(mid).trim() } : {}),
+    });
   }
 }
 const kindOf = (name) => {
@@ -232,7 +244,8 @@ for (const i of out) byCat.get(i.cat)?.push(i);
 for (const list of byCat.values()) list.sort((a, b) => b.hi - a.hi);
 
 const q = (s) => JSON.stringify(String(s));
-const modStr = (m) => `{ n: ${q(m.n)}, p: ${m.p}${m.oos ? ", oos: true" : ""} }`;
+const modStr = (m) =>
+  `{ n: ${q(m.n)}, p: ${m.p}${m.mid ? `, mid: ${q(m.mid)}` : ""}${m.oos ? ", oos: true" : ""} }`;
 
 let js = `// GENERATED FROM THE CLOVER INVENTORY EXPORT — do not hand-edit prices.
 // Regenerate with:  npm run menu -- <clover-export.xlsx>
@@ -295,6 +308,18 @@ const undescribed = out.filter((i) => !DESC[i.id]);
 if (undescribed.length) {
   console.warn(`\n  ${undescribed.length} item(s) have no description — add them to DESC in this script:`);
   for (const i of undescribed) console.warn(`    ${i.id}  ${i.name}`);
+}
+
+if (missingModifierIds) {
+  console.warn(
+    `\n  ${missingModifierIds} modifier row(s) in this export carry no modifier id.\n` +
+    "  Clover order lines need one per selected modifier. The server resolves them\n" +
+    "  by name against GET /v3/merchants/{mId}/modifier_groups?expand=modifiers at\n" +
+    "  order time, so ordering still works — but a modifier renamed in Clover will\n" +
+    "  stop resolving and the order will be refused rather than ring up wrong.\n" +
+    "  If your export has a modifier id column under another name, add it to the\n" +
+    "  lookup in this script."
+  );
 }
 
 if (issues.length) {

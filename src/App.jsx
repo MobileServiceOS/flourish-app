@@ -7,6 +7,8 @@ import { cents } from "./lib/money.js";
 import { rewardOf, discountFor } from "./lib/loyalty.js";
 import { loadAccount, saveAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
+import { createOrder, pay, syncCustomer, setStock, ApiError } from "./lib/clover.js";
+import { useCloverHealth, useInventorySync } from "./hooks/clover.js";
 
 import { Splash } from "./components/shared.jsx";
 import MenuView from "./components/MenuView.jsx";
@@ -42,12 +44,31 @@ export default function App() {
   const [activeCat, setActiveCat] = useState(TODAY_IS_FRIDAY ? "Seafood Fridays" : MENU[0].cat);
   const [detail, setDetail] = useState(null);
   const [cart, setCart] = useState([]);
-  const [soldOut, setSoldOut] = useState(new Set());
   const [search, setSearch] = useState("");
   const [staffOpen, setStaffOpen] = useState(false);
-  const toggleSold = (id) => setSoldOut((s) => {
-    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n;
-  });
+
+  /* Sold-out now comes from Clover stock levels, with the manual 86 layered on
+     top so staff can pull something before the count runs down. */
+  const clover = useCloverHealth();
+  const inventory = useInventorySync({ enabled: clover.status === "online" });
+  const soldOut = inventory.soldOut;
+
+  /* The manual toggle also pushes back to Clover when connected, so the 86
+     shows up on the register and on every other ordering channel — not just
+     in this one app. A failed push still flips it locally. */
+  const toggleSold = async (id) => {
+    const wasOut = inventory.manual.has(id) || inventory.fromClover.has(id);
+    inventory.toggleManual(id);
+    if (clover.status !== "online") return;
+    try {
+      await setStock(id, wasOut ? 1 : 0);
+    } catch {
+      flash("Marked here, but the register didn't accept it");
+    }
+  };
+
+  const [submitting, setSubmitting] = useState(false);
+  const [payError, setPayError] = useState(null);
   const [account, setAccount] = useState(null);   // null = signed out
   const [loadingAcct, setLoadingAcct] = useState(true);
   const [vouchers, setVouchers] = useState([]);   // redeemed, unused rewards
@@ -79,10 +100,19 @@ export default function App() {
     saveAccount({ ...account, points, orders, vouchers });
   }, [account, points, orders, vouchers, loadingAcct]);
 
-  const signIn = (name, phone) => {
+  const signIn = async (name, phone) => {
     const acct = { name, phone, since: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }) };
     setAccount(acct);
     flash(`Welcome, ${name.split(" ")[0]}`);
+
+    /* Mirror the customer into Clover so the merchant's own reports show
+       customer-level data. Best effort: a customer who can't be synced still
+       gets a working account and points here, and the id fills in next time. */
+    if (clover.status !== "online") return;
+    try {
+      const { customerId } = await syncCustomer(name, phone);
+      if (customerId) setAccount((a) => (a ? { ...a, cloverCustomerId: customerId } : a));
+    } catch { /* non-fatal, the order just goes through without a customer id */ }
   };
   const signOut = () => {
     setAccount(null); setPoints(0); setOrders([]); setVouchers([]);
@@ -225,6 +255,86 @@ export default function App() {
     return () => io.disconnect();
   }, [view, catKeys]);
 
+  /* ---------- placing the order ----------
+     Order of operations matters here:
+       1. push the order to Clover first, so the kitchen has it
+       2. charge the card second
+     Doing it the other way round risks a charged customer with no order on the
+     register, which is the one outcome staff cannot fix from the counter.
+     A failed charge on an existing order is recoverable — they pay at pickup. */
+  const placeOrder = async (pickup, tip, method = "pickup", cardApi = null) => {
+    setPayError(null);
+    setSubmitting(true);
+
+    const net = Math.max(0, subtotal - discount);
+    const localTotal = cents(cents(net * 1.08875) + tip);
+    const reward = appliedVoucher
+      ? { name: appliedVoucher.name, code: appliedVoucher.code, amount: discount }
+      : null;
+
+    try {
+      let cloverOrderId = null;
+      let printed = null;
+
+      if (clover.status === "online") {
+        // Tokenize before creating the order — a card the customer mistyped
+        // should not leave an abandoned ticket in the kitchen.
+        let token = null;
+        if (method === "card") {
+          if (!cardApi) throw new ApiError("The card form isn't ready yet.");
+          token = await cardApi.tokenize();
+        }
+
+        const res = await createOrder({
+          cart, reward, customerId: account?.cloverCustomerId ?? null,
+          pickupLabel: pickup.label,
+        });
+        cloverOrderId = res.orderId;
+        printed = res.printed;
+
+        if (method === "card") {
+          await pay({ source: token, amountDollars: net + cents(net * 0.08875), tipDollars: tip, orderId: cloverOrderId });
+        }
+        if (printed === false) {
+          flash("Order received — the kitchen printer is down, staff have it on screen");
+        }
+      }
+
+      const order = {
+        num: cloverOrderId ? `FL-${String(cloverOrderId).slice(-4).toUpperCase()}` : "FL-" + Math.floor(2000 + Math.random() * 8000),
+        cloverOrderId, when: "Today", total: localTotal, status: "preparing",
+        pickup: pickup.label, readyAt: pickup.at.toISOString(), tip,
+        paidBy: method, printed, reward,
+        lines: cart.map((l) => ({ ...l })),
+      };
+
+      setActive(order);
+      setOrders((o) => [order, ...o]);
+      if (account) setPoints((p) => p + Math.round(subtotal - discount));
+      if (appliedVoucher) {
+        setVouchers((v) => v.filter((x) => x.code !== appliedVoucher.code));
+        setApplied(null);
+      }
+      setCart([]);
+      setView("track");
+    } catch (e) {
+      // Never fail silently on an order. Every branch here ends with the
+      // customer being told something they can act on.
+      const declined = e.status === 402;
+      setPayError({
+        message: e.isPreview
+          ? "App is in preview mode — ordering is not connected yet"
+          : declined ? (e.message || "Card declined.")
+          : e.code === "MODIFIER_UNRESOLVED" ? e.message
+          : e.message || "Couldn't reach the kitchen — try again",
+        declineReason: e.declineReason ?? null,
+        retryable: !e.isPreview && e.code !== "MODIFIER_UNRESOLVED",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   /* Hold the app back until we know whether this is a returning customer.
      Without this the Rewards tab renders the "Join Flourish Rewards" pitch for
      a frame before the saved account arrives — an existing customer being
@@ -234,7 +344,7 @@ export default function App() {
   return (
     <div className="fx shell">
 
-      {view === "menu" && <MenuView {...{ activeCat, scrollToCat, setDetail, catRefs, soldOut, openStaff: () => setStaffOpen(true), flash, quickAdd, search, setSearch, menu: activeMenu }} />}
+      {view === "menu" && <MenuView {...{ activeCat, scrollToCat, setDetail, catRefs, soldOut, openStaff: () => setStaffOpen(true), flash, quickAdd, search, setSearch, menu: activeMenu, sandbox: clover.sandbox }} />}
       {view === "rewards" && (account
         ? <RewardsView {...{ account, points, vouchers, orders, redeem, signOut }} onReorder={reorder} />
         : <SignInView onSignIn={signIn} />)}
@@ -246,27 +356,12 @@ export default function App() {
         <CheckoutView subtotal={subtotal} points={points} account={account} goJoin={() => setView("rewards")}
           discount={discount} appliedVoucher={appliedVoucher}
           onBack={() => setView("cart")}
-          onPay={(pickup, tip) => {
-            const net = Math.max(0, subtotal - discount);
-            const total = cents(cents(net * 1.08875) + tip);
-            const num = "FL-" + Math.floor(2000 + Math.random() * 8000);
-            // pickup is { label, at } from the time picker; `at` is a real Date.
-            const order = { num, when: "Today", total, status: "preparing",
-              pickup: pickup.label, readyAt: pickup.at.toISOString(), tip,
-              reward: appliedVoucher ? { name: appliedVoucher.name, code: appliedVoucher.code, amount: discount } : null,
-              lines: cart.map((l) => ({ ...l })) };
-            setActive(order);
-            setOrders((o) => [order, ...o]);
-            if (account) setPoints((p) => p + Math.round(subtotal - discount));
-            if (appliedVoucher) {
-              setVouchers((v) => v.filter((x) => x.code !== appliedVoucher.code));
-              setApplied(null);
-            }
-            setCart([]);
-            setView("track");
-          }} />
+          cloverStatus={clover.status} cloverReason={clover.reason}
+          submitting={submitting} payError={payError}
+          onClearError={() => setPayError(null)}
+          onPay={placeOrder} />
       )}
-      {view === "track" && active && <TrackView order={active} setView={setView} />}
+      {view === "track" && active && <TrackView order={active} setView={setView} live={clover.status === "online"} />}
 
       {detail && (
         <ItemSheet item={detail} onClose={() => setDetail(null)}
@@ -274,7 +369,9 @@ export default function App() {
       )}
 
       {staffOpen && (
-        <StaffSheet soldOut={soldOut} toggleSold={toggleSold} onClose={() => setStaffOpen(false)} />
+        <StaffSheet soldOut={soldOut} fromClover={inventory.fromClover} toggleSold={toggleSold}
+          connected={clover.status === "online"} lastSync={inventory.lastSync}
+          onClose={() => setStaffOpen(false)} />
       )}
 
       {toast && <div className="toast"><Check size={16} /> {toast}</div>}

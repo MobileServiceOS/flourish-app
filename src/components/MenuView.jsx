@@ -7,7 +7,7 @@ import { DOW, TODAY_IS_FRIDAY, daysLabel, chipLabel, SEAFOOD_CAT } from "../lib/
 import { Hummingbird, Thumb, Empty } from "./shared.jsx";
 
 /* ---------- MENU ---------- */
-export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, soldOut, openStaff, flash, quickAdd, search, setSearch, menu }) {
+export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, soldOut, openStaff, flash, quickAdd, search, setSearch, menu, sandbox = false }) {
   const navRef = useRef(null);
   // Which + button just fired, so it can pop. Cleared by a timer, not onAnimationEnd,
   // because tapping the same button twice needs the class removed in between.
@@ -54,6 +54,13 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
                 display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Lock size={14} aria-hidden="true" />
             </button>
+            {/* Disappears on its own once CLOVER_API_BASE points at
+                api.clover.com — nobody has to remember to remove it. */}
+            {sandbox && (
+              <span className="badge sandbox" title="Connected to the Clover sandbox — test orders only">
+                SANDBOX
+              </span>
+            )}
             <span className="badge"><Sparkles size={13} /> Pickup only · no delivery</span>
           </div>
         </div>

@@ -1,0 +1,117 @@
+# CLAUDE.md — working notes for this repo
+
+Context for anyone (human or agent) picking this up. Read `README.md` for how to
+run it and `CLOVER-FIXES.md` for what's wrong in the merchant's Clover account.
+
+## What this is
+
+A commission-free pickup ordering app for **Flourish bx inc**, 4035 Laconia Ave,
+Bronx NY 10466. Pickup only — no delivery, no service fees, no platform cut.
+React + Vite, wrapped with Capacitor for iOS/Android.
+
+## The one rule
+
+**Clover is the register. Whatever Clover says is what the customer is charged.**
+
+`src/data/menu.data.js` is generated from a Clover inventory export and must
+never be hand-edited. If a price looks wrong, it's wrong *in Clover* — fix it
+there and regenerate. Menu copy, Popular ids and day-locks live in maps at the
+top of `scripts/generate-menu.mjs` so a regen keeps them.
+
+## Architecture
+
+```
+browser                        server (node)                 Clover
+────────                       ─────────────                 ──────
+src/App.jsx      state owner
+  components/    screens
+  lib/clover.js  ──fetch /api──▶ server/app.js  ──Bearer──▶  apisandbox.dev.clover.com
+  lib/cloverOrder.js  (shared, pure: cart → Clover payload)
+```
+
+### Why there is a server at all
+
+`CLOVER_PRIVATE_TOKEN` can create orders and charge cards. Vite inlines every
+`VITE_*` variable into the browser bundle, so that token deliberately has **no**
+`VITE_` prefix and is only ever read by `server/env.js`.
+
+The browser gets `VITE_CLOVER_PUBLIC_TOKEN`, which can tokenize a card but not
+charge one. Card numbers go straight from Clover's hosted iframes to Clover; our
+JavaScript only ever sees a single-use token.
+
+A test asserts the private token is absent from `dist/` — see
+`src/test/cloverUi.test.jsx`.
+
+### Two things the server refuses to trust from the client
+
+1. **Prices.** Every line is re-priced from Clover's own modifier catalog before
+   the order is built. The client's prices are display state.
+2. **Modifiers resolving.** Most plates are stored `base: 0` with the real price
+   in a size modifier group, so an order whose modifications don't resolve rings
+   up an **Oxtail at $0.00**. Unresolved modifiers throw and the order is
+   refused — a rejected order is recoverable, a free plate isn't.
+
+### Order of operations when placing an order
+
+Push the order to Clover **first**, charge **second**. A charged customer with no
+ticket on the register is the one failure staff can't fix at the counter; an
+uncharged order that exists is just "pay at pickup".
+
+## Environments
+
+`CLOVER_API_BASE` in `.env.local` decides everything:
+
+- contains `sandbox` → a red **SANDBOX** badge shows in the app header
+- `https://api.clover.com` → badge disappears on its own
+
+The server refuses to boot against a non-sandbox host unless
+`CLOVER_ALLOW_PRODUCTION=yes` is also set. That guard exists so a stray edit
+can't start billing real cards.
+
+## Running it
+
+```bash
+npm run dev:all     # frontend (5173) + proxy (3001)
+npm run dev         # frontend only — app runs in preview mode
+npm run server      # proxy only
+npm test            # 165 tests
+```
+
+Preview mode is a real, tested state: if the proxy isn't running the app still
+browses, searches and builds a cart, and the checkout says *"App is in preview
+mode — ordering is not connected yet"* rather than throwing.
+
+## Known blockers
+
+**The credentials in `.env.local` return 401.** Every endpoint, both hosts, both
+tokens, and unauthenticated all return `401 Unauthorized`, so the sandbox is
+reachable but the tokens are rejected at auth. Everything downstream of a live
+call is therefore built and unit-tested but **not verified against real Clover**.
+Regenerate the tokens in the Clover sandbox dashboard (Business Operations → API
+tokens, needs 2FA enabled) and re-run `npm run server`.
+
+`VITE_CLOVER_MERCHANT_ID` also has a trailing `/` in `.env.local`. The server
+strips it, but it's worth fixing at the source.
+
+**No per-modifier ids in the menu export.** The inventory export carries modifier
+*group* ids but not modifier ids, which Clover needs on an order line. The server
+resolves them by name at order time against
+`/v3/merchants/{mId}/modifier_groups?expand=modifiers`. This works, but a
+modifier renamed in Clover stops resolving and the order is refused. If a future
+export includes a modifier id column, `scripts/generate-menu.mjs` already picks
+it up under several likely names and bakes it in, which removes the fragility.
+
+## Testing conventions
+
+Tests live in `src/test/`. They favour asserting on things that cost real money
+or lose a customer, rather than on markup:
+
+- pickup slots at the boundaries of closing time
+- reorder keeping modifiers, notes and reward eligibility
+- special instructions reaching the kitchen ticket
+- tax **not** being sent to Clover
+- WCAG contrast, recomputed from `styles.css` rather than asserted by eye
+- the private token never reaching the bundle
+
+Run `npm test` before committing. The suite is deterministic — if it's flaky,
+that's a bug worth fixing, not retrying.

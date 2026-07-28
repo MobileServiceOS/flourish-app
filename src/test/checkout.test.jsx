@@ -24,7 +24,7 @@ async function placeOrder(user, { name = "Nevaeh Reid", phone = "3478599413" } =
   await user.clear(screen.getByLabelText(/phone/i));
   await user.type(screen.getByLabelText(/phone/i), phone);
 
-  await user.click(screen.getByRole("button", { name: /^Pay \$/ }));
+  await user.click(screen.getByRole("button", { name: /^(Pay|Place order)/ }));
 }
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));

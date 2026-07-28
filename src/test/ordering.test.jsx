@@ -50,7 +50,7 @@ describe("special instructions", () => {
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
     await fillDetails(user);
-    await user.click(screen.getByRole("button", { name: /^Pay \$/ }));
+    await user.click(screen.getByRole("button", { name: /^(Pay|Place order)/ }));
 
     const summary = (await screen.findByText("Your order")).nextElementSibling;
     expect(within(summary).getByText(/no pepper/)).toBeInTheDocument();
@@ -64,7 +64,7 @@ describe("reorder", () => {
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
     await fillDetails(user);
-    await user.click(screen.getByRole("button", { name: /^Pay \$/ }));
+    await user.click(screen.getByRole("button", { name: /^(Pay|Place order)/ }));
     await screen.findByText("Order confirmed");
 
     // back out, then reorder from history
@@ -85,7 +85,7 @@ describe("reorder", () => {
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
     await fillDetails(user);
-    await user.click(screen.getByRole("button", { name: /^Pay \$/ }));
+    await user.click(screen.getByRole("button", { name: /^(Pay|Place order)/ }));
     await screen.findByText("Order confirmed");
     await user.click(screen.getByRole("button", { name: "Back to menu" }));
 
@@ -181,7 +181,7 @@ describe("pickup time", () => {
     const target = within(select).getByRole("option", { name: "1:30 PM" });
     await user.selectOptions(select, target.value);
     await fillDetails(user);
-    await user.click(screen.getByRole("button", { name: /^Pay \$/ }));
+    await user.click(screen.getByRole("button", { name: /^(Pay|Place order)/ }));
 
     await screen.findByText("Estimated ready time");
     expect(screen.getByText("1:30 PM")).toBeInTheDocument();
