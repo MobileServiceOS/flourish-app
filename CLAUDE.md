@@ -129,7 +129,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 211 tests
+npm test            # 217 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

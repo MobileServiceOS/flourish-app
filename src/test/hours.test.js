@@ -13,14 +13,8 @@ const FRI = (hh, mm) => at(2026, 7, 31, hh, mm);
 const SAT = (hh, mm) => at(2026, 8, 1, hh, mm);
 
 describe("closing time", () => {
-  it("is 10PM Sunday through Thursday", () => {
-    expect(closeHourFor(0)).toBe(22);
-    expect(closeHourFor(1)).toBe(22);
-    expect(closeHourFor(4)).toBe(22);
-  });
-  it("is 11PM on Friday and Saturday", () => {
-    expect(closeHourFor(5)).toBe(23);
-    expect(closeHourFor(6)).toBe(23);
+  it("is 10PM every day, as the printed menu says", () => {
+    for (let d = 0; d <= 6; d++) expect(closeHourFor(d)).toBe(22);
   });
 });
 
@@ -29,8 +23,8 @@ describe("isOpen", () => {
   it("opens at 9AM sharp", () => expect(isOpen(MON(9, 0))).toBe(true));
   it("is open mid-afternoon", () => expect(isOpen(MON(15, 30))).toBe(true));
   it("shuts at 10PM on a Monday", () => expect(isOpen(MON(22, 0))).toBe(false));
-  it("is still open at 10:30PM on a Friday", () => expect(isOpen(FRI(22, 30))).toBe(true));
-  it("shuts at 11PM on a Saturday", () => expect(isOpen(SAT(23, 0))).toBe(false));
+  it("shuts at 10PM on a Friday too", () => expect(isOpen(FRI(22, 0))).toBe(false));
+  it("shuts at 10PM on a Saturday", () => expect(isOpen(SAT(22, 0))).toBe(false));
 });
 
 describe("nextOpening", () => {
@@ -79,10 +73,11 @@ describe("pickupSlots", () => {
     expect(last.getMinutes()).toBe(0);
   });
 
-  it("runs an hour later on Friday", () => {
+  it("closes at the same time on Friday as any other day", () => {
     const s = pickupSlots(FRI(20, 0));
     const last = s[s.length - 1];
-    expect(last.getHours()).toBe(23);
+    expect(last.getHours()).toBe(22);
+    expect(last.getMinutes()).toBe(0);
   });
 
   it("gives no slots in the last quarter hour before close", () => {

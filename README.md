@@ -98,7 +98,7 @@ npm test          # once
 npm run test:watch
 ```
 
-211 tests. They cover the things that cost money if they break: pickup-slot
+217 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the
@@ -209,8 +209,8 @@ You'll need Xcode and an Apple Developer account to put it on the App Store.
 - Sizes, flavors, and two included sides, priced exactly as Clover prices them
 - Category chips that smooth-scroll, and highlight as you scroll past sections
 - Cart, checkout, tip, tax, order confirmation and live status
-- **Pickup times** on a 15-minute grid up to close (10PM, 11PM Fri & Sat), with
-  ASAP as the default and a proper "we're closed" state outside hours
+- **Pickup times** on a 15-minute grid up to close (10PM, seven days a week),
+  with ASAP as the default and a proper "we're closed" state outside hours
 - **Seafood Fridays** leads the menu on Fridays and is marked "(Fri)" otherwise
 - One-tap **reorder** that restores modifiers, notes and reward eligibility, and
   tells you if anything on the old order is sold out today

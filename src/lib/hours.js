@@ -1,5 +1,6 @@
 /* Operating hours and pickup slots.
-   Open 9AM daily. Closes 10PM Sun-Thu, 11PM Fri & Sat.
+   Open 9AM to 10PM, every day. Straight off the printed menu:
+   "SUNDAY - SATURDAY 9AM-10PM".
 
    Every function takes `now` rather than reading the clock itself, so the
    checkout can be tested at 9:58PM on a Friday without waiting until Friday.
@@ -9,8 +10,9 @@ export const OPEN_HOUR = 9;
 export const PREP_MINUTES = 15;   // what the kitchen needs for an ASAP order
 export const SLOT_MINUTES = 15;   // granularity of the pickup picker
 
-/** 10PM most nights, 11PM Friday and Saturday. 0=Sun ... 6=Sat. */
-export const closeHourFor = (dow) => (dow === 5 || dow === 6 ? 23 : 22);
+/** 10PM, every day. Kept as a function of the weekday so late weekend hours are
+    a one-line change if they ever come back. 0=Sun ... 6=Sat. */
+export const closeHourFor = (_dow) => 22;
 
 const at = (d, hour, min = 0) => {
   const x = new Date(d);
@@ -83,4 +85,4 @@ export function describeOpening(open, now = new Date()) {
 }
 
 /** Human hours line for the footer. */
-export const HOURS_LINE = "Open daily 9AM–10PM · 11PM Fri & Sat";
+export const HOURS_LINE = "Open daily 9AM–10PM";
