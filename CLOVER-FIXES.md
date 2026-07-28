@@ -1,7 +1,7 @@
 # Clover inventory issues found
 
 Found while mapping the app to your live Clover export (`inventory-export-v2.xlsx`).
-The app already works around all four. **Clover itself still needs correcting** — these
+The app already works around all five. **Clover itself still needs correcting** — these
 affect what rings up at the register, on Ordering Tools, and on every delivery platform
 that syncs from your inventory.
 
@@ -83,6 +83,29 @@ You're charging **$5–$8 less** per pork plate than your own menu advertises.
 
 **App uses Clover**, since that's what actually charges the customer. If the printed prices
 are the intended ones, update Clover and tell me — the app picks it up on the next export.
+
+---
+
+## 5. Seafood stew peas is filed as a *size* of regular stew peas
+
+**Where:** Modifier Groups → Stew Peas
+**Problem:** The group holds `Medium $15`, `Large $18`, and `Seafood $30`. Seafood stew
+peas is a different dish — it already exists as its own item at $30 — and it only gets
+cooked Friday and Saturday.
+
+Sold from inside this size group it:
+
+- rings up **any day of the week**, including days you don't make it
+- reads to customers as a third size of ordinary stew peas
+- drags the listed price range on the Stew Peas row up to **$15–$30**, so the menu
+  advertises a top price for something that usually isn't available
+
+**Fix:** Remove `Seafood` from the Stew Peas size group. The standalone
+**Seafood Stew Peas** item already covers it at the right price.
+
+**App behavior meanwhile:** hidden. Stew Peas shows $15–$18 with Medium and Large only.
+Seafood Stew Peas is sold as its own item, one size, and is greyed out with
+**FRI & SAT ONLY** from Sunday to Thursday.
 
 ---
 

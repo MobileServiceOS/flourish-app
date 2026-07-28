@@ -273,3 +273,42 @@ describe("items cooked only on certain days", () => {
     expect(item.days).toEqual([5, 6]);
   });
 });
+
+describe("seafood stew peas is one dish, not a size of another", () => {
+  it("is not offered inside the Stew Peas size group on any day", async () => {
+    const { MENU } = await import("../data/menu.data.js");
+    const stewPeas = MENU.flatMap((c) => c.items).find((i) => i.id === "ZTAQ37M4E9S4C");
+    const sizes = stewPeas.groups.find((g) => g.kind === "variant");
+
+    const seafood = sizes.mods.find((m) => m.n === "Seafood");
+    expect(seafood.oos).toBe(true);                       // hidden from customers
+    expect(sizes.mods.filter((m) => !m.oos).map((m) => m.n)).toEqual(["Medium", "Large"]);
+  });
+
+  it("does not let the hidden option inflate the Stew Peas price range", async () => {
+    const { MENU } = await import("../data/menu.data.js");
+    const stewPeas = MENU.flatMap((c) => c.items).find((i) => i.id === "ZTAQ37M4E9S4C");
+    expect([stewPeas.lo, stewPeas.hi]).toEqual([15, 18]);  // not 15–30
+  });
+
+  it("shows only Medium and Large in the item sheet", async () => {
+    const { user } = await renderApp(FRI_NOON);
+    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
+    await user.click(within(lunch).getByRole("button", { name: /^Stew Peas,/ }));
+
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText("Medium")).toBeInTheDocument();
+    expect(within(sheet).getByText("Large")).toBeInTheDocument();
+    expect(within(sheet).queryByText("Seafood")).not.toBeInTheDocument();
+  });
+
+  it("sells it as its own item, one size, with no size picker", async () => {
+    const { user } = await renderApp(FRI_NOON);
+    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
+    // No choices at all means it quick-adds rather than opening a sheet
+    await user.click(within(lunch).getByRole("button", { name: /^Add Seafood Stew Peas to cart$/ }));
+
+    expect(await screen.findByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});

@@ -77,6 +77,20 @@ const ITEM_DAYS = {
   "32VDQ4G5J131P": [5, 6],   // Seafood Stew Peas — Fri & Sat only
 };
 
+/* Modifiers that are really a separate dish sitting in another item's size
+   group. The script already catches the case where the option is named after
+   its own item (see the Wings issue in CLOVER-FIXES.md); these are the ones
+   that need a human to spot them.
+   Hidden from customers, and excluded from the item's price range, so the row
+   does not advertise a starting price for something it cannot sell.
+   Keyed by "<modifier group id>::<modifier name>". */
+const MISFILED_AS_SIZE = {
+  // Seafood stew peas is its own $30 dish, one size, Friday and Saturday only.
+  // Sold from this group it would ring up any day of the week and read as a
+  // third "size" of ordinary stew peas.
+  "KR1HHY64E4QPJ::Seafood": "sold as its own item, Fri & Sat only",
+};
+
 // One line of menu copy per item, keyed by Clover id — ids rather than names
 // because "Blue Crab" is two different items at two different prices.
 // Clover has no description field in the export, so this map is the source of
@@ -90,7 +104,7 @@ const DESC = {
   "7916EWVQFPGH8": "Slow-braised lamb with two sides",
   "VQZ0T4XK707EC": "Brown stew, escovitch, or steamed",
   "ZTAQ37M4E9S4C": "Red peas simmered in coconut milk",
-  "32VDQ4G5J131P": "Stew peas loaded with seafood",
+  "32VDQ4G5J131P": "Stew peas loaded with seafood. One size, large.",
   "60KCQ1V22Q98M": "Slow-cooked, fall-off-the-bone tender",
   "JAD3BJK9BSTW8": "Plain, chicken, shrimp, steak, or oxtail",
   "PEB98GZ1MBF6P": "Lobster tail on its own, no sides",
@@ -220,6 +234,12 @@ for (const it of items.values()) {
 
   for (const g of variants) {
     for (const m of g.mods) {
+      const misfiled = MISFILED_AS_SIZE[`${g.gid}::${m.n}`];
+      if (misfiled) {
+        m.oos = true;
+        issues.push(`${it.name}: "${m.n}" ($${m.p}) sits in size group "${g.name}" but is ${misfiled}`);
+        continue;
+      }
       if (m.p === 0) {
         m.oos = true;
         issues.push(`${it.name}: "${m.n}" in group "${g.name}" is priced $0 — would ring up free`);

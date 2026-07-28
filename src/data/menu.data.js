@@ -7,7 +7,7 @@
 // Line price = base + selected variant modifier + side upcharges.
 // Defaults to the first available option in each group (Clover's own ordering).
 // oos:true marks a modifier Clover has mispriced; hidden rather than sold wrong.
-// See CLOVER-FIXES.md for the four issues found and what to correct in Clover.
+// See CLOVER-FIXES.md for the five issues found and what to correct in Clover.
 export const MENU = [
   { cat: "Lunch & Dinner", sub: "Plates come with two sides", items: [
     { id: "598S0BJH4J7DE", name: "Crab Legs Platter", emoji: "🦀",
@@ -34,12 +34,12 @@ export const MENU = [
         { gid: "AJY3FTT4BRPHP", name: "Fish", kind: "variant", mods: [{ n: "Brown Stew Fish", p: 30.0 }, { n: "Escovitch", p: 30.0 }, { n: "Steam Fish", p: 30.0 }, { n: "Whiting Fish", p: 14.0 }, { n: "Snapper Fish (Add On. No Sides)", p: 20.0 }] }
       ] },
     { id: "ZTAQ37M4E9S4C", name: "Stew Peas", emoji: "🫘",
-        desc: "Red peas simmered in coconut milk", base: 0.0, lo: 15.0, hi: 30.0, groups: [
-        { gid: "KR1HHY64E4QPJ", name: "Stew Peas", kind: "variant", mods: [{ n: "Medium", p: 15.0 }, { n: "Large", p: 18.0 }, { n: "Seafood", p: 30.0 }] },
+        desc: "Red peas simmered in coconut milk", base: 0.0, lo: 15.0, hi: 18.0, groups: [
+        { gid: "KR1HHY64E4QPJ", name: "Stew Peas", kind: "variant", mods: [{ n: "Medium", p: 15.0 }, { n: "Large", p: 18.0 }, { n: "Seafood", p: 30.0, oos: true }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "32VDQ4G5J131P", name: "Seafood Stew Peas", emoji: "🫘",
-        desc: "Stew peas loaded with seafood", days: [5, 6], base: 30.0, lo: 30.0, hi: 30.0, groups: [
+        desc: "Stew peas loaded with seafood. One size, large.", days: [5, 6], base: 30.0, lo: 30.0, hi: 30.0, groups: [
       ] },
     { id: "60KCQ1V22Q98M", name: "Oxtail", emoji: "🍖",
         desc: "Slow-cooked, fall-off-the-bone tender", base: 0.0, lo: 20.0, hi: 25.0, groups: [
