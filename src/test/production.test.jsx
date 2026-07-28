@@ -190,8 +190,9 @@ describe("accessibility", () => {
   });
 
   it("lets an item be added from the keyboard alone", async () => {
-    const { user } = await renderApp();
-    const row = screen.getAllByRole("button", { name: /^Beef Patty, .*\$3\.00/ })[0];
+    // Friday, because one-tap items are Friday-only since the menu cull
+    const { user } = await renderApp(new Date(2026, 6, 31, 12, 0));
+    const row = screen.getAllByRole("button", { name: /^Fish Platter \(Shrimp & 2 Sides\),/ })[0];
     row.focus();
     await user.keyboard("{Enter}");
     expect(await screen.findByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();

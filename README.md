@@ -200,8 +200,8 @@ You'll need Xcode and an Apple Developer account to put it on the App Store.
 
 ## What works right now
 
-- Full menu from Clover — 42 items across Lunch & Dinner, Seafood Fridays, Drinks,
-  each with a one-line description
+- Full menu from Clover — 31 items across Lunch & Dinner, Seafood Fridays, Drinks,
+  each with a one-line description. Prices follow the printed menu
 - Rows where the two prices are just the two sizes read "Med $20 · Lg $25"
   rather than a bare range
 - A **Popular** section up top showing the six the shop is known for — the same

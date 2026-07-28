@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { addItem, ACKEE } from "./helpers.js";
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,7 +42,7 @@ const ONLINE = {
 };
 
 async function toCheckout(user) {
-  await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+  await addItem(user);
   await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
   await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
   const n = screen.getByLabelText("Name");
@@ -70,7 +71,7 @@ describe("preview mode", () => {
 
   it("still lets the customer browse and build a cart", async () => {
     const { user } = await renderApp({ routes: {} });
-    await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+    await addItem(user);
     expect(await screen.findByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();
   });
 
@@ -114,11 +115,11 @@ describe("connected to Clover", () => {
     const { user } = await renderApp({ routes: {
       ...ONLINE,
       "GET /inventory": async () => ({ status: 200, body: { items: [
-        { id: "QDCGERYM91BP0", name: "Beef Patty", stockCount: 0, available: false },
+        { id: ACKEE.id, name: ACKEE.name, stockCount: 0, available: false },
       ]}}),
     }});
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Beef Patty.*sold out today/i })).toBeInTheDocument()
+      expect(screen.getAllByRole("button", { name: new RegExp(ACKEE.name + ".*sold out today", "i") })[0]).toBeInTheDocument()
     );
   });
 });

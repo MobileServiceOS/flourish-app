@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { addItem, ACKEE } from "./helpers.js";
 
 async function renderApp(when = new Date(2026, 6, 27, 12, 0)) { // Monday noon
   vi.setSystemTime(when);
@@ -15,7 +16,7 @@ async function renderApp(when = new Date(2026, 6, 27, 12, 0)) { // Monday noon
 
 /** Add a no-choices item, then walk to the confirmation screen. */
 async function placeOrder(user, { name = "Nevaeh Reid", phone = "3478599413" } = {}) {
-  await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+  await addItem(user);
   await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
   await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
 
@@ -54,7 +55,7 @@ describe("order confirmation", () => {
     await placeOrder(user);
 
     const order = (await screen.findByText("Your order")).nextElementSibling;
-    expect(within(order).getByText(/1× Beef Patty/)).toBeInTheDocument();
+    expect(within(order).getByText(new RegExp("1× " + ACKEE.name))).toBeInTheDocument();
   });
 
   it("gives the pickup address, phone, a maps link and a call button", async () => {
@@ -86,24 +87,22 @@ describe("order confirmation", () => {
 describe("tax shown to the customer", () => {
   it("names the rate and totals correctly at 8.5%", async () => {
     const { user } = await renderApp();
-    // Beef Patty is $3.00 flat
-    await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+    // Ackee & Shrimp is $20.00 flat, two included sides
+    await addItem(user);
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
 
     expect(await screen.findByText("Tax (8.5%)")).toBeInTheDocument();
-    expect(screen.getByText("$0.26")).toBeInTheDocument();          // 3.00 * 0.085 = 0.255 -> 0.26
-
-    // default tip is 10% of subtotal = $0.30, so total = 3.00 + 0.26 + 0.30
+    // default tip is 10% of subtotal = $2.00, so total = 20.00 + 1.70 + 2.00
     const rows = [...document.querySelectorAll(".rowline")].map((r) => r.textContent);
-    expect(rows).toContain("Tax (8.5%)$0.26");
-    expect(rows).toContain("Total$3.56");
+    expect(rows).toContain("Tax (8.5%)$1.70");
+    expect(rows).toContain("Total$23.70");
 
     // and the CTA quotes that same total once the form is valid
     const n = screen.getByLabelText("Name");
     await user.clear(n); await user.type(n, "Nevaeh Reid");
     const p = screen.getByLabelText("Phone number");
     await user.clear(p); await user.type(p, "3478599413");
-    expect(screen.getByRole("button", { name: /\$3\.56/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /\$23\.70/ })).toBeEnabled();
   });
 });

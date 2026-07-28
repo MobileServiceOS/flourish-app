@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { addItem, ACKEE } from "./helpers.js";
 
 const MON_NOON = new Date(2026, 6, 27, 12, 0);   // Monday
 const FRI_NOON = new Date(2026, 6, 31, 12, 0);   // Friday
@@ -81,7 +82,7 @@ describe("reorder", () => {
 
   it("leaves out anything sold out today and says which", async () => {
     const { user } = await renderApp();
-    await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+    await addItem(user);
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
     await fillDetails(user);
@@ -89,10 +90,10 @@ describe("reorder", () => {
     await screen.findByText("Order confirmed");
     await user.click(screen.getByRole("button", { name: "Back to menu" }));
 
-    // 86 the Beef Patty from the kitchen sheet
+    // 86 the item from the kitchen sheet
     await user.click(screen.getByRole("button", { name: /staff/i }));
     const staff = await screen.findByRole("dialog");
-    await user.click(within(staff).getByRole("switch", { name: /^Beef Patty, in stock$/ }));
+    await user.click(within(staff).getByRole("switch", { name: new RegExp("^" + ACKEE.name + ", in stock$") }));
     await user.click(within(staff).getByRole("button", { name: /close kitchen/i }));
 
     await user.click(screen.getByRole("button", { name: /^Orders$/ }));
@@ -136,7 +137,7 @@ describe("seafood friday", () => {
 describe("pickup time", () => {
   it("defaults to ASAP with the fifteen minute estimate", async () => {
     const { user } = await renderApp(MON_NOON);
-    await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+    await addItem(user);
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
 
@@ -147,7 +148,7 @@ describe("pickup time", () => {
 
   it("offers quarter-hour slots up to close and no further", async () => {
     const { user } = await renderApp(MON_NOON);
-    await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+    await addItem(user);
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
 
@@ -162,7 +163,7 @@ describe("pickup time", () => {
 
   it("keeps the same last slot on a Friday", async () => {
     const { user } = await renderApp(FRI_NOON);
-    await user.click(screen.getAllByRole("button", { name: /^Add Beef Patty to cart$/ })[0]);
+    await addItem(user);
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
 
@@ -173,7 +174,7 @@ describe("pickup time", () => {
 
   it("scheduling a slot puts that time on the confirmation", async () => {
     const { user } = await renderApp(MON_NOON);
-    await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+    await addItem(user);
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
 
@@ -190,7 +191,7 @@ describe("pickup time", () => {
 
   it("refuses to take an order outside opening hours", async () => {
     const { user } = await renderApp(MON_NIGHT);
-    await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+    await addItem(user);
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
 

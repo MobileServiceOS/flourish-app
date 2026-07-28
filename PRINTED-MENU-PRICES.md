@@ -137,6 +137,22 @@ six, and pork ribs at one size instead of two.
 
 ---
 
+## Items delisted from the app
+
+Not on the printed menu, so no longer sold in the app. Still live on the
+register — hide them in Clover too if they are genuinely off.
+
+BBQ Chicken · Curry Chicken (sold only as the $8 lunch special) ·
+Crab Legs & Shrimp · Lobster Tail (No Meal) · Lobster Roll & Fries ·
+Pepper Shrimp & Mussels · Salmon (1 Piece) · Lex Special ·
+Blue Crab $15 (a duplicate — the menu lists one at $20) ·
+Beef Patty · Chicken Patty
+
+**Kept despite not being on the trifold**, by instruction: the five Seafood
+Fridays platters, both drinks, Ackee & Shrimp, and Seafood Stew Peas.
+
+---
+
 ## Left alone on purpose
 
 **Salmon — $22.** Clover and the printed menu agree on the price, so nothing

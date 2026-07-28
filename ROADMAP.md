@@ -9,7 +9,8 @@ because the sandbox tokens currently in `.env.local` return 401.
 ## Shipped
 
 ### Ordering basics
-- [x] Full menu generated from the Clover inventory export (42 items)
+- [x] Full menu generated from the Clover inventory export (31 items), culled to
+      what the printed menu sells and priced from it
 - [x] Sizes, flavors and two included sides, priced exactly as Clover prices them
 - [x] Cart, quantities, per-item special instructions
 - [x] Customer accounts persisted across launches

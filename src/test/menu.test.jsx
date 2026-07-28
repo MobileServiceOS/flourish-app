@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MENU, POPULAR_IDS } from "../data/menu.data.js";
+import { addItem } from "./helpers.js";
 
 /* App reads the day of the week at module scope to decide the default category,
    so the clock has to be set before the module is imported. */
@@ -86,8 +87,7 @@ describe("adding to the cart", () => {
     const { user } = await renderApp();
     expect(screen.getByRole("button", { name: /cart, empty/i })).toBeInTheDocument();
 
-    // Beef Patty has no modifier groups, so it is a one-tap add
-    await user.click(screen.getByRole("button", { name: /^Add Beef Patty to cart$/ }));
+    await addItem(user);
 
     const cartTab = await screen.findByRole("button", { name: /cart, 1 item/i });
     expect(within(cartTab).getByText("1")).toBeInTheDocument();
@@ -95,17 +95,19 @@ describe("adding to the cart", () => {
 
   it("counts quantity, not lines", async () => {
     const { user } = await renderApp();
-    const add = screen.getByRole("button", { name: /^Add Beef Patty to cart$/ });
-    await user.click(add);
-    await user.click(add);
+    await addItem(user);
+    await addItem(user);
     expect(await screen.findByRole("button", { name: /cart, 2 items/i })).toBeInTheDocument();
   });
 
   it("pops the + button as a confirmation on quick-add", async () => {
-    const { user } = await renderApp();
-    const add = screen.getByRole("button", { name: /^Add Beef Patty to cart$/ });
+    // Since the printed-menu cull the only one-tap items are the Friday
+    // platters — everything sold on a weekday has sides to choose.
+    const { user } = await renderApp(new Date(2026, 6, 31, 12, 0)); // Friday
+    const add = screen.getByRole("button", { name: "Add Fish Platter (Shrimp & 2 Sides) to cart" });
     await user.click(add);
     await vi.waitFor(() => expect(add.className).toContain("pop"));
+    expect(await screen.findByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();
   });
 
   it("opens the options sheet instead of quick-adding when the item has choices", async () => {
@@ -171,8 +173,8 @@ describe("a price range that is really two sizes says so", () => {
   it("says nothing about sizes for a single-price item", async () => {
     const { MENU } = await import("../data/menu.data.js");
     const { sizePrices } = await import("../lib/restaurant.js");
-    const patty = MENU.flatMap((c) => c.items).find((i) => i.name === "Beef Patty");
-    expect(sizePrices(patty)).toBeNull();
+    const lamb = MENU.flatMap((c) => c.items).find((i) => i.name === "Lamb");
+    expect(sizePrices(lamb)).toBeNull();
   });
 });
 

@@ -30,6 +30,19 @@ const SKIP_ITEMS = new Set(["Gift card", "Boil Food"]); // no price set in Clove
    the dish does. */
 const DELISTED = new Set([
   "NH99VMKKGJ572",   // Baked Chicken — no longer offered
+  // Not on the printed menu. Seafood Fridays, both drinks, Ackee & Shrimp and
+  // Seafood Stew Peas are deliberately kept even though the trifold omits them.
+  "YQH6NFFB34SVM",   // BBQ Chicken
+  "49BD3KVSBHXRR",   // Curry Chicken — sold only as the $8 lunch special
+  "21RNMJ880YCMC",   // Crab Legs & Shrimp
+  "PEB98GZ1MBF6P",   // Lobster Tail (No Meal)
+  "K7EX5APPAXPEJ",   // Lobster Roll & Fries
+  "PH221AJ7W66EA",   // Pepper Shrimp & Mussels
+  "S0GK9MD2NE414",   // Salmon (1 Piece)
+  "PZ1FB6X44MGYE",   // Lex Special
+  "DH0P3NGRN9RNE",   // Blue Crab $15 — duplicate; the menu lists one at $20
+  "QDCGERYM91BP0",   // Beef Patty
+  "Y79KKCYGMHRB6",   // Chicken Patty
 ]);
 const SIDE_GROUP = "Side With Meal";
 
