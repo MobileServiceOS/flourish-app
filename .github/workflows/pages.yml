@@ -1,0 +1,55 @@
+# Publishes docs/ to GitHub Pages.
+#
+# These two pages are what Apple's reviewers open from App Store Connect, so
+# they have to stay up independently of the app itself:
+#   /privacy.html   Privacy Policy URL
+#   /support.html   Support URL
+#
+# docs/ is plain HTML with no build step — the site is exactly what is in the
+# folder, which means a broken build can never take the legal pages offline.
+name: Deploy docs to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; queue instead, and don't cancel a run that is
+# already publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail loudly here rather than shipping a site with a dead legal URL.
+      - name: Check the required pages exist
+        run: |
+          for f in docs/privacy.html docs/support.html; do
+            test -s "$f" || { echo "::error::$f is missing or empty"; exit 1; }
+          done
+          echo "privacy.html and support.html present"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

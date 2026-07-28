@@ -50,6 +50,12 @@ flourish-app/
 │  ├─ app.js                   routes
 │  ├─ clover.js                API client
 │  └─ env.js                   config, never logs a secret
+├─ docs/                       published to GitHub Pages, no build step
+│  ├─ privacy.html             Privacy Policy URL for App Store Connect
+│  ├─ support.html             Support URL for App Store Connect
+│  └─ app-store-listing.md     ready-to-paste submission fields
+├─ .github/workflows/
+│  └─ pages.yml                deploys docs/ on push to main
 ├─ scripts/
 │  └─ generate-menu.mjs        Clover export -> menu data
 └─ src/
@@ -147,6 +153,30 @@ to the emoji rather than showing a broken image.
 from a delivery platform's CDN — that is a dependency on a competitor staying up,
 and their image ids don't line up with Clover's anyway. A test fails the build if
 a `cdn4dd.com` or `doordash-static` URL reappears in the source.
+
+## Public pages and App Store submission
+
+`docs/` is published to GitHub Pages on every push to `main`. It is plain HTML
+with no build step, so a broken app build can never take the legal pages offline
+— which matters, because these two URLs are what Apple's reviewers open:
+
+| Page | URL |
+|---|---|
+| Privacy Policy | https://mobileserviceos.github.io/flourish-app/privacy.html |
+| Support & FAQ | https://mobileserviceos.github.io/flourish-app/support.html |
+
+Editing either page and pushing to `main` redeploys it within about a minute.
+The workflow fails deliberately if either file is missing or empty, rather than
+publishing a site with a dead legal URL.
+
+`docs/app-store-listing.md` holds every App Store Connect field ready to paste —
+name, subtitle, description, keywords, the App Privacy questionnaire answers,
+and notes for App Review. The remaining blockers for submission are the app
+icon and screenshots, which are listed at the bottom of that file.
+
+> If this repo ever moves to a different GitHub account or a custom domain, the
+> two URLs above change. Update them in App Store Connect at the same time — a
+> dead privacy or support URL is a routine rejection.
 
 ## Building the native app
 
