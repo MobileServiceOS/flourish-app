@@ -159,6 +159,24 @@ select.field{appearance:none;cursor:pointer;
 .status-dot{width:12px;height:12px;border-radius:999px;background:var(--line);}
 .status-dot.on{background:var(--leaf);box-shadow:0 0 0 4px rgba(127,185,62,.2);}
 .floral{position:absolute;pointer-events:none;opacity:.5;}
+/* Launch screen — up only as long as the saved account takes to read back. */
+.splash{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding-bottom:0;text-align:center;
+  background:
+    radial-gradient(120% 60% at 15% 8%, rgba(232,154,199,.34), transparent 55%),
+    radial-gradient(120% 60% at 88% 12%, rgba(142,91,196,.30), transparent 55%),
+    radial-gradient(100% 55% at 55% 100%, rgba(127,185,62,.24), transparent 60%),
+    var(--paper);}
+.splash-mark{font-size:60px;position:relative;z-index:2;animation:markIn .7s cubic-bezier(.2,.9,.25,1) both;}
+.splash-sub{color:var(--muted);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  margin-top:6px;position:relative;z-index:2;animation:markIn .7s .12s cubic-bezier(.2,.9,.25,1) both;}
+@keyframes markIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.splash-dots{display:flex;gap:7px;margin-top:26px;position:relative;z-index:2;}
+.splash-dots span{width:8px;height:8px;border-radius:999px;background:var(--orchid);opacity:.35;
+  animation:dot 1.15s ease-in-out infinite;}
+.splash-dots span:nth-child(2){animation-delay:.16s;}
+.splash-dots span:nth-child(3){animation-delay:.32s;}
+@keyframes dot{0%,100%{opacity:.28;transform:translateY(0);}50%{opacity:1;transform:translateY(-5px);}}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:104px;z-index:80;background:var(--ink);color:#fff;
   padding:12px 18px;border-radius:14px;font-weight:600;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);
   display:flex;align-items:center;gap:8px;animation:rise .2s;}

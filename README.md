@@ -39,23 +39,52 @@ same wifi, no build needed. This is the fastest way to check how it really feels
 
 ```
 flourish-app/
-├─ index.html                  page shell, font preloads
+├─ index.html                  page shell, share-preview meta, font preloads
 ├─ package.json                dependencies and commands
-├─ vite.config.js              dev server + build
+├─ vite.config.js              dev server + build + test config
 ├─ capacitor.config.ts         native app id and name
 ├─ scripts/
 │  └─ generate-menu.mjs        Clover export -> menu data
 └─ src/
    ├─ main.jsx                 mounts React
-   ├─ App.jsx                  all screens and state
+   ├─ App.jsx                  state owner and router — nothing else
    ├─ styles.css               full stylesheet
+   ├─ components/
+   │  ├─ MenuView.jsx          menu, search, category chips
+   │  ├─ ItemSheet.jsx         size / flavor / sides / special instructions
+   │  ├─ CartView.jsx          lines, rewards, totals
+   │  ├─ CheckoutView.jsx      details, pickup time, tip, pay
+   │  ├─ TrackView.jsx         order confirmation and live status
+   │  ├─ RewardsView.jsx       points, redemption, account, share
+   │  ├─ SignInView.jsx        join Flourish Rewards
+   │  ├─ OrdersView.jsx        history and one-tap reorder
+   │  ├─ StaffSheet.jsx        86 control
+   │  └─ shared.jsx            SubHeader, Section, Group, Option, Empty,
+   │                           Hummingbird, Thumb, Splash, useSheet
    ├─ data/
    │  └─ menu.data.js          GENERATED — never hand-edit
-   └─ lib/
-      ├─ money.js              cent-accurate rounding
-      ├─ loyalty.js            tiers, rewards, discount rules
-      └─ storage.js            account persistence
+   ├─ lib/
+   │  ├─ money.js              cent-accurate rounding
+   │  ├─ loyalty.js            tiers, rewards, discount rules
+   │  ├─ hours.js              opening hours and pickup slots
+   │  ├─ phone.js              phone formatting and validation
+   │  ├─ restaurant.js         address, phone, Popular, day helpers
+   │  ├─ share.js              native share sheet + clipboard fallback
+   │  └─ storage.js            account persistence
+   └─ test/                    Vitest + Testing Library
 ```
+
+## Tests
+
+```bash
+npm test          # once
+npm run test:watch
+```
+
+94 tests. They cover the things that cost money if they break: pickup-slot
+boundaries around closing time, reorder keeping its modifiers and notes,
+special instructions reaching the kitchen ticket, and a WCAG contrast check
+that recomputes every text colour pairing straight out of `styles.css`.
 
 ---
 
@@ -71,6 +100,14 @@ the customer is charged. Export and regenerate instead:
 
 That rewrites `src/data/menu.data.js` with live Clover item and modifier-group ids,
 so every order maps 1:1 onto the register.
+
+Clover's export carries no description field, so the one-line menu copy lives in
+the `DESC` map at the top of `scripts/generate-menu.mjs`, keyed by Clover item id.
+Same for `POPULAR_IDS` (the six on the website's "What We're Known For") and
+`CATEGORY_DAYS` (which locks Seafood Fridays to Friday). **Edit those there, not
+in `menu.data.js`** — anything hand-written into the generated file is lost the
+next time you regenerate. Adding an item in Clover without adding a description
+just means a bare row; the script prints a list of anything it couldn't describe.
 
 The script also **refuses to ship pricing that would charge a customer wrongly**.
 It prints a report of anything mispriced in Clover — a $0 modifier that would ring
@@ -95,13 +132,28 @@ You'll need Xcode and an Apple Developer account to put it on the App Store.
 
 ## What works right now
 
-- Full menu from Clover — 58 items across Lunch & Dinner, Seafood Fridays, Breakfast
+- Full menu from Clover — 43 items across Lunch & Dinner, Seafood Fridays, Drinks,
+  each with a one-line description
+- A **Popular** section up top showing the six the shop is known for — the same
+  item objects the categories use, not copies
 - Sizes, flavors, and two included sides, priced exactly as Clover prices them
-- Cart, checkout, tip, tax, live order tracking
+- Category chips that smooth-scroll, and highlight as you scroll past sections
+- Cart, checkout, tip, tax, order confirmation and live status
+- **Pickup times** on a 15-minute grid up to close (10PM, 11PM Fri & Sat), with
+  ASAP as the default and a proper "we're closed" state outside hours
+- **Seafood Fridays** leads the menu on Fridays and is marked "(Fri)" otherwise
+- One-tap **reorder** that restores modifiers, notes and reward eligibility, and
+  tells you if anything on the old order is sold out today
+- Special instructions per item, carried through to the cart, the confirmation
+  and the order history
 - Customer accounts with points that persist across launches
 - Reward redemption that applies a real discount to the cart
 - Savings badges showing what ordering direct beats Uber Eats by
 - Staff 86 control — tap the lock icon on the menu to mark items sold out
+
+Accessibility: every control has an accessible name, the sheets are real modal
+dialogs (Escape closes, focus is trapped and restored), items can be added from
+the keyboard, and every text colour clears WCAG AA — checked by a test, not by eye.
 
 ## What is not wired yet
 

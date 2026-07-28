@@ -207,7 +207,7 @@ describe("sharing", () => {
     const share = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { share });
     vi.resetModules();
-    const { shareFlourish, SHARE_TEXT, SHARE_URL } = await import("../App.jsx");
+    const { shareFlourish, SHARE_TEXT, SHARE_URL } = await import("../lib/share.js");
 
     await expect(shareFlourish({ share })).resolves.toBe("shared");
     expect(share).toHaveBeenCalledWith(expect.objectContaining({ text: SHARE_TEXT, url: SHARE_URL }));
@@ -219,7 +219,7 @@ describe("sharing", () => {
 
   it("falls back to the clipboard when there is no share sheet", async () => {
     vi.resetModules();
-    const { shareFlourish, SHARE_TEXT } = await import("../App.jsx");
+    const { shareFlourish, SHARE_TEXT } = await import("../lib/share.js");
     const writeText = vi.fn().mockResolvedValue(undefined);
 
     await expect(shareFlourish({ clipboard: { writeText } })).resolves.toBe("copied");
@@ -228,7 +228,7 @@ describe("sharing", () => {
 
   it("says nothing when the customer cancels the share sheet", async () => {
     vi.resetModules();
-    const { shareFlourish } = await import("../App.jsx");
+    const { shareFlourish } = await import("../lib/share.js");
     const share = vi.fn().mockRejectedValue(Object.assign(new Error("x"), { name: "AbortError" }));
     await expect(shareFlourish({ share })).resolves.toBeNull();
   });
