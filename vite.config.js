@@ -7,4 +7,10 @@ export default defineConfig({
   base: "./",
   build: { target: "esnext", outDir: "dist", sourcemap: true },
   server: { host: true, port: 5173 },   // host:true lets you test on your phone over wifi
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: "./src/test/setup.js",
+    css: false,
+  },
 });

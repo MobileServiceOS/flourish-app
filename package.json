@@ -11,7 +11,9 @@
     "menu": "node scripts/generate-menu.mjs",
     "sync": "npm run build && npx cap sync",
     "ios": "npm run sync && npx cap open ios",
-    "android": "npm run sync && npx cap open android"
+    "android": "npm run sync && npx cap open android",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.0",
@@ -24,11 +26,16 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@capacitor/android": "^6.0.0",
     "@capacitor/cli": "^6.0.0",
     "@capacitor/ios": "^6.0.0",
-    "@capacitor/android": "^6.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@vitejs/plugin-react": "^4.3.1",
+    "jsdom": "^25.0.1",
     "vite": "^5.3.1",
+    "vitest": "^2.1.9",
     "xlsx": "^0.18.5"
   }
 }

@@ -1,15 +1,19 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   ShoppingBag, Plus, Minus, Star, Clock, MapPin, Phone, ChevronLeft,
   Check, Gift, Home, Receipt, X, Sparkles, RotateCcw, Navigation, Lock,
-  User, LogOut, Award, Ticket, ChevronRight
+  User, LogOut, Award, Ticket, ChevronRight, Share2
 } from "lucide-react";
 
 import "./styles.css";
-import { MENU, UE, CAT_OF, PLATE_IDS, DRINK_ID, SIDE_ID, hasChoices } from "./data/menu.data.js";
+import { MENU, UE, CAT_OF, PLATE_IDS, DRINK_ID, SIDE_ID, POPULAR_IDS, hasChoices } from "./data/menu.data.js";
 import { cents, money } from "./lib/money.js";
 import { TIERS, REWARDS, rewardOf, discountFor, tierFor, nextTier } from "./lib/loyalty.js";
 import { loadAccount, saveAccount } from "./lib/storage.js";
+import {
+  isOpen, nextOpening, pickupSlots, asapReadyAt, formatTime, describeOpening, HOURS_LINE,
+} from "./lib/hours.js";
+import { formatPhone, phoneDigits, isValidPhone, isValidName } from "./lib/phone.js";
 
 /* ============================================================
    FLOURISH BX — Pickup ordering app
@@ -41,19 +45,27 @@ const DOW = new Date().getDay(); // 0=Sun ... 6=Sat
 const TODAY_IS_FRIDAY = DOW === 5;
 const DOW_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const daysLabel = (days) => days.map((d) => DOW_NAMES[d]).join(" & ") + " only";
-const POPULAR_IDS = [
-  "60KCQ1V22Q98M", // Oxtail
-  "SJGN0N254K8KE", // Jerk Chicken
-  "C2RD25C1VXNN0", // Wings
-  "H9520PFNBT2NY", // Salmon
-  "QFNQ2XQB8SPN6", // Fried chicken
-  "VHHCS7EDV70HC", // Shrimp
-];
+
+const SEAFOOD_CAT = "Seafood Fridays";
+export const ADDRESS = "4035 Laconia Ave, Bronx, NY 10466";
+export const PHONE_E164 = "+13478599413";
+export const PHONE_HUMAN = "(347) 859-9413";
+export const MAPS_URL =
+  "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(ADDRESS);
+
+/* The Popular section renders the *same* item objects as the real categories —
+   POPULAR_IDS holds ids and we look them up, so there is one source of truth for
+   price, sold-out state and modifiers. Never copy an item here. */
+const ALL_ITEMS = MENU.flatMap((c) => c.items);
 const POPULAR = {
   cat: "Popular",
   sub: "What we're known for",
-  items: POPULAR_IDS.map((id) => MENU.flatMap((c) => c.items).find((it) => it.id === id)).filter(Boolean),
+  items: POPULAR_IDS.map((id) => ALL_ITEMS.find((it) => it.id === id)).filter(Boolean),
 };
+
+/* A chip label — Seafood Fridays reads "(Fri)" on the six days it isn't on. */
+const chipLabel = (cat) =>
+  cat === SEAFOOD_CAT && !TODAY_IS_FRIDAY ? `${cat} (Fri)` : cat;
 
 function Hummingbird({ style, size = 44, flip }) {
   return (
@@ -201,10 +213,39 @@ export default function App() {
     setCart((c) => c.map((l) => l.key === key ? { ...l, qty: Math.max(1, l.qty + d) } : l));
   const removeLine = (key) => setCart((c) => c.filter((l) => l.key !== key));
 
-  const scrollToCat = (cat) => {
+  /* Tapping a chip and scroll-spy both write activeCat, so they fight: the
+     smooth scroll passes over every section on the way and the spy would drag
+     the highlight along with it. Tapping wins for as long as the scroll runs. */
+  const spyMutedUntil = useRef(0);
+  const scrollToCat = useCallback((cat) => {
     setActiveCat(cat);
-    catRefs.current[cat]?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+    spyMutedUntil.current = Date.now() + 800;
+    const el = catRefs.current[cat];
+    if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  /* Highlight the chip for whichever section is under the nav as you scroll. */
+  const catKeys = activeMenu.map((c) => c.cat).join("|");
+  useEffect(() => {
+    if (view !== "menu") return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const cats = catKeys.split("|").filter(Boolean);
+    const els = cats.map((c) => catRefs.current[c]).filter(Boolean);
+    if (!els.length) return;
+
+    // IntersectionObserver only reports what *changed*, so keep the running set
+    // and re-pick the top-most section from it on every callback.
+    const onScreen = new Map();
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) onScreen.set(e.target.dataset.cat, e.isIntersecting);
+      if (Date.now() < spyMutedUntil.current) return;
+      const first = cats.find((c) => onScreen.get(c));
+      if (first) setActiveCat(first);
+    }, { rootMargin: "-96px 0px -65% 0px", threshold: 0 });
+
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [view, catKeys]);
 
   return (
     <div className="fx shell">
@@ -225,7 +266,9 @@ export default function App() {
             const net = Math.max(0, subtotal - discount);
             const total = cents(cents(net * 1.08875) + tip);
             const num = "FL-" + Math.floor(2000 + Math.random() * 8000);
-            const order = { num, when: "Today", total, status: "preparing", pickup,
+            // pickup is { label, at } from the time picker; `at` is a real Date.
+            const order = { num, when: "Today", total, status: "preparing",
+              pickup: pickup.label, readyAt: pickup.at.toISOString(), tip,
               reward: appliedVoucher ? { name: appliedVoucher.name, code: appliedVoucher.code, amount: discount } : null,
               lines: cart.map((l) => ({ ...l })) };
             setActive(order);
@@ -253,19 +296,29 @@ export default function App() {
       {toast && <div className="toast"><Check size={16} /> {toast}</div>}
 
       {view !== "track" && (
-        <nav className="tabbar">
-          <button className={`tab ${view === "menu" ? "on" : ""}`} onClick={() => setView("menu")}>
-            <Home size={20} /> Menu
+        <nav className="tabbar" aria-label="Main">
+          <button className={`tab ${view === "menu" ? "on" : ""}`} onClick={() => setView("menu")}
+            aria-current={view === "menu" ? "page" : undefined}>
+            <Home size={20} aria-hidden="true" /> Menu
           </button>
-          <button className={`tab ${view === "rewards" ? "on" : ""}`} onClick={() => setView("rewards")}>
-            {account ? <Award size={20} /> : <User size={20} />} {account ? "Rewards" : "Sign in"}
+          <button className={`tab ${view === "rewards" ? "on" : ""}`} onClick={() => setView("rewards")}
+            aria-current={view === "rewards" ? "page" : undefined}>
+            {account ? <Award size={20} aria-hidden="true" /> : <User size={20} aria-hidden="true" />}
+            {account ? "Rewards" : "Sign in"}
           </button>
-          <button className={`tab ${view === "orders" ? "on" : ""}`} onClick={() => setView("orders")}>
-            <Receipt size={20} /> Orders
+          <button className={`tab ${view === "orders" ? "on" : ""}`} onClick={() => setView("orders")}
+            aria-current={view === "orders" ? "page" : undefined}>
+            <Receipt size={20} aria-hidden="true" /> Orders
           </button>
-          <button className={`tab ${view === "cart" ? "on" : ""}`} onClick={() => setView("cart")}>
-            <ShoppingBag size={20} /> Cart
-            {cartCount > 0 && <span className="dot">{cartCount}</span>}
+          <button className={`tab ${view === "cart" ? "on" : ""}`} onClick={() => setView("cart")}
+            aria-current={view === "cart" ? "page" : undefined}
+            aria-label={cartCount > 0
+              ? `Cart, ${cartCount} item${cartCount > 1 ? "s" : ""}`
+              : "Cart, empty"}>
+            <ShoppingBag size={20} aria-hidden="true" /> Cart
+            {cartCount > 0 && (
+              <span className="dot" key={cartCount} aria-hidden="true">{cartCount}</span>
+            )}
           </button>
         </nav>
       )}
@@ -275,6 +328,35 @@ export default function App() {
 
 /* ---------- MENU ---------- */
 function MenuView({ activeCat, scrollToCat, setDetail, catRefs, soldOut, openStaff, flash, quickAdd, search, setSearch, menu }) {
+  const navRef = useRef(null);
+  // Which + button just fired, so it can pop. Cleared by a timer, not onAnimationEnd,
+  // because tapping the same button twice needs the class removed in between.
+  const [popped, setPopped] = useState(null);
+  const popTimer = useRef(null);
+  useEffect(() => () => clearTimeout(popTimer.current), []);
+
+  const pop = (id) => {
+    clearTimeout(popTimer.current);
+    setPopped(null);
+    // next frame, so React actually removes the class before re-adding it
+    requestAnimationFrame(() => {
+      setPopped(id);
+      popTimer.current = setTimeout(() => setPopped(null), 420);
+    });
+  };
+
+  // Keep the highlighted chip on screen as the spy moves it.
+  useEffect(() => {
+    const el = navRef.current?.querySelector(`[data-chip=${JSON.stringify(activeCat)}]`);
+    if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [activeCat]);
+
+  // Adding an item is either one tap (no choices) or opens the sheet.
+  const choose = (it, viaButton) => {
+    if (quickAdd(it)) { if (viaButton) pop(it.id); return; }
+    setDetail(it);
+  };
+
   return (
     <>
       <header className="hdr">
@@ -286,11 +368,11 @@ function MenuView({ activeCat, scrollToCat, setDetail, catRefs, soldOut, openSta
             <div className="wordmark" style={{ fontSize: 42 }}>Flourish</div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
-            <button onClick={openStaff} title="Staff"
+            <button onClick={openStaff} title="Staff" aria-label="Staff: mark items sold out"
               style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid var(--line)",
                 background: "rgba(255,255,255,.75)", color: "var(--muted)", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Lock size={14} />
+              <Lock size={14} aria-hidden="true" />
             </button>
             <span className="badge"><Sparkles size={13} /> Pickup only · no delivery</span>
           </div>
@@ -317,21 +399,25 @@ function MenuView({ activeCat, scrollToCat, setDetail, catRefs, soldOut, openSta
         </div>
       )}
 
-      <div className="cat-nav">
+      <div className="cat-nav" ref={navRef} role="tablist" aria-label="Menu sections">
         {menu.map((c) => (
-          <button key={c.cat} className={`chip ${activeCat === c.cat ? "on" : ""}`} onClick={() => scrollToCat(c.cat)}>
-            {c.cat}
+          <button key={c.cat} data-chip={c.cat} role="tab"
+            aria-selected={activeCat === c.cat}
+            className={`chip ${activeCat === c.cat ? "on" : ""}`}
+            onClick={() => scrollToCat(c.cat)}>
+            {chipLabel(c.cat)}
           </button>
         ))}
       </div>
 
       {menu.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "30px 20px", color: "var(--muted)", fontSize: 14 }}>
-          No dishes matched "{search}". Try another search or clear the filter.
-        </div>
+        <Empty icon={<X size={30} />} title="No items match"
+          text={`Nothing on the menu matches "${search}".`}
+          cta="Clear search" onCta={() => setSearch("")} />
       ) : menu.map((c) => (
-        <section key={c.cat} ref={(el) => (catRefs.current[c.cat] = el)}>
-          <h2 className="sec-title">{c.cat}</h2>
+        <section key={c.cat} data-cat={c.cat} ref={(el) => (catRefs.current[c.cat] = el)}
+          aria-labelledby={`sec-${c.cat.replace(/\W+/g, "-")}`}>
+          <h2 className="sec-title" id={`sec-${c.cat.replace(/\W+/g, "-")}`}>{chipLabel(c.cat)}</h2>
           {c.sub && <div style={{ margin: "-6px 20px 12px", color: "var(--muted)", fontSize: 13 }}>{c.sub}</div>}
           {c.items.map((it) => {
             const sched = it.days && !it.days.includes(DOW);
@@ -340,7 +426,15 @@ function MenuView({ activeCat, scrollToCat, setDetail, catRefs, soldOut, openSta
             const msg = sched ? `${it.name} is available ${daysLabel(it.days).toLowerCase()}` : `${it.name} is sold out today`;
             return (
             <div key={it.id} className="item" style={out ? { opacity: .55 } : undefined}
-              onClick={() => out ? flash(msg) : (quickAdd(it) || setDetail(it))}>
+              role="button" tabIndex={0}
+              aria-disabled={out || undefined}
+              aria-label={`${it.name}${it.desc ? ", " + it.desc : ""}, from ${money(it.lo)}${out ? ", " + badge.toLowerCase() : ""}`}
+              onClick={() => out ? flash(msg) : choose(it)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                out ? flash(msg) : choose(it);
+              }}>
               <div style={{ position: "relative" }}>
                 <Thumb item={it} />
                 {out && <div style={{ position: "absolute", inset: 0, borderRadius: 14, background: "rgba(58,46,69,.35)" }} />}
@@ -348,7 +442,7 @@ function MenuView({ activeCat, scrollToCat, setDetail, catRefs, soldOut, openSta
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 15.5, display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                   {it.name}
-                  {out && <span style={{ fontSize: 10.5, fontWeight: 700, color: sched ? "#7a5bb0" : "#b0455f", background: sched ? "rgba(142,91,196,.16)" : "rgba(232,154,199,.22)", padding: "2px 7px", borderRadius: 999 }}>{badge}</span>}
+                  {out && <span style={{ fontSize: 10.5, fontWeight: 700, color: sched ? "var(--plum-ink)" : "var(--rose-ink)", background: sched ? "rgba(142,91,196,.16)" : "rgba(232,154,199,.22)", padding: "2px 7px", borderRadius: 999 }}>{badge}</span>}
                 </div>
                 {it.desc && <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 2, lineHeight: 1.35 }}>{it.desc}</div>}
                 <div className="price" style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -356,23 +450,25 @@ function MenuView({ activeCat, scrollToCat, setDetail, catRefs, soldOut, openSta
                     {it.lo === it.hi ? money(it.lo) : <>{money(it.lo)} <span style={{ color: "var(--muted)", fontWeight: 600 }}>–</span> {money(it.hi)}</>}
                   </span>
                   {UE[it.id] > it.lo && (
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#1f8f83", background: "rgba(47,182,168,.14)",
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--teal-ink)", background: "rgba(47,182,168,.14)",
                       padding: "2px 7px", borderRadius: 999, letterSpacing: .2 }}>
                       SAVE {money(UE[it.id] - it.lo)}
                     </span>
                   )}
                 </div>
               </div>
-              <button className="addbtn" disabled={out} style={out ? { background: "var(--line)", boxShadow: "none", cursor: "not-allowed" } : undefined}
-                onClick={(e) => { e.stopPropagation(); out ? flash(msg) : quickAdd(it) ? null : setDetail(it); }}>
-                <Plus size={18} />
+              <button className={`addbtn${popped === it.id ? " pop" : ""}`} disabled={out}
+                style={out ? { background: "var(--line)", boxShadow: "none", cursor: "not-allowed" } : undefined}
+                aria-label={hasChoices(it) ? `Choose options for ${it.name}` : `Add ${it.name} to cart`}
+                onClick={(e) => { e.stopPropagation(); out ? flash(msg) : choose(it, true); }}>
+                <Plus size={18} aria-hidden="true" />
               </button>
             </div>
           );})}
         </section>
       ))}
       <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 11.5, padding: "8px 30px 20px", lineHeight: 1.5 }}>
-        Open daily 9AM–10PM. Pickup only at 4035 Laconia Ave. No delivery, no service fees.
+        {HOURS_LINE}. Pickup only at 4035 Laconia Ave. No delivery, no service fees.
       </div>
     </>
   );
@@ -420,17 +516,23 @@ function ItemSheet({ item, onClose, onAdd }) {
   const ue = UE[item.id];
   const saves = ue && unit < ue ? cents(ue - unit) : 0;
 
+  const sheetRef = useSheet(onClose);
+
   return (
-    <div className="sheet-wrap" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-wrap">
+      <div className="scrim" onClick={onClose} />
+      <div className="sheet" ref={sheetRef} tabIndex={-1}
+        role="dialog" aria-modal="true" aria-labelledby="sheet-title">
         <div className="sheet-head">
           <div style={{ minWidth: 0 }}>
-            <h2 className="serif" style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{item.name}</h2>
+            <h2 className="serif" id="sheet-title" style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{item.name}</h2>
             <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 2 }}>
               {sideG ? "Comes with two sides" : CAT_OF[item.id]}
             </div>
           </div>
-          <button className="x-btn" onClick={onClose}><X size={18} /></button>
+          <button className="x-btn" onClick={onClose} aria-label={`Close ${item.name} options`}>
+            <X size={18} aria-hidden="true" />
+          </button>
         </div>
 
         <div className="sheet-body">
@@ -473,7 +575,7 @@ function ItemSheet({ item, onClose, onAdd }) {
           {saves > 0 && (
             <div style={{ display: "flex", gap: 9, alignItems: "center", padding: "11px 13px", borderRadius: 13,
               background: "rgba(47,182,168,.10)", marginTop: 4 }}>
-              <Sparkles size={16} color="#1f8f83" style={{ flex: "0 0 auto" }} />
+              <Sparkles size={16} color="var(--teal-ink)" style={{ flex: "0 0 auto" }} />
               <div style={{ fontSize: 12.5, lineHeight: 1.4 }}>
                 <strong>{money(saves)} cheaper</strong> than ordering this on Uber Eats
               </div>
@@ -506,32 +608,34 @@ function ItemSheet({ item, onClose, onAdd }) {
 /* ---------- STAFF: KITCHEN / 86 CONTROL ---------- */
 function StaffSheet({ soldOut, toggleSold, onClose }) {
   const outCount = soldOut.size;
+  const sheetRef = useSheet(onClose);
   return (
     <div className="sheet-wrap">
       <div className="scrim" onClick={onClose} />
-      <div className="sheet">
-        <div style={{ padding: "20px 18px 8px", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+      <div className="sheet" ref={sheetRef} tabIndex={-1}
+        role="dialog" aria-modal="true" aria-labelledby="staff-title">
+        <div className="sheet-head">
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Lock size={16} color="var(--orchid)" />
-              <h3 className="serif" style={{ fontWeight: 700, fontSize: 22, margin: 0 }}>Kitchen</h3>
+              <Lock size={16} color="var(--orchid-ink)" aria-hidden="true" />
+              <h3 className="serif" id="staff-title" style={{ fontWeight: 700, fontSize: 22, margin: 0 }}>Kitchen</h3>
             </div>
             <p style={{ color: "var(--muted)", fontSize: 13, margin: "6px 0 0" }}>
               Flip an item off and it disappears from the customer app instantly. Flip it back on when you restock.
             </p>
           </div>
-          <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: 0, background: "var(--paper)", cursor: "pointer", flex: "0 0 auto" }}>
-            <X size={18} />
+          <button className="x-btn" onClick={onClose} aria-label="Close kitchen controls">
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
 
-        <div style={{ margin: "10px 18px 4px", padding: "10px 14px", borderRadius: 12,
+        <div style={{ margin: "10px 18px 4px", padding: "10px 14px", borderRadius: 12, flex: "0 0 auto",
           background: outCount ? "rgba(232,154,199,.14)" : "rgba(127,185,62,.12)",
-          color: outCount ? "#b0455f" : "#4f7d1e", fontSize: 13, fontWeight: 600 }}>
+          color: outCount ? "var(--rose-ink)" : "var(--leaf-ink)", fontSize: 13, fontWeight: 600 }}>
           {outCount ? `${outCount} item${outCount > 1 ? "s" : ""} marked sold out today` : "Everything in stock"}
         </div>
 
-        <div style={{ padding: "6px 14px 24px" }}>
+        <div className="sheet-body" style={{ padding: "6px 14px 24px" }}>
           {MENU.map((c) => (
             <div key={c.cat} style={{ marginTop: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: .5, margin: "4px 6px 8px" }}>{c.cat}</div>
@@ -539,19 +643,25 @@ function StaffSheet({ soldOut, toggleSold, onClose }) {
                 const out = soldOut.has(it.id);
                 return (
                   <div key={it.id} onClick={() => toggleSold(it.id)}
+                    role="switch" aria-checked={!out} tabIndex={0}
+                    aria-label={`${it.name}, ${out ? "sold out" : "in stock"}`}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      e.preventDefault(); toggleSold(it.id);
+                    }}
                     style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px",
                       border: "1px solid var(--line)", borderRadius: 14, marginBottom: 8, cursor: "pointer",
                       background: out ? "rgba(58,46,69,.03)" : "#fff" }}>
                     <span style={{ fontWeight: 600, fontSize: 14.5, color: out ? "var(--muted)" : "var(--ink)", textDecoration: out ? "line-through" : "none", display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                       {it.name}
-                      {it.days && <span style={{ fontSize: 10, fontWeight: 700, color: "#7a5bb0", background: "rgba(142,91,196,.14)", padding: "2px 6px", borderRadius: 999 }}>{daysLabel(it.days).toUpperCase()}</span>}
+                      {it.days && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--plum-ink)", background: "rgba(142,91,196,.14)", padding: "2px 6px", borderRadius: 999 }}>{daysLabel(it.days).toUpperCase()}</span>}
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: out ? "#b0455f" : "var(--leaf)" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: out ? "var(--rose-ink)" : "var(--leaf-ink)" }}>
                         {out ? "Sold out" : "In stock"}
                       </span>
                       <span style={{ width: 46, height: 27, borderRadius: 999, padding: 3, transition: "background .2s",
-                        background: out ? "#E0879F" : "var(--leaf)", display: "flex", justifyContent: out ? "flex-start" : "flex-end" }}>
+                        background: out ? "#E0879F" : "var(--leaf-ink)", display: "flex", justifyContent: out ? "flex-start" : "flex-end" }}>
                         <span style={{ width: 21, height: 21, borderRadius: 999, background: "#fff" }} />
                       </span>
                     </span>
@@ -600,19 +710,19 @@ function CartView({ cart, subtotal, saved, account, setQty, removeLine, setView,
             <div className="rowline"><span style={{ color: "var(--muted)" }}>Subtotal</span><span style={{ fontWeight: 700 }}>{money(subtotal)}</span></div>
             {discount > 0 && (
               <div className="rowline">
-                <span style={{ color: "var(--leaf)", fontWeight: 600 }}>{appliedVoucher.name}</span>
-                <span style={{ color: "var(--leaf)", fontWeight: 700 }}>−{money(discount)}</span>
+                <span style={{ color: "var(--leaf-ink)", fontWeight: 600 }}>{appliedVoucher.name}</span>
+                <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>−{money(discount)}</span>
               </div>
             )}
             {account && (
               <div className="rowline"><span style={{ color: "var(--muted)" }}>You'll earn</span>
-                <span style={{ color: "var(--leaf)", fontWeight: 700 }}>+{Math.round(subtotal)} pts</span></div>
+                <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>+{Math.round(subtotal)} pts</span></div>
             )}
           </div>
           {saved > 0 && (
             <div style={{ display: "flex", gap: 9, alignItems: "center", padding: "12px 14px", borderRadius: 14,
               background: "rgba(47,182,168,.10)", marginTop: 12 }}>
-              <Sparkles size={16} color="#1f8f83" style={{ flex: "0 0 auto" }} />
+              <Sparkles size={16} color="var(--teal-ink)" style={{ flex: "0 0 auto" }} />
               <div style={{ fontSize: 13, lineHeight: 1.4 }}>
                 You're saving <strong>{money(saved)}</strong> ordering direct
                 <div style={{ color: "var(--muted)", fontSize: 11.5 }}>Same food. No app markup.</div>
@@ -629,7 +739,7 @@ function CartView({ cart, subtotal, saved, account, setQty, removeLine, setView,
                 return (
                   <div key={v.code} className="card" style={{ padding: 13, marginBottom: 9, display: "flex", gap: 11,
                     alignItems: "center", border: on ? "1px solid var(--leaf)" : "1px dashed var(--line)" }}>
-                    <Ticket size={19} color={on ? "#1f8f83" : "var(--muted)"} style={{ flex: "0 0 auto" }} />
+                    <Ticket size={19} color={on ? "var(--teal-ink)" : "var(--muted)"} style={{ flex: "0 0 auto" }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 14 }}>{v.name}</div>
                       <div style={{ color: "var(--muted)", fontSize: 12 }}>
@@ -666,7 +776,13 @@ function CheckoutView({ subtotal, points, account, goJoin, discount = 0, applied
   const tip = cents(subtotal * tips[tipIdx]);   // tip on pre-discount value
   const tax = cents(base * 0.08875);
   const total = cents(base + tax + tip);
+  // Bridged to the real slot picker in the next step; onPay already takes { label, at }.
   const times = ["ASAP", "15 min", "30 min", "45 min", "1 hour"];
+  const TIME_OFFSETS = { "ASAP": 15, "15 min": 15, "30 min": 30, "45 min": 45, "1 hour": 60 };
+  const pickupChoice = () => ({
+    label: pickup,
+    at: new Date(Date.now() + TIME_OFFSETS[pickup] * 60_000),
+  });
   const ready = name.trim() && phone.replace(/\D/g, "").length >= 10;
 
   return (
@@ -675,7 +791,7 @@ function CheckoutView({ subtotal, points, account, goJoin, discount = 0, applied
       <div style={{ padding: "4px 16px 24px" }}>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "12px 14px", borderRadius: 14,
           background: "rgba(47,182,168,.10)", marginTop: 4 }}>
-          <MapPin size={17} color="#1f8f83" style={{ flex: "0 0 auto", marginTop: 1 }} />
+          <MapPin size={17} color="var(--teal-ink)" style={{ flex: "0 0 auto", marginTop: 1 }} />
           <div style={{ fontSize: 13, lineHeight: 1.4 }}>
             <strong>Pickup only</strong><br />
             <span style={{ color: "var(--muted)" }}>4035 Laconia Ave, Bronx, NY 10466</span>
@@ -683,8 +799,10 @@ function CheckoutView({ subtotal, points, account, goJoin, discount = 0, applied
         </div>
 
         <Section title="Pickup details">
-          <input className="field" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 10 }} />
-          <input className="field" placeholder="Phone (for your ready text)" value={phone}
+          <input className="field" placeholder="Name" aria-label="Name" autoComplete="name"
+            value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 10 }} />
+          <input className="field" placeholder="Phone (for your ready text)" aria-label="Phone number"
+            autoComplete="tel" value={phone}
             onChange={(e) => setPhone(e.target.value)} inputMode="tel" />
         </Section>
 
@@ -709,8 +827,8 @@ function CheckoutView({ subtotal, points, account, goJoin, discount = 0, applied
           <div className="rowline"><span style={{ color: "var(--muted)" }}>Subtotal</span><span>{money(subtotal)}</span></div>
           {discount > 0 && (
             <div className="rowline">
-              <span style={{ color: "var(--leaf)", fontWeight: 600 }}>{appliedVoucher.name}</span>
-              <span style={{ color: "var(--leaf)", fontWeight: 700 }}>−{money(discount)}</span>
+              <span style={{ color: "var(--leaf-ink)", fontWeight: 600 }}>{appliedVoucher.name}</span>
+              <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>−{money(discount)}</span>
             </div>
           )}
           <div className="rowline"><span style={{ color: "var(--muted)" }}>Tax</span><span>{money(tax)}</span></div>
@@ -720,7 +838,7 @@ function CheckoutView({ subtotal, points, account, goJoin, discount = 0, applied
           {account && (
             <div className="rowline" style={{ marginTop: 4 }}>
               <span style={{ color: "var(--muted)" }}>You'll earn</span>
-              <span style={{ color: "var(--leaf)", fontWeight: 700 }}>+{Math.round(subtotal)} pts</span>
+              <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>+{Math.round(subtotal)} pts</span>
             </div>
           )}
         </div>
@@ -729,7 +847,7 @@ function CheckoutView({ subtotal, points, account, goJoin, discount = 0, applied
           <button className="card" onClick={goJoin}
             style={{ padding: 14, marginTop: 12, width: "100%", display: "flex", gap: 11, alignItems: "center",
               textAlign: "left", border: "1px dashed var(--leaf)", cursor: "pointer", font: "inherit" }}>
-            <Award size={20} color="#1f8f83" style={{ flex: "0 0 auto" }} />
+            <Award size={20} color="var(--teal-ink)" style={{ flex: "0 0 auto" }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>Earn {Math.round(subtotal)} points on this order</div>
               <div style={{ color: "var(--muted)", fontSize: 12 }}>Join free. Takes a few seconds.</div>
@@ -743,7 +861,7 @@ function CheckoutView({ subtotal, points, account, goJoin, discount = 0, applied
           Pay with Apple Pay, Google Pay, or card at checkout
         </div>
 
-        <button className="pill-btn" disabled={!ready} onClick={() => onPay(pickup, tip)}>
+        <button className="pill-btn" disabled={!ready} onClick={() => onPay(pickupChoice(), tip)}>
           {ready ? `Pay ${money(total)}` : "Enter name & phone"}
         </button>
         <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 11, marginTop: 10 }}>
@@ -754,7 +872,9 @@ function CheckoutView({ subtotal, points, account, goJoin, discount = 0, applied
   );
 }
 
-/* ---------- ORDER TRACKING ---------- */
+/* ---------- ORDER CONFIRMATION + TRACKING ---------- */
+/* Everything a customer needs after paying, without leaving the screen:
+   what they ordered, when it's ready, where to go, and how to call. */
 function TrackView({ order, setView }) {
   const steps = ["Order received", "In the kitchen", "Ready for pickup"];
   const [stage, setStage] = useState(0);
@@ -763,52 +883,111 @@ function TrackView({ order, setView }) {
     const t2 = setTimeout(() => setStage(2), 6000);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
+
+  const readyAt = order.readyAt ? new Date(order.readyAt) : null;
+  const itemCount = order.lines.reduce((n, l) => n + l.qty, 0);
+
   return (
     <>
       <header className="hdr" style={{ paddingBottom: 20 }}>
         <Hummingbird style={{ top: 6, right: -4 }} size={50} flip />
-        <button onClick={() => setView("menu")} style={{ background: "none", border: 0, color: "var(--orchid)", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
-          <ChevronLeft size={18} /> Done
+        <button onClick={() => setView("menu")} className="linkback" aria-label="Done, back to menu">
+          <ChevronLeft size={18} aria-hidden="true" /> Done
         </button>
-        <div className="wordmark" style={{ fontSize: 32 }}>Thank you</div>
-        <div style={{ color: "var(--muted)", fontWeight: 600, marginTop: 2 }}>Order {order.num}</div>
+        <div className="confirm-tick" aria-hidden="true"><Check size={26} strokeWidth={3} /></div>
+        <div className="wordmark" style={{ fontSize: 34 }}>Order confirmed</div>
+        <div style={{ color: "var(--muted)", fontWeight: 600, marginTop: 4, fontSize: 14 }}>
+          Order <strong style={{ color: "var(--ink)" }}>{order.num}</strong> · {itemCount} item{itemCount > 1 ? "s" : ""}
+        </div>
       </header>
 
       <div style={{ padding: 20 }}>
-        <div className="card" style={{ padding: 20 }}>
+        {/* ready time */}
+        <div className="card ready-card" style={{ padding: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Clock size={22} color="var(--orchid-ink)" style={{ flex: "0 0 auto" }} aria-hidden="true" />
+            <div>
+              <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600 }}>Estimated ready time</div>
+              <div className="serif" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>
+                {readyAt ? formatTime(readyAt) : "~15 min"}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>
+                {order.pickup === "ASAP" ? "About 15 minutes from now" : `Scheduled pickup · ${order.pickup}`}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* live status */}
+        <div className="card" style={{ padding: 20, marginTop: 14 }}>
           {steps.map((s, i) => (
             <div key={s} style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 0" }}>
-              <span className={`status-dot ${i <= stage ? "on" : ""}`} />
+              <span className={`status-dot ${i <= stage ? "on" : ""}`} aria-hidden="true" />
               <span style={{ fontWeight: i === stage ? 700 : 500, color: i <= stage ? "var(--ink)" : "var(--muted)" }}>{s}</span>
               {i === 2 && stage === 2 && <span className="badge" style={{ marginLeft: "auto" }}>Ready now</span>}
             </div>
           ))}
           <div style={{ borderTop: "1px solid var(--line)", margin: "12px 0" }} />
-          <div style={{ color: "var(--muted)", fontSize: 13 }}>
-            {stage < 2 ? `Pickup: ${order.pickup} · we'll text you when it's ready.` : "Come grab it at 4035 Laconia Ave 🌺"}
+          <div style={{ color: "var(--muted)", fontSize: 13 }} aria-live="polite">
+            {stage < 2 ? "We'll text you the moment it's ready." : "Come grab it at 4035 Laconia Ave 🌺"}
           </div>
         </div>
 
-        <div className="card" style={{ padding: 16, marginTop: 14 }}>
+        {/* what they ordered — notes included, this is the kitchen ticket */}
+        <h3 className="serif" style={{ fontWeight: 700, fontSize: 17, margin: "22px 4px 10px" }}>Your order</h3>
+        <div className="card" style={{ padding: 16 }}>
           {order.lines.map((l, i) => (
-            <div key={i} className="rowline">
-              <span>{l.qty}× {l.name}{l.meta ? ` · ${l.meta}` : ""}</span>
-              <span style={{ fontWeight: 600 }}>{money(l.price * l.qty)}</span>
+            <div key={i} style={{ padding: "7px 0" }}>
+              <div className="rowline" style={{ padding: 0 }}>
+                <span style={{ fontWeight: 600 }}>{l.qty}× {l.name}</span>
+                <span style={{ fontWeight: 600 }}>{money(l.price * l.qty)}</span>
+              </div>
+              {l.meta && <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 2 }}>{l.meta}</div>}
+              {l.note && <div className="note-chip" style={{ marginTop: 5 }}>Note: {l.note}</div>}
             </div>
           ))}
+          {order.reward && (
+            <div className="rowline">
+              <span style={{ color: "var(--leaf-ink)", fontWeight: 600 }}>{order.reward.name}</span>
+              <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>−{money(order.reward.amount)}</span>
+            </div>
+          )}
           <div style={{ borderTop: "1px solid var(--line)", margin: "8px 0" }} />
           <div className="rowline" style={{ fontWeight: 700 }}><span>Total paid</span><span>{money(order.total)}</span></div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-          <a href="tel:+13478599413" className="pill-btn ghost" style={{ textDecoration: "none", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <Phone size={16} /> Call
-          </a>
-          <a href="https://www.google.com/maps/search/?api=1&query=4035+Laconia+Ave+Bronx+NY+10466" target="_blank" rel="noreferrer"
-            className="pill-btn" style={{ textDecoration: "none", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <Navigation size={16} /> Directions
-          </a>
+        {/* where to go */}
+        <h3 className="serif" style={{ fontWeight: 700, fontSize: 17, margin: "22px 4px 10px" }}>Pickup</h3>
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
+            <MapPin size={18} color="var(--teal-ink)" style={{ flex: "0 0 auto", marginTop: 2 }} aria-hidden="true" />
+            <div style={{ fontSize: 14, lineHeight: 1.45 }}>
+              <div style={{ fontWeight: 700 }}>Flourish BX</div>
+              <div style={{ color: "var(--muted)" }}>4035 Laconia Ave<br />Bronx, NY 10466</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 11, alignItems: "center", marginTop: 12 }}>
+            <Phone size={18} color="var(--teal-ink)" style={{ flex: "0 0 auto" }} aria-hidden="true" />
+            <a href={`tel:${PHONE_E164}`} style={{ fontSize: 14, fontWeight: 600, color: "var(--orchid-ink)" }}>
+              {PHONE_HUMAN}
+            </a>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            <a href={`tel:${PHONE_E164}`} className="pill-btn ghost linkbtn"
+              aria-label={`Call the restaurant at ${PHONE_HUMAN}`}>
+              <Phone size={16} aria-hidden="true" /> Call restaurant
+            </a>
+            <a href={MAPS_URL} target="_blank" rel="noreferrer" className="pill-btn linkbtn"
+              aria-label="Open 4035 Laconia Avenue in Google Maps">
+              <Navigation size={16} aria-hidden="true" /> Directions
+            </a>
+          </div>
         </div>
+
+        <button className="pill-btn ghost" style={{ marginTop: 16 }} onClick={() => setView("menu")}>
+          Back to menu
+        </button>
       </div>
     </>
   );
@@ -897,7 +1076,7 @@ function RewardsView({ account, points, vouchers, orders, redeem, signOut, onReo
         </div>
         <div className="card" style={{ padding: 16, marginBottom: 18, borderRadius: 22, border: "1px solid var(--line)", background: "#fff" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <Gift size={20} color="#7FB93E" />
+            <Gift size={20} color="var(--leaf-ink)" />
             <div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>Refer a friend</div>
               <div style={{ color: "var(--muted)", fontSize: 13 }}>Share a code and both of you earn rewards on your next pickup.</div>
@@ -927,7 +1106,7 @@ function RewardsView({ account, points, vouchers, orders, redeem, signOut, onReo
             {vouchers.map((v) => (
               <div key={v.code} className="card" style={{ padding: 14, marginBottom: 10, display: "flex", gap: 12,
                 alignItems: "center", border: "1px dashed var(--leaf)" }}>
-                <Ticket size={20} color="#1f8f83" style={{ flex: "0 0 auto" }} />
+                <Ticket size={20} color="var(--teal-ink)" style={{ flex: "0 0 auto" }} />
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 14.5 }}>{v.name}</div>
                   <div style={{ color: "var(--muted)", fontSize: 12 }}>Show code <strong>{v.code}</strong> at pickup</div>
@@ -1015,7 +1194,7 @@ function OrdersView({ orders, onReorder }) {
                 <div style={{ fontWeight: 700 }}>{o.num}</div>
                 <div style={{ color: "var(--muted)", fontSize: 12.5 }}>{o.when} · {money(o.total)}</div>
               </div>
-              <span className="badge" style={o.status !== "done" ? {} : { background: "rgba(142,91,196,.1)", color: "var(--orchid)" }}>
+              <span className="badge" style={o.status !== "done" ? {} : { background: "rgba(142,91,196,.1)", color: "var(--orchid-ink)" }}>
                 {o.status === "preparing" ? "Preparing" : "Completed"}
               </span>
             </div>
@@ -1033,12 +1212,44 @@ function OrdersView({ orders, onReorder }) {
 }
 
 /* ---------- SHARED ---------- */
+/* Modal plumbing shared by the item sheet and the staff sheet: Escape closes,
+   focus moves into the sheet on open and back to where it was on close, and
+   Tab is kept inside while it's up. */
+function useSheet(onClose) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const opener = document.activeElement;
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
+      if (e.key !== "Tab") return;
+      const f = ref.current?.querySelectorAll(
+        'button:not([disabled]), a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!f?.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    // Don't steal focus onto the close button — put it on the sheet itself.
+    ref.current?.focus?.({ preventScroll: true });
+    const { overflow } = document.body.style;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+      if (opener instanceof HTMLElement) opener.focus?.({ preventScroll: true });
+    };
+  }, [onClose]);
+  return ref;
+}
+
 function SubHeader({ title, onBack }) {
   return (
     <header className="hdr" style={{ paddingBottom: 18 }}>
       <Hummingbird style={{ top: 4, right: -6 }} size={46} flip />
       {onBack && (
-        <button onClick={onBack} style={{ background: "none", border: 0, color: "var(--orchid)", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 3, marginBottom: 6, padding: 0 }}>
+        <button onClick={onBack} style={{ background: "none", border: 0, color: "var(--orchid-ink)", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 3, marginBottom: 6, padding: 0 }}>
           <ChevronLeft size={18} /> Back
         </button>
       )}

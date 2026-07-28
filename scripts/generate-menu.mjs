@@ -20,7 +20,7 @@ import * as XLSX from "xlsx";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(__dirname, "../src/data/menu.data.js");
 
-const KEEP_CATEGORIES = new Set(["Lunch & Dinner", "Breakfast", "Seafood Fridays"]);
+const KEEP_CATEGORIES = new Set(["Lunch & Dinner", "Breakfast", "Seafood Fridays", "Drinks"]);
 const SKIP_ITEMS = new Set(["Gift card", "Boil Food"]); // no price set in Clover
 const SIDE_GROUP = "Side With Meal";
 
@@ -58,12 +58,78 @@ const EMOJI = {
   "Pepper Shrimp & Mussels": "🦐", "Lobster Roll & Fries": "🦞",
 };
 
-const CATEGORY_ORDER = ["Lunch & Dinner", "Seafood Fridays", "Breakfast"];
+const CATEGORY_ORDER = ["Lunch & Dinner", "Seafood Fridays", "Breakfast", "Drinks"];
 const CATEGORY_SUB = {
   "Lunch & Dinner": "Plates come with two sides",
   "Seafood Fridays": "Fridays only",
   "Breakfast": "Morning menu",
+  "Drinks": "Refreshing beverages",
 };
+
+// Categories only sold on certain days. 0=Sun ... 6=Sat.
+// The app greys the item out and says when it's back.
+const CATEGORY_DAYS = { "Seafood Fridays": [5] };
+
+// One line of menu copy per item, keyed by Clover id — ids rather than names
+// because "Blue Crab" is two different items at two different prices.
+// Clover has no description field in the export, so this map is the source of
+// truth. Adding an item to Clover without adding it here just means no
+// description on the row; nothing breaks.
+const DESC = {
+  "598S0BJH4J7DE": "Crab legs and shrimp with two sides",
+  "VGZYVZCB2NCRY": "Whole lobster with two sides",
+  "PZ1FB6X44MGYE": "The house plate. Ask what's on it today.",
+  "21RNMJ880YCMC": "Crab legs and shrimp, no sides",
+  "7916EWVQFPGH8": "Slow-braised lamb with two sides",
+  "VQZ0T4XK707EC": "Brown stew, escovitch, or steamed",
+  "ZTAQ37M4E9S4C": "Red peas simmered in coconut milk",
+  "32VDQ4G5J131P": "Stew peas loaded with seafood",
+  "60KCQ1V22Q98M": "Slow-cooked, fall-off-the-bone tender",
+  "JAD3BJK9BSTW8": "Plain, chicken, shrimp, steak, or oxtail",
+  "PEB98GZ1MBF6P": "Lobster tail on its own, no sides",
+  "H9520PFNBT2NY": "Honey garlic, jerk, sweet chili, grilled, or steamed",
+  "AYBW9QMTC6154": "Ackee and shrimp with two sides",
+  "VHHCS7EDV70HC": "Sweet chili, garlic, curried, pepper, grilled, or fried",
+  "8FW3GVMJKCGZG": "Stew or jerk, medium or large",
+  "PSGB77QNZR2WM": "Blue crab with two sides",
+  "QB9EKT4QGVWDA": "Shrimp over waffles, six flavors to pick from",
+  "K7EX5APPAXPEJ": "Lobster roll with a side of fries",
+  "C2RD25C1VXNN0": "Made to order. Pick your sauce.",
+  "NH99VMKKGJ572": "Baked in island seasoning, with two sides",
+  "NEAR47KAE44HC": "Tender island-style curry goat",
+  "433FBT50JEVY8": "Pork ribs with two sides",
+  "PH221AJ7W66EA": "Pepper shrimp and mussels, plenty of heat",
+  "QFNQ2XQB8SPN6": "Fried to order, medium or large",
+  "YQH6NFFB34SVM": "BBQ chicken with two sides",
+  "SJGN0N254K8KE": "Jerk chicken with two sides",
+  "1PBGJ1BWC3Z52": "Fried chicken over waffles, six flavors",
+  "VTKZ1S1K3GPK8": "Chicken braised down in brown stew gravy",
+  "9WV3BMMSC8G5E": "Chicken, goat, or seafood",
+  "6NX7XK602V0ZM": "One side on its own",
+  "S0GK9MD2NE414": "One piece of salmon, no sides",
+  "DH0P3NGRN9RNE": "Blue crab on its own, no sides",
+  "49BD3KVSBHXRR": "Curry chicken, medium or large",
+  "KW21XBQ6XVTGA": "Smaller plates at lunch prices",
+  "QDCGERYM91BP0": "Flaky crust, seasoned beef",
+  "Y79KKCYGMHRB6": "Flaky crust, seasoned chicken",
+  "BRMP82TR0Z45C": "Crab legs with shrimp and two sides",
+  "A1YZ2ZD5CA1SW": "Lobster with shrimp and two sides",
+  "06Z80836S0GZR": "Fish with shrimp and two sides",
+  "CAFAH5FKPTRW8": "Shrimp with two sides",
+  "0NQ5E11VABFDY": "Salmon with shrimp and two sides",
+  "EWT1J5Q9K7KX0": "Mango, pina colada, or mixed",
+  "D7MBX5PWRCGCE": "Sodas, juices, and coconut water",
+};
+
+// The six on the website's "What We're Known For", in that order.
+const POPULAR_IDS = [
+  "60KCQ1V22Q98M", // Oxtail
+  "SJGN0N254K8KE", // Jerk Chicken
+  "C2RD25C1VXNN0", // Wings
+  "H9520PFNBT2NY", // Salmon — honey garlic
+  "QFNQ2XQB8SPN6", // Fried Chicken
+  "VHHCS7EDV70HC", // Shrimp — sweet chilli
+];
 
 const src = process.argv[2];
 if (!src) {
@@ -178,12 +244,16 @@ let js = `// GENERATED FROM THE CLOVER INVENTORY EXPORT — do not hand-edit pri
 export const MENU = [
 `;
 for (const cat of CATEGORY_ORDER) {
+  // A category with nothing in it would render as a dead chip in the app.
+  if (!byCat.get(cat).length) continue;
   js += `  { cat: ${q(cat)}, sub: ${q(CATEGORY_SUB[cat])}, items: [\n`;
   for (const i of byCat.get(cat)) {
     const gs = i.groups
       .map((g) => `\n        { gid: ${q(g.gid)}, name: ${q(g.name)}, kind: ${q(g.kind)}, mods: [${g.mods.map(modStr).join(", ")}] }`)
       .join(",");
-    js += `    { id: ${q(i.id)}, name: ${q(i.name)}, emoji: ${q(EMOJI[i.name] ?? "🍽️")}, base: ${i.base}, lo: ${i.lo}, hi: ${i.hi}, groups: [${gs}\n      ] },\n`;
+    const desc = DESC[i.id] ? `, desc: ${q(DESC[i.id])}` : "";
+    const days = CATEGORY_DAYS[cat] ? `, days: ${JSON.stringify(CATEGORY_DAYS[cat])}` : "";
+    js += `    { id: ${q(i.id)}, name: ${q(i.name)}, emoji: ${q(EMOJI[i.name] ?? "🍽️")}${desc}${days}, base: ${i.base}, lo: ${i.lo}, hi: ${i.hi}, groups: [${gs}\n      ] },\n`;
   }
   js += `  ]},\n`;
 }
@@ -194,6 +264,10 @@ export const UE = ${JSON.stringify(UE, null, 2)};
 // Used for reward eligibility
 export const DRINK_ID = "D7MBX5PWRCGCE";
 export const SIDE_ID  = "6NX7XK602V0ZM";
+
+// The six on the website's "What We're Known For". The Popular section in the
+// app renders these same item objects — it does not copy them.
+export const POPULAR_IDS = ${JSON.stringify(POPULAR_IDS, null, 2)};
 
 export const CAT_OF = {};
 export const PLATE_IDS = new Set();   // anything served with two sides
@@ -213,6 +287,14 @@ for (const cat of CATEGORY_ORDER) console.log(`  ${cat}: ${byCat.get(cat).length
 const ids = new Set(out.map((i) => i.id));
 for (const id of Object.keys(UE)) {
   if (!ids.has(id)) console.warn(`  ! UE price set for ${id}, which is not on the menu anymore`);
+}
+for (const id of POPULAR_IDS) {
+  if (!ids.has(id)) console.warn(`  ! Popular item ${id} is not on the menu anymore`);
+}
+const undescribed = out.filter((i) => !DESC[i.id]);
+if (undescribed.length) {
+  console.warn(`\n  ${undescribed.length} item(s) have no description — add them to DESC in this script:`);
+  for (const i of undescribed) console.warn(`    ${i.id}  ${i.name}`);
 }
 
 if (issues.length) {
