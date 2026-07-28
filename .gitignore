@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Native platform folders — regenerate with `npx cap add ios|android`
+ios/
+android/
+
+# Never commit these
+.env
+.env.local
+clover-secrets.json
