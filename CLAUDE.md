@@ -16,7 +16,9 @@ React + Vite, wrapped with Capacitor for iOS/Android.
 `src/data/menu.data.js` is generated from a Clover inventory export and must
 never be hand-edited. If a price looks wrong, it's wrong *in Clover* — fix it
 there and regenerate. Menu copy, Popular ids and day-locks live in maps at the
-top of `scripts/generate-menu.mjs` so a regen keeps them.
+top of `scripts/generate-menu.mjs` so a regen keeps them. Items the kitchen has
+stopped making go in `DELISTED` there, by Clover id — they stay in the Clover
+inventory long after they come off the menu.
 
 ## Architecture
 
@@ -114,7 +116,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 198 tests
+npm test            # 203 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

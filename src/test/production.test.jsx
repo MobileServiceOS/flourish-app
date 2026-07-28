@@ -191,7 +191,7 @@ describe("accessibility", () => {
 
   it("lets an item be added from the keyboard alone", async () => {
     const { user } = await renderApp();
-    const row = screen.getAllByRole("button", { name: /^Beef Patty, .*from \$/ })[0];
+    const row = screen.getAllByRole("button", { name: /^Beef Patty, .*\$3\.00/ })[0];
     row.focus();
     await user.keyboard("{Enter}");
     expect(await screen.findByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();

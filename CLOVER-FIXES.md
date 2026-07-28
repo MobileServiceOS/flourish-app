@@ -9,22 +9,20 @@ Ordered by what they cost you.
 
 ---
 
-## 1. Baked Chicken double-charges — ring test this today
+## 1. Baked Chicken — delisted, still live in Clover
 
 **Where:** Items → Baked Chicken
-**Problem:** The item has a base price of **$15.00** *and* a modifier group ("Baked Chicken")
-containing Medium $15 / Large $18. Clover modifier prices **add** to the item price.
+**Status:** No longer offered. Removed from the app.
 
-| Customer orders | Should ring | Actually rings |
-|---|---|---|
-| Baked Chicken, Medium | $15.00 | **$30.00** |
-| Baked Chicken, Large | $18.00 | **$33.00** |
+It is still sitting in the Clover inventory, and it still has the double-charge bug: a
+base price of **$15.00** *and* a modifier group priced Medium $15 / Large $18, which
+Clover **adds together**. Anyone ringing it up at the register gets **$30.00**.
 
-**Fix:** Set the Baked Chicken item price to **$0.00** and let the modifier group carry the
-price — exactly how Oxtail, Jerk Chicken, and Fried Chicken are already set up.
+**Fix:** Hide or delete the item in Clover. Until then it can still be sold at the counter
+at twice its price, and it will still sync to any delivery platform reading your inventory.
 
-**Why it matters:** Every other sized plate uses base $0. This one is the outlier, which is
-why it slipped through. Worth ringing up a test order to confirm before/after.
+**App behavior meanwhile:** delisted by id in `scripts/generate-menu.mjs`, so it stays off
+the menu even after a fresh export.
 
 ---
 

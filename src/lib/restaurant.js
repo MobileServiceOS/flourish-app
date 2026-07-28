@@ -34,6 +34,28 @@ export const POPULAR = {
   items: POPULAR_IDS.map((id) => ALL_ITEMS.find((it) => it.id === id)).filter(Boolean),
 };
 
+/* A menu row shows "$15 – $18" for anything with more than one price, which
+   does not say what the two numbers are. On nine plates they are simply the
+   medium and the large, and saying so is more useful than a range.
+
+   Only applies when the priced group is exactly Medium and Large. Pork is
+   Medium/Large Stew and Medium/Large Jerk, Soup is medium/large across two
+   proteins, Pasta and Side are lists of different dishes — for those a range
+   is the honest summary, so they keep it.
+
+   Returns { med, lg } or null. Never invents a price: both numbers come
+   straight from the Clover modifier group. */
+export function sizePrices(item) {
+  const group = item.groups?.find((g) => g.kind === "variant");
+  if (!group) return null;
+  const avail = group.mods.filter((m) => !m.oos);
+  if (avail.length !== 2) return null;
+  const [a, b] = avail;
+  if (a.n.trim().toLowerCase() !== "medium") return null;
+  if (b.n.trim().toLowerCase() !== "large") return null;
+  return { med: a.p, lg: b.p };
+}
+
 /* A chip label — Seafood Fridays reads "(Fri)" on the six days it isn't on. */
 export const chipLabel = (cat) =>
   cat === SEAFOOD_CAT && !TODAY_IS_FRIDAY ? `${cat} (Fri)` : cat;

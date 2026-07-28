@@ -98,7 +98,7 @@ npm test          # once
 npm run test:watch
 ```
 
-198 tests. They cover the things that cost money if they break: pickup-slot
+203 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the
@@ -194,8 +194,10 @@ You'll need Xcode and an Apple Developer account to put it on the App Store.
 
 ## What works right now
 
-- Full menu from Clover — 43 items across Lunch & Dinner, Seafood Fridays, Drinks,
+- Full menu from Clover — 42 items across Lunch & Dinner, Seafood Fridays, Drinks,
   each with a one-line description
+- Rows where the two prices are just the two sizes read "Med $20 · Lg $25"
+  rather than a bare range
 - A **Popular** section up top showing the six the shop is known for — the same
   item objects the categories use, not copies
 - Sizes, flavors, and two included sides, priced exactly as Clover prices them

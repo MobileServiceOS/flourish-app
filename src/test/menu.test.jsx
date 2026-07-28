@@ -59,7 +59,8 @@ describe("menu view", () => {
   it("shows exactly the six known-for items in Popular", async () => {
     await renderApp();
     const section = document.querySelector('section[data-cat="Popular"]');
-    const rows = within(section).getAllByRole("button", { name: /from \$/ });
+    // item rows carry a price in their label; the + buttons do not
+    const rows = within(section).getAllByRole("button", { name: /\$\d/ });
     expect(rows).toHaveLength(6);
     expect(section.textContent).toContain("Oxtail");
     expect(section.textContent).toContain("Jerk Chicken");
@@ -129,5 +130,57 @@ describe("search", () => {
     await user.click(within(empty.closest("div").parentElement)
       .getByRole("button", { name: "Clear search" }));
     expect(screen.queryByText("No items match")).not.toBeInTheDocument();
+  });
+});
+
+describe("a price range that is really two sizes says so", () => {
+  it("labels Medium and Large instead of printing a bare range", async () => {
+    await renderApp();
+    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
+    const oxtail = within(lunch).getByRole("button", { name: /^Oxtail,/ });
+
+    expect(oxtail).toHaveAccessibleName(/medium \$20\.00, large \$25\.00/i);
+    expect(oxtail.textContent).toContain("Med");
+    expect(oxtail.textContent).toContain("$20.00");
+    expect(oxtail.textContent).toContain("Lg");
+    expect(oxtail.textContent).toContain("$25.00");
+  });
+
+  it("leaves a genuine range alone when the options are dishes, not sizes", async () => {
+    await renderApp();
+    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
+    // Pork is Medium/Large Stew and Medium/Large Jerk — four options, not two sizes
+    const pork = within(lunch).getByRole("button", { name: /^Pork,/ });
+    expect(pork).toHaveAccessibleName(/\$14\.00 to \$20\.00/);
+    expect(pork.textContent).not.toContain("Med ");
+  });
+
+  it("never invents a price — both figures come from the Clover group", async () => {
+    const { MENU } = await import("../data/menu.data.js");
+    const { sizePrices } = await import("../lib/restaurant.js");
+    for (const it of MENU.flatMap((c) => c.items)) {
+      const s = sizePrices(it);
+      if (!s) continue;
+      const mods = it.groups.find((g) => g.kind === "variant").mods.filter((m) => !m.oos);
+      expect(s.med).toBe(mods[0].p);
+      expect(s.lg).toBe(mods[1].p);
+      expect([it.lo, it.hi]).toEqual([s.med, s.lg]);
+    }
+  });
+
+  it("says nothing about sizes for a single-price item", async () => {
+    const { MENU } = await import("../data/menu.data.js");
+    const { sizePrices } = await import("../lib/restaurant.js");
+    const patty = MENU.flatMap((c) => c.items).find((i) => i.name === "Beef Patty");
+    expect(sizePrices(patty)).toBeNull();
+  });
+});
+
+describe("delisted items", () => {
+  it("no longer offers Baked Chicken", async () => {
+    const { MENU } = await import("../data/menu.data.js");
+    const all = MENU.flatMap((c) => c.items);
+    expect(all.find((i) => i.id === "NH99VMKKGJ572")).toBeUndefined();
+    expect(all.some((i) => /baked chicken/i.test(i.name))).toBe(false);
   });
 });

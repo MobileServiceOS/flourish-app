@@ -22,6 +22,15 @@ const OUT = resolve(__dirname, "../src/data/menu.data.js");
 
 const KEEP_CATEGORIES = new Set(["Lunch & Dinner", "Breakfast", "Seafood Fridays", "Drinks"]);
 const SKIP_ITEMS = new Set(["Gift card", "Boil Food"]); // no price set in Clover
+
+/* Items the kitchen has stopped making, keyed by Clover id. They often stay in
+   the Clover inventory long after they come off the menu, so the export keeps
+   handing them to us. Delisting here rather than by name because names repeat.
+   Their DESC entries are left in place — harmless, and the copy comes back if
+   the dish does. */
+const DELISTED = new Set([
+  "NH99VMKKGJ572",   // Baked Chicken — no longer offered
+]);
 const SIDE_GROUP = "Side With Meal";
 
 // Uber Eats prices, verified by hand. Only used to show what ordering direct saves.
@@ -217,7 +226,7 @@ const out = [];
 
 for (const it of items.values()) {
   const cats = [...it.cats].filter((c) => KEEP_CATEGORIES.has(c));
-  if (!cats.length || SKIP_ITEMS.has(it.name) || it.name.includes("(Catering")) continue;
+  if (!cats.length || SKIP_ITEMS.has(it.name) || DELISTED.has(it.id) || it.name.includes("(Catering")) continue;
 
   const gs = it.groups
     .filter((g) => groups.has(g))

@@ -3,7 +3,7 @@ import { Plus, Star, Clock, MapPin, X, Sparkles, Lock, ChevronRight } from "luci
 import { UE, hasChoices } from "../data/menu.data.js";
 import { money } from "../lib/money.js";
 import { HOURS_LINE } from "../lib/hours.js";
-import { DOW, TODAY_IS_FRIDAY, daysLabel, chipLabel, SEAFOOD_CAT } from "../lib/restaurant.js";
+import { DOW, TODAY_IS_FRIDAY, daysLabel, chipLabel, SEAFOOD_CAT, sizePrices } from "../lib/restaurant.js";
 import { Hummingbird, Thumb, Empty } from "./shared.jsx";
 
 /* ---------- MENU ---------- */
@@ -30,6 +30,16 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
     const el = navRef.current?.querySelector(`[data-chip=${JSON.stringify(activeCat)}]`);
     if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   }, [activeCat]);
+
+  /* What a screen reader hears for a row. Mirrors what is printed: the two
+     sizes when that is what the prices are, otherwise a range. */
+  const priceLabel = (it, outBadge) => {
+    const s = sizePrices(it);
+    const price = it.lo === it.hi ? money(it.lo)
+      : s ? `medium ${money(s.med)}, large ${money(s.lg)}`
+      : `${money(it.lo)} to ${money(it.hi)}`;
+    return [it.name, it.desc, price, outBadge?.toLowerCase()].filter(Boolean).join(", ");
+  };
 
   // Adding an item is either one tap (no choices) or opens the sheet.
   const choose = (it, viaButton) => {
@@ -123,7 +133,7 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
             <div key={it.id} className="item" style={out ? { opacity: .55 } : undefined}
               role="button" tabIndex={0}
               aria-disabled={out || undefined}
-              aria-label={`${it.name}${it.desc ? ", " + it.desc : ""}, from ${money(it.lo)}${out ? ", " + badge.toLowerCase() : ""}`}
+              aria-label={priceLabel(it, out ? badge : null)}
               onClick={() => out ? flash(msg) : choose(it)}
               onKeyDown={(e) => {
                 if (e.key !== "Enter" && e.key !== " ") return;
@@ -142,7 +152,19 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
                 {it.desc && <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 2, lineHeight: 1.35 }}>{it.desc}</div>}
                 <div className="price" style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <span>
-                    {it.lo === it.hi ? money(it.lo) : <>{money(it.lo)} <span style={{ color: "var(--muted)", fontWeight: 600 }}>–</span> {money(it.hi)}</>}
+                    {(() => {
+                      if (it.lo === it.hi) return money(it.lo);
+                      // Where the two prices are just the two sizes, say so.
+                      const s = sizePrices(it);
+                      if (s) return (
+                        <>
+                          <span className="size-tag">Med</span> {money(s.med)}
+                          <span style={{ color: "var(--muted)", fontWeight: 600, margin: "0 6px" }}>·</span>
+                          <span className="size-tag">Lg</span> {money(s.lg)}
+                        </>
+                      );
+                      return <>{money(it.lo)} <span style={{ color: "var(--muted)", fontWeight: 600 }}>–</span> {money(it.hi)}</>;
+                    })()}
                   </span>
                   {UE[it.id] > it.lo && (
                     <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--teal-ink)", background: "rgba(47,182,168,.14)",
