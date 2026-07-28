@@ -39,7 +39,7 @@ export const MENU = [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "32VDQ4G5J131P", name: "Seafood Stew Peas", emoji: "🫘",
-        desc: "Stew peas loaded with seafood", base: 30.0, lo: 30.0, hi: 30.0, groups: [
+        desc: "Stew peas loaded with seafood", days: [5, 6], base: 30.0, lo: 30.0, hi: 30.0, groups: [
       ] },
     { id: "60KCQ1V22Q98M", name: "Oxtail", emoji: "🍖",
         desc: "Slow-cooked, fall-off-the-bone tender", base: 0.0, lo: 20.0, hi: 25.0, groups: [

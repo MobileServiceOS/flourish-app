@@ -70,6 +70,13 @@ const CATEGORY_SUB = {
 // The app greys the item out and says when it's back.
 const CATEGORY_DAYS = { "Seafood Fridays": [5] };
 
+// Individual items only cooked on certain days, keyed by Clover id. Takes
+// precedence over CATEGORY_DAYS. Clover has no concept of a day-limited item,
+// so this map is the only place that knowledge lives.
+const ITEM_DAYS = {
+  "32VDQ4G5J131P": [5, 6],   // Seafood Stew Peas — Fri & Sat only
+};
+
 // One line of menu copy per item, keyed by Clover id — ids rather than names
 // because "Blue Crab" is two different items at two different prices.
 // Clover has no description field in the export, so this map is the source of
@@ -265,7 +272,8 @@ for (const cat of CATEGORY_ORDER) {
       .map((g) => `\n        { gid: ${q(g.gid)}, name: ${q(g.name)}, kind: ${q(g.kind)}, mods: [${g.mods.map(modStr).join(", ")}] }`)
       .join(",");
     const desc = DESC[i.id] ? `, desc: ${q(DESC[i.id])}` : "";
-    const days = CATEGORY_DAYS[cat] ? `, days: ${JSON.stringify(CATEGORY_DAYS[cat])}` : "";
+    const itemDays = ITEM_DAYS[i.id] ?? CATEGORY_DAYS[cat];
+    const days = itemDays ? `, days: ${JSON.stringify(itemDays)}` : "";
     js += `    { id: ${q(i.id)}, name: ${q(i.name)}, emoji: ${q(EMOJI[i.name] ?? "🍽️")}${desc}${days}, base: ${i.base}, lo: ${i.lo}, hi: ${i.hi}, groups: [${gs}\n      ] },\n`;
   }
   js += `  ]},\n`;

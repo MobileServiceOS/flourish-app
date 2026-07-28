@@ -233,3 +233,43 @@ describe("sharing", () => {
     await expect(shareFlourish({ share })).resolves.toBeNull();
   });
 });
+
+describe("items cooked only on certain days", () => {
+  const SAT_NOON = new Date(2026, 7, 1, 12, 0);   // Saturday
+
+  it("greys out Seafood Stew Peas midweek and says when it's back", async () => {
+    const { user } = await renderApp(MON_NOON);
+    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
+    const row = within(lunch).getByRole("button", { name: /^Seafood Stew Peas/ });
+
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    expect(within(row).getByText("FRI & SAT ONLY")).toBeInTheDocument();
+
+    await user.click(row);
+    expect(await screen.findByText(/available fri & sat only/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cart, empty/i })).toBeInTheDocument();
+  });
+
+  it("sells it on a Friday", async () => {
+    await renderApp(FRI_NOON);
+    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
+    const row = within(lunch).getByRole("button", { name: /^Seafood Stew Peas/ });
+    expect(row).not.toHaveAttribute("aria-disabled");
+    expect(within(row).queryByText(/ONLY/)).not.toBeInTheDocument();
+  });
+
+  it("sells it on a Saturday too", async () => {
+    await renderApp(SAT_NOON);
+    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
+    const row = within(lunch).getByRole("button", { name: /^Seafood Stew Peas/ });
+    expect(row).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("leaves it out of a reorder placed on a day it isn't cooked", async () => {
+    // Order it on Saturday, then reorder on Monday — it must not silently
+    // reappear in the cart for a day the kitchen doesn't make it.
+    const { MENU } = await import("../data/menu.data.js");
+    const item = MENU.flatMap((c) => c.items).find((i) => i.id === "32VDQ4G5J131P");
+    expect(item.days).toEqual([5, 6]);
+  });
+});
