@@ -176,24 +176,89 @@ select.field{appearance:none;cursor:pointer;
 .status-dot{width:12px;height:12px;border-radius:999px;background:var(--line);}
 .status-dot.on{background:var(--leaf);box-shadow:0 0 0 4px rgba(127,185,62,.2);}
 .floral{position:absolute;pointer-events:none;opacity:.5;}
-/* Launch screen — up only as long as the saved account takes to read back. */
-.splash{display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding-bottom:0;text-align:center;
+/* ============================================================
+   LAUNCH SCREEN — flowers blooming open
+   Every petal is one SVG path whose transform-origin sits at the centre of the
+   flower, so scaling it from 0 unfurls it outward. Staggered delays do the rest.
+   ============================================================ */
+.splash{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
   background:
-    radial-gradient(120% 60% at 15% 8%, rgba(232,154,199,.34), transparent 55%),
-    radial-gradient(120% 60% at 88% 12%, rgba(142,91,196,.30), transparent 55%),
-    radial-gradient(100% 55% at 55% 100%, rgba(127,185,62,.24), transparent 60%),
-    var(--paper);}
-.splash-mark{font-size:60px;position:relative;z-index:2;animation:markIn .7s cubic-bezier(.2,.9,.25,1) both;}
-.splash-sub{color:var(--muted);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
-  margin-top:6px;position:relative;z-index:2;animation:markIn .7s .12s cubic-bezier(.2,.9,.25,1) both;}
-@keyframes markIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
-.splash-dots{display:flex;gap:7px;margin-top:26px;position:relative;z-index:2;}
-.splash-dots span{width:8px;height:8px;border-radius:999px;background:var(--orchid);opacity:.35;
-  animation:dot 1.15s ease-in-out infinite;}
-.splash-dots span:nth-child(2){animation-delay:.16s;}
-.splash-dots span:nth-child(3){animation-delay:.32s;}
-@keyframes dot{0%,100%{opacity:.28;transform:translateY(0);}50%{opacity:1;transform:translateY(-5px);}}
+    radial-gradient(120% 60% at 15% 8%, rgba(232,154,199,.30), transparent 60%),
+    radial-gradient(120% 60% at 88% 12%, rgba(142,91,196,.26), transparent 60%),
+    radial-gradient(100% 55% at 55% 100%, rgba(174,216,106,.22), transparent 62%),
+    #FBF7FC;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left);
+  opacity:1;transition:opacity 450ms cubic-bezier(.4,0,.2,1);}
+/* The exit is driven by a class, not a timer, so a slow account load holds the
+   bloom rather than fading to an empty screen. */
+.splash--out{opacity:0;pointer-events:none;}
+
+.splash-stage{position:relative;width:260px;height:260px;display:flex;
+  align-items:center;justify-content:center;}
+
+/* ---- petals ---- */
+.bloom{position:absolute;overflow:visible;}
+.bloom--main{width:220px;height:220px;}
+.bloom--tl{top:-34px;left:-52px;opacity:.85;}
+.bloom--br{bottom:-30px;right:-46px;opacity:.8;}
+
+.petal{
+  transform-origin:60px 60px;
+  transform:rotate(var(--a)) scale(1);
+  animation:petalOpen .78s cubic-bezier(.34,1.28,.4,1) both;
+}
+@keyframes petalOpen{
+  0%   {transform:rotate(calc(var(--a) - 30deg)) scale(.04);opacity:0;}
+  45%  {opacity:1;}
+  100% {transform:rotate(var(--a)) scale(1);opacity:1;}
+}
+.bloom-core{transform-origin:60px 60px;animation:coreIn .5s cubic-bezier(.34,1.4,.4,1) both;}
+@keyframes coreIn{from{transform:scale(0);opacity:0;}to{transform:scale(1);opacity:1;}}
+
+/* ---- pollen ---- */
+.pollen{position:absolute;inset:0;pointer-events:none;}
+.pollen span{position:absolute;bottom:44%;border-radius:999px;background:#FFD700;
+  box-shadow:0 0 6px rgba(255,215,0,.65);opacity:0;
+  animation:pollenRise ease-out infinite both;}
+@keyframes pollenRise{
+  0%  {opacity:0;transform:translateY(0) scale(.6);}
+  18% {opacity:.95;}
+  100%{opacity:0;transform:translateY(-120px) scale(1);}
+}
+
+/* ---- wordmark, out of the centre of the bloom ---- */
+.splash-word{position:relative;z-index:3;text-align:center;
+  animation:wordIn .8s 1s cubic-bezier(.2,.9,.25,1) both;}
+@keyframes wordIn{
+  from{opacity:0;transform:scale(.82);}
+  to  {opacity:1;transform:scale(1);}
+}
+.splash-mark{font-size:58px;line-height:1;
+  filter:drop-shadow(0 2px 10px rgba(255,255,255,.85));}
+.splash-sub{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;margin-top:8px;}
+
+/* ---- a pair of hummingbirds converge on the bloom, as in the logo ---- */
+.splash-bird{position:absolute;bottom:4%;z-index:4;}
+.splash-bird .floral{position:static;opacity:.95;}
+.splash-bird--l{left:-30px;animation:birdInL .6s 1.5s cubic-bezier(.25,.9,.3,1) both;}
+.splash-bird--r{right:-30px;animation:birdInR .6s 1.58s cubic-bezier(.25,.9,.3,1) both;}
+@keyframes birdInL{
+  from{opacity:0;transform:translateX(-110px) translateY(18px) rotate(-12deg);}
+  to  {opacity:1;transform:translateX(0) translateY(0) rotate(0);}
+}
+@keyframes birdInR{
+  from{opacity:0;transform:translateX(110px) translateY(18px) rotate(12deg);}
+  to  {opacity:1;transform:translateX(0) translateY(0) rotate(0);}
+}
+
+/* ---- reduced motion: the wordmark, still ---- */
+.splash--still .splash-word{animation:none;opacity:1;transform:none;}
+@media (prefers-reduced-motion: reduce){
+  .splash{transition:none;}
+  .splash-word{animation:none;opacity:1;transform:none;}
+}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:104px;z-index:80;background:var(--ink);color:#fff;
   padding:12px 18px;border-radius:14px;font-weight:600;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);
   display:flex;align-items:center;gap:8px;animation:rise .2s;}

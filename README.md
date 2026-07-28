@@ -63,6 +63,7 @@ flourish-app/
    ├─ App.jsx                  state owner and router — nothing else
    ├─ styles.css               full stylesheet
    ├─ components/
+   │  ├─ Splash.jsx            launch screen — blooming flower animation
    │  ├─ MenuView.jsx          menu, search, category chips
    │  ├─ ItemSheet.jsx         size / flavor / sides / special instructions
    │  ├─ CartView.jsx          lines, rewards, totals
@@ -98,7 +99,7 @@ npm test          # once
 npm run test:watch
 ```
 
-217 tests. They cover the things that cost money if they break: pickup-slot
+238 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the

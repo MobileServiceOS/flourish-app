@@ -39,7 +39,9 @@ because the sandbox tokens currently in `.env.local` return 401.
 
 ### Production readiness
 - [x] Empty states for cart, orders and search
-- [x] Branded launch screen — no sign-in flash for returning customers
+- [x] Branded launch screen — flowers bloom open, wordmark rises out of the
+      centre, a pair of hummingbirds converge. Once per session, and still
+      covers the account read on every launch so there is no sign-in flash
 - [x] Live phone formatting and input validation
 - [x] Accessibility: names on every control, modal dialogs, keyboard operation
 - [x] WCAG AA contrast, verified by a test that recomputes from the stylesheet

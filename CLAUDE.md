@@ -87,6 +87,22 @@ For reference, the combined New York City rate on prepared food is 8.875%
 (4% state + 4.5% city + 0.375% MCTD). 8.5% was set deliberately on request; if
 that turns out to be wrong the difference is owed at filing time.
 
+### Launch screen
+
+`src/components/Splash.jsx` is the blooming-flower animation: SVG petals whose
+transform-origin sits at the flower centre, so scaling one from 0 unfurls it
+outward. Pure CSS keyframes, staggered 0.05s per petal. No animation library.
+
+It holds until **both** the bloom has had its ~2.5s **and** the account has come
+back, so a slow storage read never cuts it short and a fast one never flashes
+past. Only the first launch in a session plays it — `sessionStorage`, see
+`lib/splashSession.js` — but the splash still covers the account read on every
+later launch, because that is what stops the sign-in pitch flashing at a
+customer who already has an account. Those are two separate gates and collapsing
+them reintroduces the flash.
+
+The exit is a class, not a keyframe on a timer, for the same reason.
+
 ### Order-ready notifications
 
 `src/lib/notify.js` schedules a **local** notification on the device for the
@@ -129,7 +145,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 217 tests
+npm test            # 238 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

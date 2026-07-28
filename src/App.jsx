@@ -10,7 +10,11 @@ import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/res
 import { createOrder, pay, syncCustomer, setStock, ApiError } from "./lib/clover.js";
 import { useCloverHealth, useInventorySync } from "./hooks/clover.js";
 
-import { Splash } from "./components/shared.jsx";
+import Splash from "./components/Splash.jsx";
+import {
+  splashSeen, markSplashSeen, prefersReducedMotion,
+  SPLASH_HOLD_MS, SPLASH_FADE_MS, SPLASH_REDUCED_MS,
+} from "./lib/splashSession.js";
 import MenuView from "./components/MenuView.jsx";
 import ItemSheet from "./components/ItemSheet.jsx";
 import StaffSheet from "./components/StaffSheet.jsx";
@@ -77,6 +81,39 @@ export default function App() {
   const [active, setActive] = useState(null); // active order being tracked
   const [toast, setToast] = useState(null);
   const catRefs = useRef({});
+
+  /* Launch screen. Three states: showing the bloom, fading out, gone.
+     It leaves only once BOTH the animation has had its time and the account has
+     come back — so a slow read never cuts the bloom short, and a fast one never
+     flashes past. Second launch in a session skips it entirely. */
+  const reducedMotion = useMemo(() => prefersReducedMotion(), []);
+  const [splash, setSplash] = useState(() => (splashSeen() ? "gone" : "showing"));
+  const [heldLongEnough, setHeldLongEnough] = useState(() => splashSeen());
+
+  useEffect(() => {
+    if (splashSeen()) return;
+    const hold = reducedMotion ? SPLASH_REDUCED_MS : SPLASH_HOLD_MS;
+    const t = setTimeout(() => setHeldLongEnough(true), hold);
+    return () => clearTimeout(t);
+  }, [reducedMotion]);
+
+  // Start the exit once the bloom has had its time and the account is back.
+  useEffect(() => {
+    if (splash !== "showing") return;
+    if (!heldLongEnough || loadingAcct) return;
+    markSplashSeen();
+    setSplash("leaving");
+  }, [splash, heldLongEnough, loadingAcct]);
+
+  /* Unmount after the fade. This has to be its own effect: scheduling the timer
+     in the one above meant setSplash("leaving") re-ran it, and the cleanup
+     cancelled the timer it had just set — the splash never left. */
+  useEffect(() => {
+    if (splash !== "leaving") return;
+    const t = setTimeout(() => setSplash("gone"), reducedMotion ? 0 : SPLASH_FADE_MS);
+    return () => clearTimeout(t);
+  }, [splash, reducedMotion]);
+
 
   // Restore the signed-in customer on launch
   useEffect(() => {
@@ -349,8 +386,18 @@ export default function App() {
   /* Hold the app back until we know whether this is a returning customer.
      Without this the Rewards tab renders the "Join Flourish Rewards" pitch for
      a frame before the saved account arrives — an existing customer being
-     asked to sign up again. */
-  if (loadingAcct) return <Splash />;
+     asked to sign up again.
+
+     The bloom animation also holds it for its own duration, but only the first
+     time in a session; coming back from the lock screen goes straight in. */
+  /* Two separate reasons to hold, and they must both be satisfied:
+       - the account has not come back yet   (every launch, no exceptions)
+       - the bloom has not finished          (first launch of a session only)
+     Collapsing these into one flag is what briefly let the sign-in pitch through
+     on a second launch. */
+  if (loadingAcct || splash !== "gone") {
+    return <Splash leaving={!loadingAcct && splash === "leaving"} reduced={reducedMotion} />;
+  }
 
   return (
     <div className="fx shell">

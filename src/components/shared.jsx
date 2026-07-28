@@ -15,23 +15,6 @@ export function Hummingbird({ style, size = 44, flip }) {
   );
 }
 
-/* Launch screen, shown while the saved account is read back from storage. */
-
-export function Splash() {
-  return (
-    <div className="fx shell splash" role="status" aria-live="polite" aria-label="Loading Flourish">
-      <Hummingbird style={{ top: "22%", left: "12%", opacity: .35 }} size={70} />
-      <Hummingbird style={{ top: "30%", right: "10%", opacity: .28 }} size={54} flip />
-      <div className="splash-mark wordmark">Flourish</div>
-      <div className="splash-sub">Bronx, NY</div>
-      <div className="splash-dots" aria-hidden="true"><span /><span /><span /></div>
-    </div>
-  );
-}
-
-/* An item photo if we have one, the emoji tile if we don't. The emoji is a
-   real design choice here, not a placeholder, so it is what most rows show.
-   `img` is a path under public/, e.g. "/items/oxtail.jpg". */
 export function Thumb({ item }) {
   const [err, setErr] = useState(false);
   if (item.img && !err) {
