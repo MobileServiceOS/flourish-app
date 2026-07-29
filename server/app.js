@@ -18,12 +18,13 @@ import cors from "cors";
 import { api, modifierCatalog, CloverError, humanise } from "./clover.js";
 import { CONFIGURED, IS_SANDBOX, describe } from "./env.js";
 import { buildAtomicOrder, buildPayment, toCents } from "../src/lib/cloverOrder.js";
+import { isOpen, nextOpening, describeOpening } from "../src/lib/hours.js";
 import {
   rateLimit, payRateLimit, checkOrigin, requireAppKey, capCharge,
   describeGuard, ALLOWED_ORIGINS,
 } from "./guard.js";
 
-export function createApp({ clover = api, catalog = modifierCatalog } = {}) {
+export function createApp({ clover = api, catalog = modifierCatalog, now = () => new Date() } = {}) {
   const app = express();
 
   // Behind a host that terminates TLS, req.ip must come from the forwarded
@@ -91,6 +92,23 @@ export function createApp({ clover = api, catalog = modifierCatalog } = {}) {
   const requireConfig = (_req, res, next) =>
     CONFIGURED ? next() : res.status(503).json({ error: "Clover is not configured", code: "NOT_CONFIGURED" });
 
+  /* The kitchen is shut, so nothing may be ordered or charged.
+     The checkout already disables its button, but that is a courtesy to an
+     honest client — a stale tab left open past closing, or a request replayed
+     by hand, would otherwise land a ticket nobody is there to cook.
+
+     Hours are New York wall-clock. server/index.js pins TZ so a host running in
+     UTC does not decide the Bronx is open at 4am. */
+  const requireOpen = (_req, res, next) => {
+    const at = now();
+    if (isOpen(at)) return next();
+    return res.status(409).json({
+      error: `We're closed right now. Flourish opens ${describeOpening(nextOpening(at), at)}.`,
+      code: "CLOSED",
+      opensAt: nextOpening(at).toISOString(),
+    });
+  };
+
   /* ---- inventory ---- */
   app.get("/api/clover/inventory", requireConfig, async (_req, res) => {
     try {
@@ -117,7 +135,7 @@ export function createApp({ clover = api, catalog = modifierCatalog } = {}) {
   });
 
   /* ---- orders ---- */
-  app.post("/api/clover/orders", requireConfig, async (req, res) => {
+  app.post("/api/clover/orders", requireConfig, requireOpen, async (req, res) => {
     const { cart, reward, customerId, pickupLabel, note } = req.body ?? {};
     if (!Array.isArray(cart) || !cart.length) {
       return res.status(400).json({ error: "Cart is empty" });
@@ -164,7 +182,7 @@ export function createApp({ clover = api, catalog = modifierCatalog } = {}) {
   });
 
   /* ---- payment ---- */
-  app.post("/api/clover/pay", requireConfig, payRateLimit(), capCharge, async (req, res) => {
+  app.post("/api/clover/pay", requireConfig, requireOpen, payRateLimit(), capCharge, async (req, res) => {
     const { source, amountDollars, tipDollars, orderId } = req.body ?? {};
     if (!source) return res.status(400).json({ error: "Missing card token" });
     if (!(toCents(amountDollars) > 0)) {

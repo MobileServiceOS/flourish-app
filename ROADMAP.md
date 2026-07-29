@@ -27,6 +27,7 @@ because the sandbox tokens currently in `.env.local` return 401.
 - [x] Add-to-cart confirmation animation
 
 ### Business features
+- [x] Closed outside opening hours: enforced on the server, not just the UI
 - [x] One-tap reorder preserving modifiers, notes and reward eligibility
 - [x] Seafood Friday promotion — leads the menu Fridays, "(Fri)" otherwise
 - [x] Pickup time picker on a 15-minute grid, with a real closed state

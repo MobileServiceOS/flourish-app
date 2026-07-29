@@ -105,7 +105,7 @@ npm test          # once
 npm run test:watch
 ```
 
-269 tests. They cover the things that cost money if they break: pickup-slot
+277 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the

@@ -1,12 +1,23 @@
-import React from "react";
-import { ShoppingBag, Plus, Minus, Sparkles, Ticket } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { ShoppingBag, Plus, Minus, Sparkles, Ticket, Clock } from "lucide-react";
 import { money } from "../lib/money.js";
 import { rewardOf, discountFor } from "../lib/loyalty.js";
+import { isOpen, nextOpening, describeOpening, HOURS_LINE } from "../lib/hours.js";
 import { SubHeader, Empty } from "./shared.jsx";
 
 /* ---------- CART ---------- */
 export default function CartView({ cart, subtotal, saved, account, setQty, removeLine, setView,
   vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher }) {
+  /* Say it here rather than letting someone build an order, walk to checkout
+     and only then find out. Re-checked on a minute tick so a cart left open
+     across closing time notices. */
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const open = isOpen(now);
+
   return (
     <>
       <SubHeader title="Your Order" />
@@ -91,8 +102,24 @@ export default function CartView({ cart, subtotal, saved, account, setQty, remov
             </>
           )}
 
-          <button className="pill-btn" style={{ marginTop: 16 }} onClick={() => setView("checkout")}>
-            Go to checkout · {money(Math.max(0, subtotal - discount))}
+          {!open && (
+            <div className="closed-card" role="status" style={{ marginTop: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 700, fontSize: 15 }}>
+                <Clock size={17} aria-hidden="true" /> We're closed right now
+              </div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.45, marginTop: 6 }}>
+                Flourish opens {describeOpening(nextOpening(now), now)}. Your cart keeps
+                everything in it until then.
+              </div>
+              <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 8 }}>{HOURS_LINE}</div>
+            </div>
+          )}
+
+          <button className="pill-btn" style={{ marginTop: 16 }} disabled={!open}
+            onClick={() => open && setView("checkout")}>
+            {open
+              ? `Go to checkout · ${money(Math.max(0, subtotal - discount))}`
+              : "Closed — order when we open"}
           </button>
         </div>
       )}

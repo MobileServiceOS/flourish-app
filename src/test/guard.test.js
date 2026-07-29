@@ -18,7 +18,13 @@ async function app(env = {}) {
     getOrder: vi.fn(), setStock: vi.fn(),
     findCustomerByPhone: vi.fn(), createCustomer: vi.fn(),
   };
-  return { agent: request(createApp({ clover, catalog: async () => ({}) })), clover };
+  // Monday noon: the hours guard would otherwise refuse these depending on
+  // what time of day the suite happens to run.
+  const OPEN = new Date(2026, 6, 27, 12, 0);
+  return {
+    agent: request(createApp({ clover, catalog: async () => ({}), now: () => OPEN })),
+    clover,
+  };
 }
 
 const KEYS = ["APP_KEY", "ALLOWED_ORIGINS", "MAX_CHARGE_DOLLARS"];

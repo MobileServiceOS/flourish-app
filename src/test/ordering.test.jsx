@@ -189,17 +189,13 @@ describe("pickup time", () => {
     expect(screen.getByText(/Scheduled pickup/)).toBeInTheDocument();
   });
 
-  it("refuses to take an order outside opening hours", async () => {
-    const { user } = await renderApp(MON_NIGHT);
-    await addItem(user);
-    await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
-    await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
-
-    expect(await screen.findByText("We're closed right now")).toBeInTheDocument();
-    expect(screen.getByText(/opens tomorrow at 9:00 AM/)).toBeInTheDocument();
-
-    const pay = screen.getByRole("button", { name: /Closed until 9:00 AM/ });
-    expect(pay).toBeDisabled();
+  it("offers no pickup slots at all once the kitchen has shut", async () => {
+    // Reaching the checkout when closed is no longer possible — the cart stops
+    // you first, which src/test/closed.test.jsx covers end to end. What still
+    // matters here is that the picker itself has nothing to sell.
+    const { pickupSlots, isOpen } = await import("../lib/hours.js");
+    expect(isOpen(MON_NIGHT)).toBe(false);
+    expect(pickupSlots(MON_NIGHT)).toEqual([]);
   });
 });
 

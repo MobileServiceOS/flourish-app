@@ -36,8 +36,14 @@ function fakeClover(over = {}) {
     ...over,
   };
 }
-const app = (clover = fakeClover()) =>
-  ({ agent: request(createApp({ clover, catalog: async () => CATALOG })), clover });
+/* Monday noon. The proxy refuses orders outside opening hours, so these tests
+   pin the clock — otherwise they pass or fail depending on the time of day they
+   are run, which is exactly the flakiness a test suite must not have. */
+const OPEN = new Date(2026, 6, 27, 12, 0);
+const app = (clover = fakeClover()) => ({
+  agent: request(createApp({ clover, catalog: async () => CATALOG, now: () => OPEN })),
+  clover,
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

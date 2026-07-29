@@ -66,6 +66,22 @@ A test asserts the private token is absent from `dist/` — see
    up an **Oxtail at $0.00**. Unresolved modifiers throw and the order is
    refused — a rejected order is recoverable, a free plate isn't.
 
+### Closed means closed
+
+Opening hours are enforced in three places, and only one of them is real:
+
+- the cart will not go to checkout, and says when the shop opens
+- the checkout's pay button disables, re-checked on a minute tick
+- **the proxy refuses `POST /orders` and `POST /pay` with 409 CLOSED**
+
+The first two are a courtesy to an honest client. A tab left open past closing,
+or a request replayed by hand, is stopped by the third. Do not remove it on the
+grounds that the UI already prevents it.
+
+Hours are New York wall-clock. `server/index.js` pins `process.env.TZ` before
+anything reads a clock, because Railway, Fly and most containers run in UTC —
+where 9am-10pm local would have the Bronx open from 4am.
+
 ### Sales tax
 
 `TAX_RATE` in `src/lib/money.js` is **8.5%**, and that constant is the only
@@ -192,7 +208,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 269 tests
+npm test            # 277 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

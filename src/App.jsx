@@ -376,7 +376,11 @@ export default function App() {
           : e.code === "MODIFIER_UNRESOLVED" ? e.message
           : e.message || "Couldn't reach the kitchen — try again",
         declineReason: e.declineReason ?? null,
-        retryable: !e.isPreview && e.code !== "MODIFIER_UNRESOLVED",
+        // Retrying a closed kitchen or a stale modifier fails identically, so
+        // do not offer a button that cannot work.
+        retryable: !e.isPreview
+          && e.code !== "MODIFIER_UNRESOLVED"
+          && e.code !== "CLOSED",
       });
     } finally {
       setSubmitting(false);
