@@ -152,6 +152,16 @@ Two things that silently break an iOS catalog, both now guarded by tests:
 alpha channels (Apple rejects them) and tagging a 1x icon as `iphone` — iPhone
 has no 1x sizes, so Xcode ignores the entry.
 
+### Dev ports
+
+`5180`, pinned with `strictPort`. Other projects on this machine hold 5173 and
+5174, and Vite's default behaviour is to move on silently — which meant a phone
+pointed at the remembered URL loaded a different app entirely and its `/api`
+went to somebody else's server. Failing loudly keeps the URL honest.
+
+The `/api` proxy needs no special config for phones: Vite proxies server-side,
+so the phone talks to Vite and Vite talks to 3001.
+
 ### Hours and the ready window
 
 Open **11AM**, closing 10PM Sunday to Thursday and 11PM Friday and Saturday.

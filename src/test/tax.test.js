@@ -2,23 +2,23 @@ import { describe, it, expect } from "vitest";
 import { TAX_RATE, TAX_LABEL, taxOn, withTax, cents, money } from "../lib/money.js";
 
 describe("sales tax", () => {
-  it("is 8.5%", () => {
-    expect(TAX_RATE).toBe(0.085);
-    expect(TAX_LABEL).toBe("8.5%");
+  it("is 8.875% — the combined New York City rate on prepared food", () => {
+    expect(TAX_RATE).toBe(0.08875);
+    expect(TAX_LABEL).toBe("8.875%");
   });
 
   it("applies to the order", () => {
-    expect(taxOn(20)).toBe(1.7);
-    expect(taxOn(100)).toBe(8.5);
-    expect(withTax(20)).toBe(21.7);
+    expect(taxOn(20)).toBe(1.78);
+    expect(taxOn(100)).toBe(8.88);
+    expect(withTax(20)).toBe(21.78);
   });
 
   it("rounds half-up to the cent, matching the register", () => {
-    // 15.99 * 0.085 = 1.35915 -> 1.36, not 1.35
-    expect(taxOn(15.99)).toBe(1.36);
-    // 6.99 * 0.085 = 0.59415 -> 0.59
-    expect(taxOn(6.99)).toBe(0.59);
-    expect(money(withTax(15.99))).toBe("$17.35");
+    // 20 * 0.08875 = 1.775 exactly — plain toFixed drops that to 1.77
+    expect(taxOn(20)).toBe(1.78);
+    // 15.99 * 0.08875 = 1.4191... -> 1.42
+    expect(taxOn(15.99)).toBe(1.42);
+    expect(money(withTax(15.99))).toBe("$17.41");
   });
 
   it("taxes nothing on an empty order", () => {
@@ -29,7 +29,7 @@ describe("sales tax", () => {
   it("is applied after a reward discount, not before", () => {
     // $20 plate, $6 reward -> tax on $14, not on $20
     const net = cents(20 - 6);
-    expect(taxOn(net)).toBe(1.19);
+    expect(taxOn(net)).toBe(1.24);
     expect(taxOn(net)).not.toBe(taxOn(20));
   });
 });

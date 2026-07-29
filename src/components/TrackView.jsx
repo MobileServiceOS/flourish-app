@@ -22,10 +22,16 @@ export default function TrackView({ order, setView, live = false }) {
   const [simStage, setSimStage] = useState(0);
   const simulated = !(live && order.cloverOrderId);
 
+  /* Preview mode has no Clover order to poll, so the steps are simulated — but
+     at something like kitchen pace. Racing to "ready" in four seconds trains
+     customers to ignore the screen, and looks like a bug next to a real order
+     that takes twenty minutes. */
+  const SIM_IN_KITCHEN_MS = 3 * 60_000;
+  const SIM_READY_MS = 10 * 60_000;
   useEffect(() => {
     if (!simulated) return;
-    const t1 = setTimeout(() => setSimStage(1), 2200);
-    const t2 = setTimeout(() => setSimStage(2), 6000);
+    const t1 = setTimeout(() => setSimStage(1), SIM_IN_KITCHEN_MS);
+    const t2 = setTimeout(() => setSimStage(2), SIM_READY_MS);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [simulated]);
 

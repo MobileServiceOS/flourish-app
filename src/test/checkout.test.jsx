@@ -93,17 +93,17 @@ describe("tax shown to the customer", () => {
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
 
-    expect(await screen.findByText("Tax (8.5%)")).toBeInTheDocument();
-    // default tip is 10% of subtotal = $2.00, so total = 20.00 + 1.70 + 2.00
+    expect(await screen.findByText("Tax (8.875%)")).toBeInTheDocument();
+    // default tip is 10% of subtotal = $2.00, so total = 20.00 + 1.78 + 2.00
     const rows = [...document.querySelectorAll(".rowline")].map((r) => r.textContent);
-    expect(rows).toContain("Tax (8.5%)$1.70");
-    expect(rows).toContain("Total$23.70");
+    expect(rows).toContain("Tax (8.875%)$1.78");
+    expect(rows).toContain("Total$23.78");
 
     // and the CTA quotes that same total once the form is valid
     const n = screen.getByLabelText("Name");
     await user.clear(n); await user.type(n, "Nevaeh Reid");
     const p = screen.getByLabelText("Phone number");
     await user.clear(p); await user.type(p, "3478599413");
-    expect(screen.getByRole("button", { name: /\$23\.70/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /\$23\.78/ })).toBeEnabled();
   });
 });

@@ -101,7 +101,7 @@ flourish-app/
 ## Running the app
 
 ```bash
-npm run dev:all      # frontend on 5173 + order proxy on 3001
+npm run dev:all      # frontend on 5180 + order proxy on 3001
 ```
 
 Two halves. `npm run dev` alone gives you the menu, the cart, the account and
@@ -114,6 +114,16 @@ npm run dev          # frontend only
 npm run server       # proxy only
 curl localhost:3001/api/clover/health
 ```
+
+### Testing on your phone
+
+Same wifi, then open the **Network** URL Vite prints — `http://<your-ip>:5180`.
+
+The port is pinned with `strictPort`, so if something else already holds 5180
+Vite fails rather than quietly moving to another port. That matters: this
+machine has other projects on 5173 and 5174, and a phone pointed at a port
+another app had taken loads *that* app, whose `/api` is somebody else's server.
+It looks exactly like "the proxy is broken".
 
 ## Tests
 

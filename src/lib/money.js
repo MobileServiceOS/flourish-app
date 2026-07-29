@@ -1,6 +1,5 @@
 // Half-up rounding to cents. Plain toFixed drops a penny on exact halves
-// (20 * 0.085 = 1.7 is fine, but 15.99 * 0.085 = 1.35915 is not), which would
-// desync totals from the register.
+// (20 * 0.08875 = 1.775 -> "1.77"), which would desync totals from the register.
 export const cents = (n) => Math.round((n + 1e-9) * 100) / 100;
 export const money = (n) => `$${cents(n).toFixed(2)}`;
 
@@ -16,11 +15,10 @@ export const money = (n) => `$${cents(n).toFixed(2)}`;
    number has to match the tax rate configured in the Clover dashboard, or the
    customer sees one total at checkout and the register rings up another.
 
-   Set to 8.5% on request. Note that the combined New York City rate on prepared
-   food is 8.875% (4% state + 4.5% city + 0.375% MCTD surcharge); if 8.5% is not
-   deliberate, the difference comes out of the restaurant's own pocket at filing
-   time. */
-export const TAX_RATE = 0.085;
+   8.875% is the combined New York City rate on prepared food: 4% state, 4.5%
+   city, 0.375% MCTD surcharge. It was briefly set to 8.5%, which would have had
+   the restaurant covering the difference out of its own pocket at filing. */
+export const TAX_RATE = 0.08875;
 
 /** Tax on an amount, rounded to cents. */
 export const taxOn = (amount) => cents(amount * TAX_RATE);
@@ -28,5 +26,5 @@ export const taxOn = (amount) => cents(amount * TAX_RATE);
 /** Amount plus tax. */
 export const withTax = (amount) => cents(amount + taxOn(amount));
 
-/** "8.5%" — for showing the customer which rate they are being quoted. */
+/** "8.875%" — for showing the customer which rate they are being quoted. */
 export const TAX_LABEL = `${Number((TAX_RATE * 100).toFixed(4))}%`;

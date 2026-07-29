@@ -8,12 +8,20 @@ export default defineConfig({
   build: { target: "esnext", outDir: "dist", sourcemap: true },
   server: {
     host: true,          // lets you test on your phone over wifi
-    port: 5173,
+    /* A port of our own, and strictPort so Vite FAILS rather than quietly
+       moving. Two other projects on this machine hold 5173 and 5174, and the
+       silent fallback meant a phone pointed at :5173 loaded a different app
+       entirely — which looked like "the proxy is broken" because /api there is
+       somebody else's server. Fail loudly and the URL stays true. */
+    port: 5180,
+    strictPort: true,
     // The private Clover token lives on the proxy, never in this bundle.
     // If the proxy isn't running the app falls back to preview mode rather
     // than erroring, so `npm run dev` alone is still useful for menu work.
     proxy: {
-      "/api": { target: "http://localhost:3001", changeOrigin: true },
+      /* Vite proxies this server-side, so it already works from any device on
+         the network — the phone talks to Vite, Vite talks to 3001. */
+      "/api": { target: "http://127.0.0.1:3001", changeOrigin: true },
     },
   },
   test: {
