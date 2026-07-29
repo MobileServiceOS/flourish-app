@@ -16,6 +16,12 @@ export const MERCHANT_ID = String(import.meta.env?.VITE_CLOVER_MERCHANT_ID ?? ""
 
 export const CLOVER_SDK_URL = "https://checkout.clover.com/sdk.js";
 
+/* Sent on every proxy call. This is NOT a secret — it ships in the bundle and
+   anyone can read it out. It exists so the hosted proxy can turn away drive-by
+   scanners; the protections that actually hold are the rate limit, the origin
+   allowlist and the charge ceiling on the server. */
+const APP_KEY = import.meta.env?.VITE_APP_KEY ?? "";
+
 export class ApiError extends Error {
   constructor(message, { status = 0, code = null, declineReason = null } = {}) {
     super(message);
@@ -37,7 +43,10 @@ async function call(path, { method = "GET", body, signal } = {}) {
     res = await fetch(`/api/clover${path}`, {
       method,
       signal,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: {
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(APP_KEY ? { "x-flourish-key": APP_KEY } : {}),
+      },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
   } catch {

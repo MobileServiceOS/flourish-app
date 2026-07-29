@@ -31,7 +31,7 @@
 .serif{font-family:'Playfair Display',serif;}
 .shell{max-width:430px;margin:0 auto;min-height:100vh;background:var(--paper);position:relative;
   padding-bottom:88px;overflow-x:hidden;}
-.hdr{position:relative;padding:20px 20px 24px;overflow:hidden;
+.hdr{position:relative;padding:calc(20px + env(safe-area-inset-top)) 20px 24px;overflow:hidden;
   background:
     radial-gradient(120% 90% at 12% -10%, rgba(232,154,199,.38), transparent 55%),
     radial-gradient(120% 90% at 92% -10%, rgba(142,91,196,.34), transparent 55%),
@@ -177,40 +177,50 @@ select.field{appearance:none;cursor:pointer;
 .status-dot.on{background:var(--leaf);box-shadow:0 0 0 4px rgba(127,185,62,.2);}
 .floral{position:absolute;pointer-events:none;opacity:.5;}
 /* ============================================================
-   LAUNCH SCREEN — the logo, framed by petals blooming open
-   The petals are a RING sitting outside the artwork, not a flower behind it:
-   the logo has its own flowers and birds, so nothing here competes with them.
-   Each petal scales from 0 about the centre, which unfurls it outward.
+   LAUNCH SCREEN — the logo, framed by watercolour blooms
+   The petals are a RING outside the artwork, not a flower behind it: the logo
+   has its own flowers and birds. Each petal scales from 0 about the centre,
+   which unfurls it outward. Colours run orchid -> rose -> leaf, front to back,
+   so the screen reads as the logo's palette expanded rather than three
+   unrelated flowers.
    ============================================================ */
 .splash{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:6px;
+  align-items:center;justify-content:center;gap:10px;
+  /* a wash: paper at the top, a whisper of pink through the middle, a hint of
+     leaf at the foot */
   background:
-    radial-gradient(120% 60% at 15% 8%, rgba(232,154,199,.28), transparent 60%),
-    radial-gradient(120% 60% at 88% 12%, rgba(142,91,196,.24), transparent 60%),
-    radial-gradient(100% 55% at 55% 100%, rgba(174,216,106,.20), transparent 62%),
-    #FBF7FC;
+    radial-gradient(130% 55% at 50% 96%, rgba(174,208,106,.26), transparent 68%),
+    radial-gradient(120% 60% at 18% 44%, rgba(232,154,199,.22), transparent 66%),
+    radial-gradient(120% 60% at 84% 40%, rgba(232,154,199,.16), transparent 66%),
+    linear-gradient(#FBF7FC 0%, #FCF6FA 46%, #F7F8F1 100%);
   padding:env(safe-area-inset-top) env(safe-area-inset-right)
           env(safe-area-inset-bottom) env(safe-area-inset-left);
   opacity:1;transition:opacity 450ms cubic-bezier(.4,0,.2,1);}
 /* Driven by a class, not a timer, so a slow account load holds the frame. */
 .splash--out{opacity:0;pointer-events:none;}
 
-.splash-stage{position:relative;width:360px;height:360px;max-width:92vw;max-height:92vw;
+.splash-stage{position:relative;width:392px;height:392px;max-width:96vw;max-height:96vw;
   display:flex;align-items:center;justify-content:center;}
 
-/* ---- the logo ---- */
-.splash-logo{position:relative;z-index:3;width:190px;height:190px;max-width:52vw;max-height:52vw;
-  object-fit:contain;animation:logoIn .9s .35s cubic-bezier(.2,.9,.25,1) both;}
+/* ---- the logo ----
+   Nudged down a touch: the artwork's mass sits high (script above, birds
+   below), so dead-centring it reads as floating. */
+.splash-logo{position:relative;z-index:3;width:286px;height:auto;max-width:74vw;
+  object-fit:contain;transform:translateY(4%);
+  animation:logoIn .9s .35s cubic-bezier(.2,.9,.25,1) both;}
 @keyframes logoIn{
-  from{opacity:0;transform:scale(.86);}
-  to  {opacity:1;transform:scale(1);}
+  from{opacity:0;transform:translateY(4%) scale(.86);}
+  to  {opacity:1;transform:translateY(4%) scale(1);}
 }
 
-/* ---- the ring ---- */
+/* ---- the rings ---- */
 .bloom{position:absolute;overflow:visible;}
-.bloom--main{width:360px;height:360px;max-width:92vw;max-height:92vw;opacity:.9;}
-.bloom--tl{top:-6px;left:-16px;opacity:.7;}
-.bloom--br{bottom:-4px;right:-12px;opacity:.65;}
+/* watercolour: translucent, and softened so the edges bleed rather than cut */
+.bloom--main{width:392px;height:392px;max-width:96vw;max-height:96vw;
+  opacity:.85;filter:blur(.2px);}
+.bloom--tl{top:2%;left:-4%;opacity:.6;filter:blur(.3px);}
+.bloom--br{bottom:4%;right:-3%;opacity:.6;filter:blur(.3px);}
+.bloom--leaf{bottom:-2%;left:8%;opacity:.4;filter:blur(.4px);}
 
 .petal{
   transform-origin:60px 60px;
@@ -223,15 +233,15 @@ select.field{appearance:none;cursor:pointer;
   100% {transform:rotate(var(--a)) scale(1);opacity:1;}
 }
 
-/* ---- pollen ---- */
+/* ---- pollen: present, not a light show ---- */
 .pollen{position:absolute;inset:0;pointer-events:none;z-index:4;}
-.pollen span{position:absolute;bottom:40%;border-radius:999px;background:#FFD700;
-  box-shadow:0 0 6px rgba(255,215,0,.65);opacity:0;
+.pollen span{position:absolute;bottom:38%;border-radius:999px;background:#FFD700;
+  box-shadow:0 0 5px rgba(255,215,0,.5);opacity:0;
   animation:pollenRise ease-out infinite both;}
 @keyframes pollenRise{
   0%  {opacity:0;transform:translateY(0) scale(.6);}
-  18% {opacity:.95;}
-  100%{opacity:0;transform:translateY(-150px) scale(1);}
+  18% {opacity:.7;}
+  100%{opacity:0;transform:translateY(-165px) scale(1);}
 }
 
 .splash-sub{position:relative;z-index:3;color:var(--muted);font-size:12px;font-weight:600;
@@ -241,10 +251,10 @@ select.field{appearance:none;cursor:pointer;
 
 /* ---- reduced motion: the logo, still ---- */
 .splash--still .splash-logo,
-.splash--still .splash-sub{animation:none;opacity:1;transform:none;}
+.splash--still .splash-sub{animation:none;opacity:1;}
 @media (prefers-reduced-motion: reduce){
   .splash{transition:none;}
-  .splash-logo,.splash-sub{animation:none;opacity:1;transform:none;}
+  .splash-logo,.splash-sub{animation:none;opacity:1;}
 }
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:104px;z-index:80;background:var(--ink);color:#fff;
   padding:12px 18px;border-radius:14px;font-weight:600;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);
@@ -262,8 +272,6 @@ select.field{appearance:none;cursor:pointer;
 /* "Med $15 · Lg $18" — the size label sits quieter than the price it labels. */
 .size-tag{font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:.03em;
   text-transform:uppercase;margin-right:3px;}
-/* Menu header logo. The artwork is a square canvas with the wordmark and birds
-   sitting in a wide band across the middle, so it is cropped to that band
-   rather than shown whole — otherwise the header is mostly whitespace. */
-.hdr-logo{display:block;width:200px;max-width:56vw;height:92px;
-  object-fit:cover;object-position:center 46%;margin:2px 0 0 -6px;}
+/* Menu header logo. logo-mark.png is already cropped to the artwork, so it just
+   scales — no object-position guesswork, and the wordmark cannot get clipped. */
+.hdr-logo{display:block;width:168px;max-width:46vw;height:auto;margin:2px 0 0 -4px;}

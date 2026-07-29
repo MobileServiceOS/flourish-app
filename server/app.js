@@ -18,12 +18,24 @@ import cors from "cors";
 import { api, modifierCatalog, CloverError, humanise } from "./clover.js";
 import { CONFIGURED, IS_SANDBOX, describe } from "./env.js";
 import { buildAtomicOrder, buildPayment, toCents } from "../src/lib/cloverOrder.js";
+import {
+  rateLimit, payRateLimit, checkOrigin, requireAppKey, capCharge,
+  describeGuard, ALLOWED_ORIGINS,
+} from "./guard.js";
 
 export function createApp({ clover = api, catalog = modifierCatalog } = {}) {
   const app = express();
 
-  app.use(cors({ origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/] }));
+  // Behind a host that terminates TLS, req.ip must come from the forwarded
+  // header or every caller looks like the proxy and the rate limit is useless.
+  app.set("trust proxy", 1);
+  app.use(cors({
+    origin: ALLOWED_ORIGINS.length
+      ? ALLOWED_ORIGINS
+      : [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/],
+  }));
   app.use(express.json({ limit: "64kb" }));
+  app.use("/api/clover", checkOrigin, rateLimit());
 
   /* ---- health ----
      Credentials being *present* is not the same as them *working*. Reporting
@@ -70,6 +82,11 @@ export function createApp({ clover = api, catalog = modifierCatalog } = {}) {
     }
     return res.status(500).json({ error: e?.message || "Unexpected server error" });
   };
+
+  // Everything past health needs the app key. Health does not, because the app
+  // calls it to decide whether ordering is available at all.
+  app.use("/api/clover", (req, res, next) =>
+    req.path === "/health" ? next() : requireAppKey(req, res, next));
 
   const requireConfig = (_req, res, next) =>
     CONFIGURED ? next() : res.status(503).json({ error: "Clover is not configured", code: "NOT_CONFIGURED" });
@@ -147,7 +164,7 @@ export function createApp({ clover = api, catalog = modifierCatalog } = {}) {
   });
 
   /* ---- payment ---- */
-  app.post("/api/clover/pay", requireConfig, async (req, res) => {
+  app.post("/api/clover/pay", requireConfig, payRateLimit(), capCharge, async (req, res) => {
     const { source, amountDollars, tipDollars, orderId } = req.body ?? {};
     if (!source) return res.status(400).json({ error: "Missing card token" });
     if (!(toCents(amountDollars) > 0)) {

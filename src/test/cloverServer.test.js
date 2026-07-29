@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { createApp } from "../../server/app.js";
 import { CloverError, __scrub } from "../../server/clover.js";
+import { __resetRateLimit } from "../../server/guard.js";
 
 const CATALOG = {
   "45KGD3ZDMT2ZY": { "Medium": { id: "MOD-OX-MED", price: 20 }, "Large": { id: "MOD-OX-LRG", price: 25 } },
@@ -38,7 +39,12 @@ function fakeClover(over = {}) {
 const app = (clover = fakeClover()) =>
   ({ agent: request(createApp({ clover, catalog: async () => CATALOG })), clover });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // guard.js keeps its counters in a module-level map, so requests from earlier
+  // tests would otherwise spend this test's budget.
+  __resetRateLimit();
+});
 
 describe("health", () => {
   it("reports configuration without ever returning a token", async () => {

@@ -402,7 +402,12 @@ export default function App() {
   return (
     <div className="fx shell">
 
-      {view === "menu" && <MenuView {...{ activeCat, scrollToCat, setDetail, catRefs, soldOut, openStaff: () => setStaffOpen(true), flash, quickAdd, search, setSearch, menu: activeMenu, sandbox: clover.sandbox }} />}
+      {view === "menu" && <MenuView {...{ activeCat, scrollToCat, setDetail, catRefs, soldOut, openStaff: () => setStaffOpen(true), flash, quickAdd, search, setSearch, menu: activeMenu,
+        /* Only badge SANDBOX when we are actually talking to the register. The
+           flag alone is true whenever CLOVER_API_BASE points at a test host,
+           which showed the badge with no proxy running at all — a warning about
+           test orders makes no sense when no order can be placed. */
+        sandbox: clover.status === "online" && clover.sandbox }} />}
       {view === "rewards" && (account
         ? <RewardsView {...{ account, points, vouchers, orders, redeem, signOut }} onReorder={reorder} />
         : <SignInView onSignIn={signIn} />)}

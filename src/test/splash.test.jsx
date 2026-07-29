@@ -50,13 +50,26 @@ describe("the bloom", () => {
     expect(parseFloat(tl.style.animationDelay)).toBeGreaterThan(0.35);
   });
 
-  it("paints the petals in the brand gradient, not a flat colour", () => {
+  it("paints each bloom in its own brand gradient, not a flat colour", () => {
     const { container } = render(<Splash />);
-    const stops = [...container.querySelectorAll("#petal-main stop")]
+    const stops = (id) => [...container.querySelectorAll(`#petal-${id} stop`)]
       .map((s) => s.getAttribute("stop-color"));
-    expect(stops).toEqual(["#8E5BC4", "#E89AC7", "#AED86A"]);
+
+    // orchid anchors it, rose sits behind, leaf is the quietest layer
+    expect(stops("main")).toEqual(["#8E5BC4", "#B57EDC"]);
+    expect(stops("a")).toEqual(["#E89AC7", "#F6C9E0"]);
+    expect(stops("b")).toEqual(["#E89AC7", "#F6C9E0"]);
+    expect(stops("c")).toEqual(["#AED06A", "#AED86A"]);
+
     expect(container.querySelector(".bloom--main .petal").getAttribute("fill"))
       .toBe("url(#petal-main)");
+  });
+
+  it("layers the blooms back to front, quietest last", () => {
+    const { container } = render(<Splash />);
+    expect(container.querySelector(".bloom--leaf")).toBeInTheDocument();
+    // four rings in all: one orchid, two rose, one leaf
+    expect(container.querySelectorAll(".bloom")).toHaveLength(4);
   });
 
   it("gives every flower its own gradient id", () => {
@@ -75,7 +88,7 @@ describe("the bloom", () => {
   it("puts the real logo at the centre, not a drawn wordmark", () => {
     render(<Splash />);
     const logo = screen.getByRole("img", { name: "Flourish" });
-    expect(logo).toHaveAttribute("src", "/logo-512.png");
+    expect(logo).toHaveAttribute("src", "/logo-mark.png");
     // the logo carries its own hummingbirds; drawing more would crowd it
     expect(document.querySelectorAll(".splash-bird")).toHaveLength(0);
   });

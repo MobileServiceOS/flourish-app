@@ -106,6 +106,20 @@ them reintroduces the flash.
 
 The exit is a class, not a keyframe on a timer, for the same reason.
 
+### The proxy on the internet
+
+`server/guard.js` is what makes hosting it safe: a per-IP rate limit, an origin
+allowlist, a ceiling on any single charge, and an app key.
+
+Be clear about the app key — it ships in the browser bundle and **is not a
+secret**. It turns away drive-by scanners and nothing more. The protections that
+actually hold are the ones that do not rely on the caller being honest, and the
+one real secret, `CLOVER_PRIVATE_TOKEN`, never leaves the server.
+
+With no `APP_KEY` set the proxy serves localhost and **refuses remote callers
+outright**, rather than sitting open. Set `APP_KEY`, `ALLOWED_ORIGINS` and
+`MAX_CHARGE_DOLLARS` before deploying.
+
 ### Order-ready notifications
 
 `src/lib/notify.js` schedules a **local** notification on the device for the
@@ -148,7 +162,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 243 tests
+npm test            # 259 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

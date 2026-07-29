@@ -79,6 +79,20 @@ describe("preview mode", () => {
     await renderApp({ routes: {} });
     expect(screen.queryByText("SANDBOX")).not.toBeInTheDocument();
   });
+
+  it("shows no SANDBOX badge when the proxy answers but ordering is off", async () => {
+    // The regression: CLOVER_API_BASE pointing at a test host made the badge
+    // appear even with the credentials rejected and no order possible. A
+    // warning about mistaking test orders for real ones is meaningless when
+    // no order can be placed at all.
+    await renderApp({ routes: {
+      "GET /health": async () => ({ status: 200, body: {
+        ok: true, configured: false, sandbox: true, reason: "CREDENTIALS_REJECTED",
+      }}),
+    }});
+    await screen.findByRole("tab", { name: "Popular" });
+    await waitFor(() => expect(screen.queryByText("SANDBOX")).not.toBeInTheDocument());
+  });
 });
 
 /* ---------- connected ---------- */

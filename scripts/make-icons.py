@@ -35,20 +35,33 @@ if not SRC.exists():
     sys.exit(f"\n  Missing {SRC.relative_to(ROOT)}\n"
              "  Put the full-resolution logo at brand/logo.png and run this again.\n")
 
-src = Image.open(SRC).convert("RGBA")
+raw = Image.open(SRC).convert("RGBA")
+# The master is a square canvas with the artwork in the upper ~58% and dead
+# space below. Cropping to the real content first is what stops the icon
+# looking top-heavy and the header cropping the wordmark off.
+box = raw.getbbox()
+src = raw.crop(box) if box else raw
 w, h = src.size
-print(f"\n  source  {w}x{h}")
+print(f"\n  source  {raw.size[0]}x{raw.size[1]} -> content {w}x{h}")
 if w < 1024 or h < 1024:
     sys.exit(f"  Too small — the App Store marketing icon is 1024x1024, and "
              f"upscaling {w}x{h} will look soft.\n")
 if w != h:
-    print(f"  note    not square ({w}x{h}); it will be letterboxed onto a square canvas")
+    print(f"  note    content is {w}x{h}; icons letterbox it onto a square")
 
 # One flattened master, resized down per size. Compositing once keeps the
-# edges identical across the whole set.
-side = max(w, h)
+# edges identical across the whole set. A little breathing room round the
+# artwork so it is not flush to the icon's edge.
+side = int(max(w, h) * 1.12)
 master = Image.new("RGB", (side, side), PAPER)
 master.paste(src, ((side - w) // 2, (side - h) // 2), src)
+
+# The wordmark on its own, transparent, for the splash and the menu header.
+# Landscape, cropped to content — no object-position fudging at the CSS end.
+mark = src.copy()
+mark.thumbnail((1200, 1200), Image.LANCZOS)
+mark.save(ROOT / "public" / "logo-mark.png", "PNG", optimize=True)
+print(f"  mark    {mark.size[0]}x{mark.size[1]} -> public/logo-mark.png (transparent)")
 
 # The classic iOS set. Recent Xcode only needs the 1024, but a full catalog
 # costs nothing and covers older project templates.

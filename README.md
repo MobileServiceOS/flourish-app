@@ -105,7 +105,7 @@ npm test          # once
 npm run test:watch
 ```
 
-243 tests. They cover the things that cost money if they break: pickup-slot
+259 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the
@@ -309,6 +309,15 @@ The proxy has to be hosted somewhere — Railway, Fly.io or a Firebase Cloud
 Function all work. It needs `CLOVER_PRIVATE_TOKEN` set as a secret, and the app's
 `/api` calls pointed at it.
 
-**Before it goes public, put authentication on it.** Right now it's open, which
-is fine on localhost and not fine on the internet — anyone who could reach
-`/api/clover/pay` could charge cards. See `ROADMAP.md`.
+Set these before deploying, or the proxy refuses every remote caller:
+
+```
+APP_KEY=<any long random string>
+ALLOWED_ORIGINS=https://flourishbx.com
+MAX_CHARGE_DOLLARS=500
+```
+
+`VITE_APP_KEY` must match `APP_KEY`. It ships in the browser bundle and is not a
+secret — it turns away scanners. The real protection is the rate limit, the
+origin allowlist and the charge ceiling, plus the fact that
+`CLOVER_PRIVATE_TOKEN` never leaves the server.

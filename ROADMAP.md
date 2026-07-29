@@ -68,8 +68,8 @@ because the sandbox tokens currently in `.env.local` return 401.
 
 ## Blocked
 
-- [ ] **App icon into Xcode.** `npm run icons` writes the full catalog, but only
-      once `npx cap add ios` has created the platform. Run that first.
+- [x] iOS platform added and the full app-icon catalog generated (13 sizes, no
+      alpha), verified installed and running on the simulator
 - [ ] **Enter the printed-menu prices in Clover.** The app now shows menu prices
       but Clover still rings its own, so the app and the counter disagree on
       nine items — including two where a customer is quoted less than they are
@@ -91,12 +91,12 @@ because the sandbox tokens currently in `.env.local` return 401.
 - [x] Logo wired into the splash, the menu header, the favicon and the icon set
 - [ ] Photos for the six Popular items — every row currently shows its emoji
       tile. Drop files in `public/items/` and add `img` paths.
+- [ ] Screenshots for App Store Connect — 6.7in and 6.5in
+- [ ] Signing profile in Xcode (team KWAA7STKX7)
 - [ ] Host the proxy. Railway, Fly.io or a Firebase Cloud Function; it needs
       `CLOVER_PRIVATE_TOKEN` as a secret and the app needs `/api` pointed at it.
-- [ ] **Authenticate the proxy before it goes public.** It is currently open —
-      fine on localhost, not fine on the internet, where anyone could POST to
-      `/api/clover/pay`. Needs at minimum an app-level shared secret and rate
-      limiting.
+- [x] Proxy hardened for hosting: per-IP rate limit, origin allowlist, charge
+      ceiling, app key, and a refusal to serve remote callers unconfigured
 - [ ] Server-sent push the moment Clover flips the order to ready, replacing the
       scheduled local notification. Needs an Apple Developer account, an APNs
       key, and somewhere to keep device tokens — the proxy is stateless today.

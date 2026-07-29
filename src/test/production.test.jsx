@@ -298,7 +298,7 @@ describe("brand assets", () => {
   const bytes = (p) => statSync(resolve(ROOT, p)).size;
 
   it("ships the sizes the app actually loads", () => {
-    for (const f of ["public/logo-512.png", "public/logo-1024.png", "public/logo-192.png"]) {
+    for (const f of ["public/logo-mark.png", "public/logo-1024.png", "public/logo-192.png"]) {
       expect(existsSync(resolve(ROOT, f)), f).toBe(true);
       expect(bytes(f), f).toBeGreaterThan(5_000);
     }

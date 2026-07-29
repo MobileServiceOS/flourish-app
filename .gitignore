@@ -11,3 +11,6 @@ android/
 .env
 .env.local
 clover-secrets.json
+
+# Simulator captures — regenerate, do not version
+brand/screenshots/
