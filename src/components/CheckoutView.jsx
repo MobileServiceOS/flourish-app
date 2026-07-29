@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { MapPin, Check, Clock, Award, ChevronRight, CreditCard, Store, AlertCircle } from "lucide-react";
+import { MapPin, Check, Clock, Award, ChevronRight, Store, AlertCircle } from "lucide-react";
 import { cents, money, taxOn, TAX_LABEL } from "../lib/money.js";
 import {
   isOpen, nextOpening, pickupSlots, asapReadyAt, formatTime, describeOpening,
@@ -7,20 +7,14 @@ import {
 } from "../lib/hours.js";
 import { formatPhone, isValidPhone, isValidName } from "../lib/phone.js";
 import { SubHeader, Section } from "./shared.jsx";
-import CardForm from "./CardForm.jsx";
 
 /* ---------- CHECKOUT ---------- */
 export default function CheckoutView({
   subtotal, points, account, goJoin, discount = 0, appliedVoucher, onBack, onPay,
   cloverStatus = "preview", cloverReason = null, submitting = false, payError = null, onClearError,
 }) {
-  /* Card is only offered when the proxy is actually reachable. In preview mode
-     there is nothing that can charge a card, so the choice is hidden rather
-     than offered and then failed. */
-  const canTakeCard = cloverStatus === "online";
-  const [method, setMethod] = useState("pickup");   // "card" | "pickup"
-  const cardRef = useRef(null);
-  useEffect(() => { if (!canTakeCard) setMethod("pickup"); }, [canTakeCard]);
+  /* Pay at pickup, always. The app takes no money — the order goes to the
+     register unpaid and the customer settles at the counter. */
   const [name, setName] = useState(account ? account.name : "");
   // The account stores bare digits; show them the way they typed them.
   const [phone, setPhone] = useState(account ? formatPhone(account.phone) : "");
@@ -65,7 +59,7 @@ export default function CheckoutView({
           background: "rgba(47,182,168,.10)", marginTop: 4 }}>
           <MapPin size={17} color="var(--teal-ink)" style={{ flex: "0 0 auto", marginTop: 1 }} />
           <div style={{ fontSize: 13, lineHeight: 1.4 }}>
-            <strong>Pickup only</strong><br />
+            <strong>Pickup only · ready in about 15 minutes</strong><br />
             <span style={{ color: "var(--muted)" }}>4035 Laconia Ave, Bronx, NY 10466</span>
           </div>
         </div>
@@ -179,45 +173,27 @@ export default function CheckoutView({
           </button>
         )}
 
-        <Section title="How you'd like to pay">
-          {cloverStatus === "preview" && (
+        <Section title="Payment">
+          {cloverStatus === "preview" ? (
             <div className="notice" role="status">
               <AlertCircle size={16} aria-hidden="true" style={{ flex: "0 0 auto" }} />
               <span>
-                App is in preview mode — ordering is not connected yet.
-                {cloverReason === "CREDENTIALS_REJECTED" && " The register rejected our credentials."}
-                {cloverReason === "PROXY_DOWN" && " Start the order server with npm run server."}
+                Online ordering isn't available right now.
+                {cloverReason === "CREDENTIALS_REJECTED" && " The register isn't answering."}
               </span>
             </div>
-          )}
-
-          <div role="radiogroup" aria-label="Payment method">
-            {canTakeCard && (
-              <button role="radio" aria-checked={method === "card"}
-                className={`pay-opt ${method === "card" ? "on" : ""}`}
-                onClick={() => { setMethod("card"); onClearError?.(); }}>
-                <CreditCard size={18} aria-hidden="true" />
-                <span>
-                  <strong>Pay now by card</strong>
-                  <span className="pay-sub">Apple Pay, Google Pay or card</span>
+          ) : (
+            <div className="payatpickup">
+              <Store size={20} aria-hidden="true" style={{ flex: "0 0 auto" }} />
+              <div>
+                <strong>PAY AT PICKUP</strong>
+                <span className="pay-sub">
+                  Nothing is charged now. Pay at the counter when you collect —
+                  card or cash, whichever suits.
                 </span>
-                {method === "card" && <Check size={17} style={{ marginLeft: "auto" }} aria-hidden="true" />}
-              </button>
-            )}
-
-            <button role="radio" aria-checked={method === "pickup"}
-              className={`pay-opt ${method === "pickup" ? "on" : ""}`}
-              onClick={() => { setMethod("pickup"); onClearError?.(); }}>
-              <Store size={18} aria-hidden="true" />
-              <span>
-                <strong>Pay at pickup</strong>
-                <span className="pay-sub">We'll have it ready. Pay at the counter.</span>
-              </span>
-              {method === "pickup" && <Check size={17} style={{ marginLeft: "auto" }} aria-hidden="true" />}
-            </button>
-          </div>
-
-          {method === "card" && <div style={{ marginTop: 12 }}><CardForm ref={cardRef} /></div>}
+              </div>
+            </div>
+          )}
         </Section>
 
         {payError && (
@@ -230,19 +206,19 @@ export default function CheckoutView({
             )}
             {payError.retryable && (
               <button className="pill-btn ghost" style={{ marginTop: 10 }}
-                onClick={() => onPay(pickupChoice(), tip, method, cardRef.current)}>
+                onClick={() => onPay(pickupChoice(), tip)}>
                 Try again
               </button>
             )}
           </div>
         )}
 
-        <button className="pill-btn" disabled={!ready || submitting}
-          onClick={() => onPay(pickupChoice(), tip, method, cardRef.current)}>
+        <button className="pill-btn" disabled={!ready || submitting || cloverStatus !== "online"}
+          onClick={() => onPay(pickupChoice(), tip)}>
           {submitting ? "Sending to the kitchen…"
+            : cloverStatus !== "online" ? "Ordering not available right now"
             : !open ? `Closed until ${formatTime(nextOpening(now))}`
             : !ready ? (!nameOk ? "Enter your name" : "Enter your phone number")
-            : method === "card" ? `Pay ${money(total)}`
             : `Place order · ${money(total)} at pickup`}
         </button>
         <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 11, marginTop: 10 }}>

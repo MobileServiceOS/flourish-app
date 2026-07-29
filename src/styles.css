@@ -275,3 +275,8 @@ select.field{appearance:none;cursor:pointer;
 /* Menu header logo. logo-mark.png is already cropped to the artwork, so it just
    scales — no object-position guesswork, and the wordmark cannot get clipped. */
 .hdr-logo{display:block;width:168px;max-width:46vw;height:auto;margin:2px 0 0 -4px;}
+/* Pay at pickup. Stated plainly on the checkout and again on the confirmation,
+   because the whole model rests on the customer knowing nothing was charged. */
+.payatpickup{display:flex;align-items:flex-start;gap:11px;padding:14px;border-radius:14px;
+  border:1px solid var(--teal-ink);background:rgba(47,182,168,.10);color:var(--ink);font-size:14.5px;}
+.payatpickup strong{display:block;letter-spacing:.04em;}

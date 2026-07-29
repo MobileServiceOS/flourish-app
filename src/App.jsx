@@ -7,7 +7,7 @@ import { cents, withTax } from "./lib/money.js";
 import { rewardOf, discountFor } from "./lib/loyalty.js";
 import { loadAccount, saveAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
-import { createOrder, pay, syncCustomer, setStock, ApiError } from "./lib/clover.js";
+import { createOrder, syncCustomer, setStock } from "./lib/clover.js";
 import { useCloverHealth, useInventorySync } from "./hooks/clover.js";
 
 import Splash from "./components/Splash.jsx";
@@ -299,7 +299,7 @@ export default function App() {
      Doing it the other way round risks a charged customer with no order on the
      register, which is the one outcome staff cannot fix from the counter.
      A failed charge on an existing order is recoverable — they pay at pickup. */
-  const placeOrder = async (pickup, tip, method = "pickup", cardApi = null) => {
+  const placeOrder = async (pickup, tip) => {
     setPayError(null);
     setSubmitting(true);
 
@@ -309,50 +309,35 @@ export default function App() {
       ? { name: appliedVoucher.name, code: appliedVoucher.code, amount: discount }
       : null;
 
+    /* The number is minted here, before the order is sent, so the kitchen
+       ticket and the customer's screen show the same thing. Deriving it from
+       the Clover id afterwards meant the printed ticket could not carry it. */
+    const num = "FL-" + Math.floor(2000 + Math.random() * 8000);
+
     try {
       let cloverOrderId = null;
       let printed = null;
 
       if (clover.status === "online") {
-        // Tokenize before creating the order — a card the customer mistyped
-        // should not leave an abandoned ticket in the kitchen.
-        let token = null;
-        if (method === "card") {
-          if (!cardApi) throw new ApiError("The card form isn't ready yet.");
-          token = await cardApi.tokenize();
-        }
-
         const res = await createOrder({
-          cart, reward, customerId: account?.cloverCustomerId ?? null,
+          cart, reward,
+          customerId: account?.cloverCustomerId ?? null,
+          customer: account ? { name: account.name, phone: account.phone } : null,
+          orderNumber: num,
           pickupLabel: pickup.label,
         });
         cloverOrderId = res.orderId;
         printed = res.printed;
-
-        if (method === "card") {
-          /* Charge what Clover priced the order at when it tells us, and fall
-             back to our own estimate only when it doesn't. Clover is the
-             register: if its tax rules disagree with TAX_RATE, the amount on
-             the card has to follow the order, not the app, or the till is out
-             by the difference on every card sale. */
-          const dueFromClover = typeof res.total === "number" ? res.total / 100 : null;
-          await pay({
-            source: token,
-            amountDollars: dueFromClover ?? withTax(net),
-            tipDollars: tip,
-            orderId: cloverOrderId,
-          });
-        }
         if (printed === false) {
-          flash("Order received — the kitchen printer is down, staff have it on screen");
+          flash("Order received — the printer is down, staff have it on screen");
         }
       }
 
       const order = {
-        num: cloverOrderId ? `FL-${String(cloverOrderId).slice(-4).toUpperCase()}` : "FL-" + Math.floor(2000 + Math.random() * 8000),
-        cloverOrderId, when: "Today", total: localTotal, status: "preparing",
+        num, cloverOrderId, when: "Today", total: localTotal, status: "preparing",
         pickup: pickup.label, readyAt: pickup.at.toISOString(), tip,
-        paidBy: method, printed, reward,
+        paidBy: "pickup",          // the app never takes money
+        printed, reward,
         lines: cart.map((l) => ({ ...l })),
       };
 
@@ -366,18 +351,19 @@ export default function App() {
       setCart([]);
       setView("track");
     } catch (e) {
-      // Never fail silently on an order. Every branch here ends with the
-      // customer being told something they can act on.
-      const declined = e.status === 402;
+      /* Never fail silently, and never drop the cart — it is kept exactly as it
+         was so "try again" is one tap. */
       setPayError({
         message: e.isPreview
-          ? "App is in preview mode — ordering is not connected yet"
-          : declined ? (e.message || "Card declined.")
-          : e.code === "MODIFIER_UNRESOLVED" ? e.message
+          ? "Ordering isn't available right now"
+          : e.status === 401 || e.code === "CREDENTIALS"
+            ? "Connection to the register failed — please call the restaurant"
+          : e.isOffline
+            ? "Couldn't connect — check your internet and try again"
+          : e.code === "MODIFIER_UNRESOLVED" || e.code === "CLOSED"
+            ? e.message
           : e.message || "Couldn't reach the kitchen — try again",
-        declineReason: e.declineReason ?? null,
-        // Retrying a closed kitchen or a stale modifier fails identically, so
-        // do not offer a button that cannot work.
+        declineReason: null,
         retryable: !e.isPreview
           && e.code !== "MODIFIER_UNRESOLVED"
           && e.code !== "CLOSED",

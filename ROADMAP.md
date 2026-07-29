@@ -57,7 +57,8 @@ because the sandbox tokens currently in `.env.local` return 401.
 - [x] Rewards as order-level discounts
 - [x] Tax left to Clover; tip on the payment, not the order
 - [x] Print event fired, non-fatal when the printer is down
-- [x] Hosted-iframe card tokenization + "Pay at pickup" alternative
+- [x] Pay at pickup: order pushed unpaid, ticket says PAY AT REGISTER, kitchen
+      note carries the customer, the pickup time and any reward
 - [x] Inventory-driven sold-out sync, manual 86 as an override, push-back to Clover
 - [x] Real order status polling, replacing the simulated timers
 - [x] Customer sync to Clover with lookup by phone
@@ -101,6 +102,13 @@ because the sandbox tokens currently in `.env.local` return 401.
 - [ ] Server-sent push the moment Clover flips the order to ready, replacing the
       scheduled local notification. Needs an Apple Developer account, an APNs
       key, and somewhere to keep device tokens — the proxy is stateless today.
+
+## Future
+
+- **Card payments in the app.** Removed for now — the app takes no money and the
+  customer settles at the counter. The server's `/pay` endpoint and the Clover
+  ecommerce client are still there and still tested, so bringing it back is
+  re-adding the card form rather than starting over.
 
 ## Not planned
 

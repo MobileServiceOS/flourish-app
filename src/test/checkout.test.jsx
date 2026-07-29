@@ -2,11 +2,12 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { addItem, ACKEE } from "./helpers.js";
+import { addItem, ACKEE, stubOnlineProxy } from "./helpers.js";
 
 async function renderApp(when = new Date(2026, 6, 27, 12, 0)) { // Monday noon
   vi.setSystemTime(when);
   vi.resetModules();
+  stubOnlineProxy({ vi });          // ordering needs a reachable proxy
   const { default: App } = await import("../App.jsx");
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
   render(<App />);

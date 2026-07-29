@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Clock, MapPin, Phone, ChevronLeft, Check, Navigation } from "lucide-react";
+import { Clock, MapPin, Phone, ChevronLeft, Check, Navigation, Store } from "lucide-react";
 import { money } from "../lib/money.js";
 import { formatTime } from "../lib/hours.js";
 import { PHONE_E164, PHONE_HUMAN, MAPS_URL } from "../lib/restaurant.js";
@@ -128,12 +128,27 @@ export default function TrackView({ order, setView, live = false }) {
             </div>
           )}
           <div style={{ borderTop: "1px solid var(--line)", margin: "8px 0" }} />
-          <div className="rowline" style={{ fontWeight: 700 }}><span>Total paid</span><span>{money(order.total)}</span></div>
+          <div className="rowline" style={{ fontWeight: 700 }}>
+            <span>{order.paidBy === "card" ? "Total paid" : "Total due at pickup"}</span>
+            <span>{money(order.total)}</span>
+          </div>
         </div>
 
         {/* where to go */}
         <h3 className="serif" style={{ fontWeight: 700, fontSize: 17, margin: "22px 4px 10px" }}>Pickup</h3>
         <div className="card" style={{ padding: 16 }}>
+          {order.paidBy !== "card" && (
+            <div className="payatpickup" style={{ marginBottom: 14 }}>
+              <Store size={19} aria-hidden="true" style={{ flex: "0 0 auto" }} />
+              <div>
+                <strong>Pay when you arrive</strong>
+                <span className="pay-sub">
+                  Nothing has been charged. Settle up at the counter — card or cash.
+                </span>
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
             <MapPin size={18} color="var(--teal-ink)" style={{ flex: "0 0 auto", marginTop: 2 }} aria-hidden="true" />
             <div style={{ fontSize: 14, lineHeight: 1.45 }}>

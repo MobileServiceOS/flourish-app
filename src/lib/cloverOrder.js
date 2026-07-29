@@ -74,10 +74,31 @@ export function resolveModifiers(modifiers = [], catalog = {}) {
  *     pre-calculated figure would double-tax the order.
  *   - tip. That rides on the payment, not the order.
  */
+/* The ticket the kitchen tears off. Pay-at-pickup means the register has to be
+   told, in words, that money is still owed — an order with no payment attached
+   is "open" in Clover, but nobody reads state codes off a printed ticket. */
+export function kitchenNote({ orderNumber, customer, pickupLabel, reward, note }) {
+  const lines = ["PICKUP ORDER — PAY AT REGISTER"];
+  if (orderNumber) lines.push(`Order ${orderNumber}`);
+  if (customer?.name) {
+    lines.push(customer.phone ? `${customer.name} · ${customer.phone}` : customer.name);
+  }
+  lines.push(`Pickup: ${pickupLabel}`);
+  if (reward && Math.abs(Number(reward.amount) || 0) > 0) {
+    lines.push(`REWARD APPLIED: ${reward.name}${reward.code ? ` (${reward.code})` : ""} −${money(reward.amount)}`);
+  }
+  if (note) lines.push(`Note: ${note}`);
+  return lines.join("\n");
+}
+
+const money = (n) => `$${(Math.round((Number(n) + 1e-9) * 100) / 100).toFixed(2)}`;
+
 export function buildAtomicOrder({
   cart,
   reward = null,
   customerId = null,
+  customer = null,
+  orderNumber = null,
   pickupLabel = "ASAP",
   note = "",
   catalog = {},
@@ -106,8 +127,11 @@ export function buildAtomicOrder({
 
   const orderCart = {
     lineItems,
-    title: `Flourish app · pickup ${pickupLabel}`,
-    note: note || `Pickup: ${pickupLabel}`,
+    // The title is what shows in the Clover order list; the note is what prints.
+    title: orderNumber ? `${orderNumber} · PAY AT REGISTER` : `Flourish app · pickup ${pickupLabel}`,
+    note: kitchenNote({ orderNumber, customer, pickupLabel, reward, note }),
+    /* No payment is attached, deliberately. That is what leaves the order open
+       and owing at the register — this app never takes money. */
   };
 
   // A redeemed reward is an order-level discount. Clover wants it negative.

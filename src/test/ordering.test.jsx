@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { addItem, ACKEE } from "./helpers.js";
+import { addItem, ACKEE, stubOnlineProxy } from "./helpers.js";
 
 const MON_NOON = new Date(2026, 6, 27, 12, 0);   // Monday
 const FRI_NOON = new Date(2026, 6, 31, 12, 0);   // Friday
@@ -11,6 +11,7 @@ const MON_NIGHT = new Date(2026, 6, 27, 23, 30); // Monday, after close
 async function renderApp(when = MON_NOON) {
   vi.setSystemTime(when);
   vi.resetModules();
+  stubOnlineProxy({ vi });          // ordering needs a reachable proxy
   const { default: App } = await import("../App.jsx");
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
   render(<App />);

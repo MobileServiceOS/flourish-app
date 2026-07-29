@@ -98,6 +98,23 @@ flourish-app/
    └─ test/                    Vitest + Testing Library
 ```
 
+## Running the app
+
+```bash
+npm run dev:all      # frontend on 5173 + order proxy on 3001
+```
+
+Two halves. `npm run dev` alone gives you the menu, the cart, the account and
+rewards, but the checkout button reads *"Ordering not available right now"* and
+is disabled — placing an order needs the proxy, because that is what holds the
+Clover credentials.
+
+```bash
+npm run dev          # frontend only
+npm run server       # proxy only
+curl localhost:3001/api/clover/health
+```
+
 ## Tests
 
 ```bash
@@ -105,7 +122,7 @@ npm test          # once
 npm run test:watch
 ```
 
-277 tests. They cover the things that cost money if they break: pickup-slot
+287 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the

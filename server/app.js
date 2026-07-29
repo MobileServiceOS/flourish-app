@@ -136,7 +136,7 @@ export function createApp({ clover = api, catalog = modifierCatalog, now = () =>
 
   /* ---- orders ---- */
   app.post("/api/clover/orders", requireConfig, requireOpen, async (req, res) => {
-    const { cart, reward, customerId, pickupLabel, note } = req.body ?? {};
+    const { cart, reward, customerId, customer, orderNumber, pickupLabel, note } = req.body ?? {};
     if (!Array.isArray(cart) || !cart.length) {
       return res.status(400).json({ error: "Cart is empty" });
     }
@@ -157,7 +157,8 @@ export function createApp({ clover = api, catalog = modifierCatalog, now = () =>
       });
 
       const body = buildAtomicOrder({
-        cart: priced, reward, customerId, pickupLabel, note, catalog: cat,
+        cart: priced, reward, customerId, customer, orderNumber,
+        pickupLabel, note, catalog: cat,
       });
       const order = await clover.createOrder(body);
 
@@ -167,7 +168,17 @@ export function createApp({ clover = api, catalog = modifierCatalog, now = () =>
       try { await clover.printOrder(order.id); printed = true; }
       catch (e) { printError = e instanceof CloverError ? e.message : "Print failed"; }
 
-      res.json({ orderId: order.id, total: order.total ?? null, printed, printError });
+      /* success:true even when the printer refused. The order is on the
+         register either way, and telling a customer their food failed when it
+         did not is the worse mistake. */
+      res.json({
+        success: true,
+        orderId: order.id,
+        orderNumber: orderNumber ?? null,
+        total: order.total ?? null,
+        paid: false,          // pay-at-pickup: nothing is collected here
+        printed, printError,
+      });
     } catch (e) { fail(res, e); }
   });
 

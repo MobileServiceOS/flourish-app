@@ -152,6 +152,25 @@ Two things that silently break an iOS catalog, both now guarded by tests:
 alpha channels (Apple rejects them) and tagging a 1x icon as `iphone` — iPhone
 has no 1x sizes, so Xcode ignores the entry.
 
+### Pay at pickup
+
+The app takes no money. An order is pushed to Clover with **no payment
+attached**, which leaves it open and owing at the register, and the ticket says
+so in words — `PICKUP ORDER — PAY AT REGISTER` is the first line of the order
+note, because nobody reads state codes off a printed ticket.
+
+The order number is minted on the client *before* the order is sent, so the
+kitchen ticket and the customer's screen show the same `FL-1234`. Deriving it
+from the Clover id afterwards, which is what it used to do, meant the printed
+ticket could not carry it.
+
+The ticket also carries the customer's name and phone, the pickup time, any
+redeemed reward, and per-item special instructions.
+
+Card entry is gone: no `CardForm`, no tokenization, no SDK. The server's `/pay`
+endpoint still exists and is still guarded, but nothing calls it — it is there
+for if card payments come back.
+
 ### The proxy on the internet
 
 `server/guard.js` is what makes hosting it safe: a per-IP rate limit, an origin
@@ -208,7 +227,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 277 tests
+npm test            # 287 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

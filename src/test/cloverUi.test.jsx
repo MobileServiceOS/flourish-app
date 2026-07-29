@@ -59,14 +59,14 @@ describe("preview mode", () => {
   it("says ordering isn't connected instead of crashing", async () => {
     const { user } = await renderApp({ routes: {} });   // every fetch throws
     await toCheckout(user);
-    expect(await screen.findByText(/preview mode — ordering is not connected/i)).toBeInTheDocument();
+    expect(await screen.findByText(/ordering isn't available right now/i)).toBeInTheDocument();
   });
 
-  it("offers no card option when nothing can charge a card", async () => {
+  it("disables the order button rather than pretending it can order", async () => {
     const { user } = await renderApp({ routes: {} });
     await toCheckout(user);
-    expect(screen.queryByRole("radio", { name: /pay now by card/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /pay at pickup/i })).toBeInTheDocument();
+    const cta = screen.getByRole("button", { name: /ordering not available right now/i });
+    expect(cta).toBeDisabled();
   });
 
   it("still lets the customer browse and build a cart", async () => {
@@ -116,8 +116,7 @@ describe("connected to Clover", () => {
     const { user } = await renderApp({ routes: { ...ONLINE, "POST /orders": createOrder } });
     await toCheckout(user);
 
-    expect(await screen.findByRole("radio", { name: /pay now by card/i })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^Place order/ }));
+    await user.click(await screen.findByRole("button", { name: /^Place order/ }));
 
     await screen.findByText("Order confirmed");
     expect(createOrder).toHaveBeenCalled();
@@ -155,22 +154,17 @@ describe("order failures are never silent", () => {
     expect(screen.getByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();
   });
 
-  it("quotes the decline reason back when a card is refused", async () => {
+  it("says to call the restaurant when the register rejects our credentials", async () => {
     const { user } = await renderApp({ routes: {
       ...ONLINE,
-      "POST /orders": async () => ({ status: 200, body: { orderId: "ORD-1", printed: true } }),
-      "POST /pay": async () => ({ status: 402, body: {
-        error: "Your card was declined.", code: "card_declined", declineReason: "insufficient_funds",
+      "POST /orders": async () => ({ status: 502, body: {
+        error: "The restaurant's payment system rejected our credentials.",
+        code: "CREDENTIALS",
       }}),
     }});
     await toCheckout(user);
-    // choose card, then submit; the stubbed SDK never loads so tokenize fails
-    // unless the form is ready — assert on the decline path via pay directly
-    await user.click(await screen.findByRole("radio", { name: /pay now by card/i }));
-    await user.click(screen.getByRole("button", { name: /^Pay \$/ }));
-
-    const alert = await screen.findByRole("alert");
-    expect(alert).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Place order/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/call the restaurant/i);
   });
 
   it("refuses rather than ringing up free when a modifier no longer exists", async () => {
