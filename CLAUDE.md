@@ -106,6 +106,20 @@ them reintroduces the flash.
 
 The exit is a class, not a keyframe on a timer, for the same reason.
 
+### App icons
+
+`npm run icons` builds the whole set from `brand/logo.png`.
+
+**Order matters.** `npx cap sync` restores Capacitor's placeholder
+AppIcon.appiconset over whatever is there, so icons must be generated *after*
+sync or the home screen shows a generic icon. `npm run sync` chains
+build -> sync -> icons for exactly that reason; do not run `npx cap sync` on its
+own and stop there.
+
+Two things that silently break an iOS catalog, both now guarded by tests:
+alpha channels (Apple rejects them) and tagging a 1x icon as `iphone` — iPhone
+has no 1x sizes, so Xcode ignores the entry.
+
 ### The proxy on the internet
 
 `server/guard.js` is what makes hosting it safe: a per-IP rate limit, an origin
@@ -162,7 +176,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 259 tests
+npm test            # 263 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "menu": "node scripts/generate-menu.mjs",
-    "sync": "npm run build && npx cap sync",
+    "sync": "npm run build && npx cap sync && npm run icons",
     "ios": "npm run sync && npx cap open ios",
     "android": "npm run sync && npx cap open android",
     "test": "vitest run",

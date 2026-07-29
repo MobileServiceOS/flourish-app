@@ -23,6 +23,11 @@ Regenerate them all after replacing the master:
 npm run icons
 ```
 
+**Always after `npx cap sync`, never before.** Sync restores Capacitor's
+placeholder icon set, so generating first means the placeholder wins and the
+home screen shows a generic icon. `npm run sync` does build -> sync -> icons in
+that order.
+
 The iOS asset catalog is only written once `npx cap add ios` has run.
 
 **Alpha matters.** Apple rejects an app icon with an alpha channel, so every

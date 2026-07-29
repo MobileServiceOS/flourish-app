@@ -323,3 +323,37 @@ describe("brand assets", () => {
     expect(html).toMatch(/rel="icon"[^>]*icon-32\.png/);
   });
 });
+
+/* `npx cap sync` restores Capacitor's placeholder AppIcon.appiconset over
+   whatever is there — that is how the home screen ends up generic. npm run sync
+   regenerates afterwards; this checks the result is actually usable. */
+describe("iOS app icon catalog", () => {
+  const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  const SET = resolve(ROOT, "ios/App/App/Assets.xcassets/AppIcon.appiconset");
+  const present = existsSync(SET);
+
+  it.skipIf(!present)("references only files that exist", () => {
+    const meta = JSON.parse(readFileSync(resolve(SET, "Contents.json"), "utf8"));
+    for (const img of meta.images) {
+      expect(existsSync(resolve(SET, img.filename)), img.filename).toBe(true);
+    }
+  });
+
+  it.skipIf(!present)("is not still Capacitor's placeholder", () => {
+    expect(existsSync(resolve(SET, "AppIcon-512@2x.png"))).toBe(false);
+    const meta = JSON.parse(readFileSync(resolve(SET, "Contents.json"), "utf8"));
+    expect(meta.images.length).toBeGreaterThan(1);
+  });
+
+  it.skipIf(!present)("never tags a 1x icon as iPhone, which Xcode ignores", () => {
+    const meta = JSON.parse(readFileSync(resolve(SET, "Contents.json"), "utf8"));
+    const wrong = meta.images.filter((i) => i.idiom === "iphone" && i.scale === "1x");
+    expect(wrong).toEqual([]);
+  });
+
+  it.skipIf(!present)("carries a 1024 marketing icon with no alpha", () => {
+    const f = resolve(SET, "AppIcon-1024.png");
+    expect(existsSync(f)).toBe(true);
+    expect([4, 6]).not.toContain(readFileSync(f)[25]);   // PNG colour type byte
+  });
+});
