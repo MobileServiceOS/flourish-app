@@ -41,8 +41,8 @@ describe("the proxy refuses business outside opening hours", () => {
   it("tells the customer when it opens again", async () => {
     const { agent } = proxy(SHUT);
     const r = await agent.post("/api/clover/orders").send({ cart: CART });
-    expect(r.body.error).toMatch(/opens tomorrow at 9:00 AM/);
-    expect(new Date(r.body.opensAt).getHours()).toBe(9);
+    expect(r.body.error).toMatch(/opens tomorrow at 11:00 AM/);
+    expect(new Date(r.body.opensAt).getHours()).toBe(11);
   });
 
   it("will not charge a card when the kitchen is shut", async () => {
@@ -89,7 +89,7 @@ describe("the cart when the store is shut", () => {
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
 
     expect(await screen.findByText(/We're closed right now/)).toBeInTheDocument();
-    expect(screen.getByText(/opens tomorrow at 9:00 AM/)).toBeInTheDocument();
+    expect(screen.getByText(/opens tomorrow at 11:00 AM/)).toBeInTheDocument();
 
     const cta = screen.getByRole("button", { name: /Closed — order when we open/ });
     expect(cta).toBeDisabled();

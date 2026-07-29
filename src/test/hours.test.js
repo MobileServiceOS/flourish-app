@@ -13,30 +13,34 @@ const FRI = (hh, mm) => at(2026, 7, 31, hh, mm);
 const SAT = (hh, mm) => at(2026, 8, 1, hh, mm);
 
 describe("closing time", () => {
-  it("is 10PM every day, as the printed menu says", () => {
-    for (let d = 0; d <= 6; d++) expect(closeHourFor(d)).toBe(22);
+  it("is 10PM Sunday through Thursday", () => {
+    for (const d of [0, 1, 2, 3, 4]) expect(closeHourFor(d)).toBe(22);
+  });
+  it("runs to 11PM on Friday and Saturday", () => {
+    expect(closeHourFor(5)).toBe(23);
+    expect(closeHourFor(6)).toBe(23);
   });
 });
 
 describe("isOpen", () => {
-  it("is shut before 9AM", () => expect(isOpen(MON(8, 59))).toBe(false));
-  it("opens at 9AM sharp", () => expect(isOpen(MON(9, 0))).toBe(true));
+  it("is shut before 11AM", () => expect(isOpen(MON(10, 59))).toBe(false));
+  it("opens at 11AM sharp", () => expect(isOpen(MON(11, 0))).toBe(true));
   it("is open mid-afternoon", () => expect(isOpen(MON(15, 30))).toBe(true));
   it("shuts at 10PM on a Monday", () => expect(isOpen(MON(22, 0))).toBe(false));
-  it("shuts at 10PM on a Friday too", () => expect(isOpen(FRI(22, 0))).toBe(false));
-  it("shuts at 10PM on a Saturday", () => expect(isOpen(SAT(22, 0))).toBe(false));
+  it("is still open at 10:30PM on a Friday", () => expect(isOpen(FRI(22, 30))).toBe(true));
+  it("shuts at 11PM on a Saturday", () => expect(isOpen(SAT(23, 0))).toBe(false));
 });
 
 describe("nextOpening", () => {
   it("is later today when it hasn't opened yet", () => {
     const n = nextOpening(MON(7, 0));
     expect(n.getDate()).toBe(27);
-    expect(n.getHours()).toBe(9);
+    expect(n.getHours()).toBe(11);
   });
   it("rolls to tomorrow once the day is done", () => {
     const n = nextOpening(MON(23, 0));
     expect(n.getDate()).toBe(28);
-    expect(n.getHours()).toBe(9);
+    expect(n.getHours()).toBe(11);
   });
 });
 
@@ -73,10 +77,10 @@ describe("pickupSlots", () => {
     expect(last.getMinutes()).toBe(0);
   });
 
-  it("closes at the same time on Friday as any other day", () => {
+  it("runs an hour later on a Friday", () => {
     const s = pickupSlots(FRI(20, 0));
     const last = s[s.length - 1];
-    expect(last.getHours()).toBe(22);
+    expect(last.getHours()).toBe(23);
     expect(last.getMinutes()).toBe(0);
   });
 
@@ -94,10 +98,10 @@ describe("asapReadyAt", () => {
 
 describe("describeOpening", () => {
   it("says today when it is today", () => {
-    expect(describeOpening(at(2026, 7, 27, 9, 0), MON(7, 0))).toBe("today at 9:00 AM");
+    expect(describeOpening(at(2026, 7, 27, 11, 0), MON(7, 0))).toBe("today at 11:00 AM");
   });
   it("says tomorrow when it is the next day", () => {
-    expect(describeOpening(at(2026, 7, 28, 9, 0), MON(23, 0))).toBe("tomorrow at 9:00 AM");
+    expect(describeOpening(at(2026, 7, 28, 11, 0), MON(23, 0))).toBe("tomorrow at 11:00 AM");
   });
 });
 

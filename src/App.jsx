@@ -317,6 +317,7 @@ export default function App() {
     try {
       let cloverOrderId = null;
       let printed = null;
+      let messaged = false;
 
       if (clover.status === "online") {
         const res = await createOrder({
@@ -328,6 +329,7 @@ export default function App() {
         });
         cloverOrderId = res.orderId;
         printed = res.printed;
+        messaged = res.messaged ?? false;
         if (printed === false) {
           flash("Order received — the printer is down, staff have it on screen");
         }
@@ -337,7 +339,7 @@ export default function App() {
         num, cloverOrderId, when: "Today", total: localTotal, status: "preparing",
         pickup: pickup.label, readyAt: pickup.at.toISOString(), tip,
         paidBy: "pickup",          // the app never takes money
-        printed, reward,
+        printed, messaged, reward,
         lines: cart.map((l) => ({ ...l })),
       };
 

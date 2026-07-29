@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Plus, Star, Clock, MapPin, X, Sparkles, Lock, ChevronRight } from "lucide-react";
 import { UE, hasChoices } from "../data/menu.data.js";
 import { money } from "../lib/money.js";
-import { HOURS_LINE } from "../lib/hours.js";
+import { HOURS_LINE, READY_WINDOW } from "../lib/hours.js";
 import { DOW, TODAY_IS_FRIDAY, daysLabel, chipLabel, SEAFOOD_CAT, sizePrices } from "../lib/restaurant.js";
 import { Thumb, Empty } from "./shared.jsx";
 
@@ -80,7 +80,7 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
         </div>
         <div style={{ display: "flex", gap: 14, marginTop: 14, fontSize: 12.5, color: "var(--muted)", fontWeight: 600, position: "relative", zIndex: 2 }}>
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Star size={13} fill="#F5B841" stroke="none" /> 4.4 (830)</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={13} /> Ready in ~15 min</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={13} /> Ready in {READY_WINDOW}</span>
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}><MapPin size={13} /> 4035 Laconia Ave</span>
         </div>
       </header>

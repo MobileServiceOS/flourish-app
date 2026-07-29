@@ -106,6 +106,25 @@ export const api = {
       },
     }),
 
+  /** Put the customer on the order so the merchant's reports see them. */
+  attachCustomer: (orderId, customerId) =>
+    request(API_BASE, m(`/orders/${orderId}`), {
+      method: "POST", body: { customers: [{ id: customerId }] },
+    }),
+
+  /* Clover's own customer messaging. Not on every plan and not on every
+     merchant, so every caller treats a failure here as cosmetic. */
+  sendOrderMessage: (orderId, message) =>
+    request(API_BASE, m(`/orders/${orderId}/messages`), {
+      method: "POST", body: { message },
+    }),
+
+  /** Staff tapping "ready" — flips the order and lets the customer know. */
+  fulfillOrder: (orderId) =>
+    request(API_BASE, m(`/orders/${orderId}`), {
+      method: "POST", body: { state: "fulfilled" },
+    }),
+
   /* Ecommerce charge — different host, same private token. */
   charge: (payment) => request(ECOMM_BASE, "/v1/charges", { method: "POST", body: payment }),
 };

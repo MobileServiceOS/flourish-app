@@ -1,18 +1,28 @@
 /* Operating hours and pickup slots.
-   Open 9AM to 10PM, every day. Straight off the printed menu:
-   "SUNDAY - SATURDAY 9AM-10PM".
+   Open 11AM daily. Closes 10PM Sunday to Thursday, 11PM Friday and Saturday.
+
+   The printed trifold says 9AM-10PM every day; these hours supersede it, so the
+   menu is the stale one. Worth reprinting.
 
    Every function takes `now` rather than reading the clock itself, so the
    checkout can be tested at 9:58PM on a Friday without waiting until Friday.
    Slot times are real Date objects; the label is only ever for display. */
 
-export const OPEN_HOUR = 9;
-export const PREP_MINUTES = 15;   // what the kitchen needs for an ASAP order
+export const OPEN_HOUR = 11;
+
+/* An ASAP order is quoted as a window, not a single number — the kitchen needs
+   15 minutes on a quiet afternoon and 25 in the middle of a rush, and promising
+   the optimistic end is how customers arrive to a wait.
+   PREP_MINUTES stays the *earliest* it could be ready, because that is what
+   decides the first bookable slot; nothing can be promised sooner. */
+export const PREP_MINUTES = 15;
+export const PREP_MAX_MINUTES = 25;
+export const READY_WINDOW = "15–25 min";
+
 export const SLOT_MINUTES = 15;   // granularity of the pickup picker
 
-/** 10PM, every day. Kept as a function of the weekday so late weekend hours are
-    a one-line change if they ever come back. 0=Sun ... 6=Sat. */
-export const closeHourFor = (_dow) => 22;
+/** 10PM, except Friday and Saturday which run to 11PM. 0=Sun ... 6=Sat. */
+export const closeHourFor = (dow) => (dow === 5 || dow === 6 ? 23 : 22);
 
 const at = (d, hour, min = 0) => {
   const x = new Date(d);
@@ -45,9 +55,17 @@ function ceilToSlot(d) {
   return x;
 }
 
-/** When an ASAP order is ready. */
+/** The earliest an ASAP order could be ready. */
 export const asapReadyAt = (now = new Date()) =>
   new Date(now.getTime() + PREP_MINUTES * 60_000);
+
+/** The far end of the quoted window. */
+export const asapReadyBy = (now = new Date()) =>
+  new Date(now.getTime() + PREP_MAX_MINUTES * 60_000);
+
+/** "12:15 – 12:25 PM" — the window as clock times. */
+export const formatWindow = (now = new Date()) =>
+  `${formatTime(asapReadyAt(now))} – ${formatTime(asapReadyBy(now))}`;
 
 /**
  * Bookable pickup times: every 15 minutes from the earliest the kitchen could
@@ -71,7 +89,7 @@ export const formatTime = (d) =>
 export const formatDay = (d) =>
   d.toLocaleDateString("en-US", { weekday: "long" });
 
-/** "today at 9:00 AM" / "Monday at 9:00 AM" — for the closed state. */
+/** "today at 11:00 AM" / "Monday at 11:00 AM" — for the closed state. */
 export function describeOpening(open, now = new Date()) {
   const sameDay = open.toDateString() === now.toDateString();
   const tomorrow = new Date(now);
@@ -85,4 +103,4 @@ export function describeOpening(open, now = new Date()) {
 }
 
 /** Human hours line for the footer. */
-export const HOURS_LINE = "Open daily 9AM–10PM";
+export const HOURS_LINE = "Open daily 11AM–10PM · 11PM Fri & Sat";

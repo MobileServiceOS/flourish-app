@@ -3,8 +3,8 @@
    Run with `npm run server`, or `npm run dev:all` alongside the frontend. */
 
 /* Opening hours are New York wall-clock, and the proxy refuses orders outside
-   them. Railway, Fly and most containers run in UTC, where 9am-10pm local would
-   put the Bronx open from 4am — so pin the zone before anything reads a clock.
+   them. Railway, Fly and most containers run in UTC, where 11am-10pm local would
+   put the Bronx open from 6am — so pin the zone before anything reads a clock.
    Must come before any other import that might touch Date. */
 process.env.TZ = process.env.TZ || "America/New_York";
 

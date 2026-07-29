@@ -80,7 +80,7 @@ grounds that the UI already prevents it.
 
 Hours are New York wall-clock. `server/index.js` pins `process.env.TZ` before
 anything reads a clock, because Railway, Fly and most containers run in UTC —
-where 9am-10pm local would have the Bronx open from 4am.
+where 11am-10pm local would have the Bronx open from 6am.
 
 ### Sales tax
 
@@ -151,6 +151,32 @@ own and stop there.
 Two things that silently break an iOS catalog, both now guarded by tests:
 alpha channels (Apple rejects them) and tagging a 1x icon as `iphone` — iPhone
 has no 1x sizes, so Xcode ignores the entry.
+
+### Hours and the ready window
+
+Open **11AM**, closing 10PM Sunday to Thursday and 11PM Friday and Saturday.
+All of it comes from `src/lib/hours.js` — `OPEN_HOUR`, `closeHourFor`,
+`HOURS_LINE`, `READY_WINDOW` — and every screen reads those constants rather
+than repeating a time. The printed trifold still says 9AM-10PM daily and is now
+the stale one.
+
+An ASAP order is quoted as a **window**, `15–25 min`, not a single number.
+`PREP_MINUTES` (15) stays the earliest it could be ready because that decides
+the first bookable slot; `PREP_MAX_MINUTES` (25) is only ever for display.
+Promising the optimistic end is how customers arrive to a wait.
+
+### Customer messaging
+
+After an order is created the proxy finds or creates the Clover customer,
+attaches them to the order, and sends a confirmation through Clover's own
+messaging. `POST /api/clover/orders/:id/ready` is the staff action: it flips the
+order to fulfilled — which is what the customer's tracking screen polls for —
+and sends the ready message.
+
+**Every messaging step is best effort and individually caught.** Clover's order
+messaging is not on every plan; a probe against this merchant returned 405. An
+order must never be lost because a text could not be sent, so a failure is
+logged, reported as `messaged: false`, and otherwise ignored.
 
 ### Pay at pickup
 
@@ -227,7 +253,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 287 tests
+npm test            # 300 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

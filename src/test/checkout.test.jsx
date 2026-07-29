@@ -47,8 +47,8 @@ describe("order confirmation", () => {
 
     await screen.findByText("Estimated ready time");
     // ASAP at 12:00 -> ready 12:15
-    expect(screen.getByText("12:15 PM")).toBeInTheDocument();
-    expect(screen.getByText(/About 15 minutes from now/)).toBeInTheDocument();
+    expect(screen.getByText("12:15 PM – 12:25 PM")).toBeInTheDocument();
+    expect(screen.getByText(/About 15–25 min from when you ordered/)).toBeInTheDocument();
   });
 
   it("lists what was ordered", async () => {

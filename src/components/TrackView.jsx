@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Clock, MapPin, Phone, ChevronLeft, Check, Navigation, Store } from "lucide-react";
 import { money } from "../lib/money.js";
-import { formatTime } from "../lib/hours.js";
+import { formatTime, PREP_MAX_MINUTES, PREP_MINUTES, READY_WINDOW } from "../lib/hours.js";
 import { PHONE_E164, PHONE_HUMAN, MAPS_URL } from "../lib/restaurant.js";
 import { useOrderStatus } from "../hooks/clover.js";
 import { Hummingbird } from "./shared.jsx";
@@ -32,6 +32,11 @@ export default function TrackView({ order, setView, live = false }) {
   const stage = simulated ? simStage : tracked.stage;
 
   const readyAt = order.readyAt ? new Date(order.readyAt) : null;
+  /* readyAt is the earliest; quote the window rather than a single minute, so
+     nobody turns up at 12:15 for something promised "about 15 to 25". */
+  const readyWindowLabel = readyAt && order.pickup === "ASAP"
+    ? `${formatTime(readyAt)} – ${formatTime(new Date(readyAt.getTime() + (PREP_MAX_MINUTES - PREP_MINUTES) * 60_000))}`
+    : readyAt ? formatTime(readyAt) : READY_WINDOW;
   const itemCount = order.lines.reduce((n, l) => n + l.qty, 0);
 
   return (
@@ -63,10 +68,10 @@ export default function TrackView({ order, setView, live = false }) {
             <div>
               <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600 }}>Estimated ready time</div>
               <div className="serif" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>
-                {readyAt ? formatTime(readyAt) : "~15 min"}
+                {readyAt ? readyWindowLabel : READY_WINDOW}
               </div>
               <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>
-                {order.pickup === "ASAP" ? "About 15 minutes from now" : `Scheduled pickup · ${order.pickup}`}
+                {order.pickup === "ASAP" ? `About ${READY_WINDOW} from when you ordered` : `Scheduled pickup · ${order.pickup}`}
               </div>
             </div>
           </div>
@@ -85,7 +90,9 @@ export default function TrackView({ order, setView, live = false }) {
           <div style={{ color: "var(--muted)", fontSize: 13 }} aria-live="polite">
             {stage < 2
               ? "This updates on its own while you wait."
-              : "Come grab it at 4035 Laconia Ave 🌺"}
+              : order.messaged
+                ? "We texted you — come grab it at 4035 Laconia Ave 🌺"
+                : "Come grab it at 4035 Laconia Ave 🌺"}
           </div>
           {stage < 2 && (
             <NotifyPrompt orderNum={order.num} readyAt={readyAt} itemCount={itemCount} />

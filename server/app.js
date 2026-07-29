@@ -18,11 +18,23 @@ import cors from "cors";
 import { api, modifierCatalog, CloverError, humanise } from "./clover.js";
 import { CONFIGURED, IS_SANDBOX, describe } from "./env.js";
 import { buildAtomicOrder, buildPayment, toCents } from "../src/lib/cloverOrder.js";
-import { isOpen, nextOpening, describeOpening } from "../src/lib/hours.js";
+import { isOpen, nextOpening, describeOpening, READY_WINDOW } from "../src/lib/hours.js";
+import { ADDRESS } from "../src/lib/restaurant.js";
 import {
   rateLimit, payRateLimit, checkOrigin, requireAppKey, capCharge,
   describeGuard, ALLOWED_ORIGINS,
 } from "./guard.js";
+
+/* What the customer receives. Kept here rather than inline so the wording is in
+   one place — it is the only thing the restaurant "says" to a customer between
+   ordering and collecting. */
+export const confirmationMessage = (orderNumber) =>
+  `Your order at Flourish BX is confirmed! We'll have it ready in ${READY_WINDOW}. ` +
+  `Pay when you pick up at ${ADDRESS}.` + (orderNumber ? ` Order ${orderNumber}` : "");
+
+export const readyMessage = (orderNumber) =>
+  `Your order at Flourish BX is ready for pickup! Come to ${ADDRESS}.` +
+  (orderNumber ? ` Order ${orderNumber}` : "");
 
 export function createApp({ clover = api, catalog = modifierCatalog, now = () => new Date() } = {}) {
   const app = express();
@@ -168,6 +180,38 @@ export function createApp({ clover = api, catalog = modifierCatalog, now = () =>
       try { await clover.printOrder(order.id); printed = true; }
       catch (e) { printError = e instanceof CloverError ? e.message : "Print failed"; }
 
+      /* Everything below is cosmetic. Attaching the customer and messaging them
+         is nice; losing the order because Clover's messaging is not on this
+         merchant's plan would not be. Each step is caught on its own so one
+         failing does not skip the next. */
+      let messaged = false, customerRef = customerId ?? null;
+      if (customer?.phone) {
+        try {
+          if (!customerRef) {
+            const found = await clover.findCustomerByPhone(customer.phone);
+            customerRef = found?.elements?.[0]?.id ?? null;
+            if (!customerRef) {
+              const [firstName, ...rest] = String(customer.name || "").trim().split(/\s+/);
+              const made = await clover.createCustomer({
+                firstName: firstName || "Guest",
+                lastName: rest.join(" ") || undefined,
+                phone: customer.phone,
+              });
+              customerRef = made?.id ?? null;
+            }
+          }
+          if (customerRef) await clover.attachCustomer(order.id, customerRef);
+        } catch { /* the order stands without a customer attached */ }
+
+        try {
+          await clover.sendOrderMessage(order.id, confirmationMessage(orderNumber));
+          messaged = true;
+        } catch (e) {
+          // Not on every Clover plan. Worth knowing, not worth failing.
+          console.warn(`  order ${order.id}: customer message not sent (${e?.message ?? "unknown"})`);
+        }
+      }
+
       /* success:true even when the printer refused. The order is on the
          register either way, and telling a customer their food failed when it
          did not is the worse mistake. */
@@ -177,7 +221,7 @@ export function createApp({ clover = api, catalog = modifierCatalog, now = () =>
         orderNumber: orderNumber ?? null,
         total: order.total ?? null,
         paid: false,          // pay-at-pickup: nothing is collected here
-        printed, printError,
+        printed, printError, messaged,
       });
     } catch (e) { fail(res, e); }
   });
@@ -190,6 +234,27 @@ export function createApp({ clover = api, catalog = modifierCatalog, now = () =>
         printed: Boolean(o.printed), manualReady: Boolean(o.manualReady),
       });
     } catch (e) { fail(res, e); }
+  });
+
+  /* ---- staff: mark an order ready ----
+     Flips the Clover order to fulfilled, which is what the customer's tracking
+     screen is polling for, and messages them. The message is best effort; the
+     state change is the part that matters. */
+  app.post("/api/clover/orders/:orderId/ready", requireConfig, async (req, res) => {
+    const { orderId } = req.params;
+    const orderNumber = req.body?.orderNumber ?? null;
+    try {
+      await clover.fulfillOrder(orderId);
+    } catch (e) { return fail(res, e); }
+
+    let messaged = false;
+    try {
+      await clover.sendOrderMessage(orderId, readyMessage(orderNumber));
+      messaged = true;
+    } catch (e) {
+      console.warn(`  order ${orderId}: ready message not sent (${e?.message ?? "unknown"})`);
+    }
+    res.json({ success: true, orderId, state: "fulfilled", messaged });
   });
 
   /* ---- payment ---- */

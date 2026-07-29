@@ -144,7 +144,8 @@ describe("pickup time", () => {
 
     const asap = screen.getByRole("button", { name: /ASAP/ });
     expect(asap).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText(/Ready around 12:15 PM/)).toBeInTheDocument();
+    // a window, not a single minute
+    expect(screen.getByText(/Ready 12:15 PM – 12:25 PM/)).toBeInTheDocument();
   });
 
   it("offers quarter-hour slots up to close and no further", async () => {
@@ -155,14 +156,14 @@ describe("pickup time", () => {
 
     const select = screen.getByLabelText(/schedule it/i);
     const opts = within(select).getAllByRole("option").map((o) => o.textContent);
-    expect(opts[0]).toBe("ASAP (~15 min)");
+    expect(opts[0]).toBe("ASAP (15–25 min)");
     expect(opts[1]).toBe("12:15 PM");
     expect(opts[2]).toBe("12:30 PM");
     expect(opts[opts.length - 1]).toBe("10:00 PM");   // Monday close
     expect(opts).not.toContain("10:15 PM");
   });
 
-  it("keeps the same last slot on a Friday", async () => {
+  it("runs an hour later on a Friday", async () => {
     const { user } = await renderApp(FRI_NOON);
     await addItem(user);
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
@@ -170,7 +171,7 @@ describe("pickup time", () => {
 
     const opts = within(screen.getByLabelText(/schedule it/i))
       .getAllByRole("option").map((o) => o.textContent);
-    expect(opts[opts.length - 1]).toBe("10:00 PM");
+    expect(opts[opts.length - 1]).toBe("11:00 PM");
   });
 
   it("scheduling a slot puts that time on the confirmation", async () => {

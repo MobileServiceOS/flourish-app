@@ -70,7 +70,8 @@ of the week.
 
 ORDER WHEN IT SUITS YOU
 
-Pick it up as soon as it's ready, or schedule it for later in the day. The app
+Pick it up as soon as it's ready — most orders take 15 to 25 minutes — or
+schedule it for later in the day. The app
 knows our hours, so it will not sell you a time we're closed.
 
 REWARDS THAT ARE ACTUALLY WORTH SOMETHING
@@ -87,7 +88,7 @@ the whole thing back in the cart.
 PICKUP ONLY
 
 4035 Laconia Ave, Bronx, NY 10466
-Open 9AM to 10PM, seven days a week.
+Open 11AM to 10PM, until 11PM on Friday and Saturday.
 
 The app tells you when your food is ready.
 ```

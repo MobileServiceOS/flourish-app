@@ -3,7 +3,7 @@ import { MapPin, Check, Clock, Award, ChevronRight, Store, AlertCircle } from "l
 import { cents, money, taxOn, TAX_LABEL } from "../lib/money.js";
 import {
   isOpen, nextOpening, pickupSlots, asapReadyAt, formatTime, describeOpening,
-  closingOn, HOURS_LINE,
+  closingOn, formatWindow, HOURS_LINE, READY_WINDOW,
 } from "../lib/hours.js";
 import { formatPhone, isValidPhone, isValidName } from "../lib/phone.js";
 import { SubHeader, Section } from "./shared.jsx";
@@ -59,7 +59,7 @@ export default function CheckoutView({
           background: "rgba(47,182,168,.10)", marginTop: 4 }}>
           <MapPin size={17} color="var(--teal-ink)" style={{ flex: "0 0 auto", marginTop: 1 }} />
           <div style={{ fontSize: 13, lineHeight: 1.4 }}>
-            <strong>Pickup only · ready in about 15 minutes</strong><br />
+            <strong>Pickup only · ready in {READY_WINDOW}</strong><br />
             <span style={{ color: "var(--muted)" }}>4035 Laconia Ave, Bronx, NY 10466</span>
           </div>
         </div>
@@ -94,9 +94,9 @@ export default function CheckoutView({
                 aria-pressed={slotIso === ""}>
                 <Clock size={17} aria-hidden="true" />
                 <span>
-                  <strong>ASAP (~15 min)</strong>
+                  <strong>ASAP ({READY_WINDOW})</strong>
                   <span style={{ display: "block", fontSize: 12, opacity: .85 }}>
-                    Ready around {formatTime(asapReadyAt(now))}
+                    Ready {formatWindow(now)}
                   </span>
                 </span>
                 {slotIso === "" && <Check size={17} style={{ marginLeft: "auto" }} aria-hidden="true" />}
@@ -105,7 +105,7 @@ export default function CheckoutView({
               <label htmlFor="slot" className="slot-label">Or schedule it</label>
               <select id="slot" className="field" value={slotIso}
                 onChange={(e) => setSlotIso(e.target.value)}>
-                <option value="">ASAP (~15 min)</option>
+                <option value="">{`ASAP (${READY_WINDOW})`}</option>
                 {slots.map((s) => {
                   const iso = s.toISOString();
                   return <option key={iso} value={iso}>{formatTime(s)}</option>;
