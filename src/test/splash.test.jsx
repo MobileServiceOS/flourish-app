@@ -3,15 +3,28 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import Splash from "../components/Splash.jsx";
 import {
-  splashSeen, markSplashSeen, SPLASH_HOLD_MS, SPLASH_FADE_MS, SPLASH_REDUCED_MS,
+  splashSeen, markSplashSeen, __resetSplashSeen,
+  SPLASH_HOLD_MS, SPLASH_FADE_MS, SPLASH_REDUCED_MS,
 } from "../lib/splashSession.js";
 
 const SEEN = "flourish:splash-seen";
-/** Put the tab back to "app opened cold", which setup.js deliberately undoes. */
-const firstLaunch = () => window.sessionStorage.removeItem(SEEN);
+/** Put things back to "app opened cold", which setup.js deliberately undoes. */
+const firstLaunch = () => {
+  window.sessionStorage.removeItem(SEEN);
+  __resetSplashSeen();
+};
 
-beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
-afterEach(() => { vi.useRealTimers(); window.sessionStorage.clear(); });
+/* The "has it played" flag now lives in module scope, so it leaks between tests
+   in this file unless it is reset each time. */
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  __resetSplashSeen();
+});
+afterEach(() => {
+  vi.useRealTimers();
+  window.sessionStorage.clear();
+  __resetSplashSeen();
+});
 
 describe("the bloom", () => {
   it("draws a flower whose petals unfurl from the centre", () => {
@@ -159,12 +172,33 @@ describe("once per session", () => {
       configurable: true,
       get() { throw new Error("blocked"); },
     });
-    // Safari private browsing throws here; losing the animation is fine,
-    // crashing the launch screen is not.
-    expect(() => splashSeen()).not.toThrow();
+    try {
+      // Safari private browsing throws here; losing the animation is fine,
+      // crashing the launch screen is not.
+      expect(() => splashSeen()).not.toThrow();
+      expect(splashSeen()).toBe(false);
+      expect(() => markSplashSeen()).not.toThrow();
+    } finally {
+      // restore in a finally, or a failure here breaks every test after it
+      if (real) Object.defineProperty(window, "sessionStorage", real);
+    }
+  });
+
+  it("replays on a cold launch — the flag must not outlive the JS context", () => {
+    // The device bug: sessionStorage persists across app launches in a
+    // WKWebView, so a stored flag meant the splash played once ever.
+    firstLaunch();
+    markSplashSeen();
+    expect(splashSeen()).toBe(true);
+    __resetSplashSeen();                       // stands in for a fresh context
     expect(splashSeen()).toBe(false);
-    expect(() => markSplashSeen()).not.toThrow();
-    if (real) Object.defineProperty(window, "sessionStorage", real);
+  });
+
+  it("does not write the flag to storage, which is what leaked before", () => {
+    __resetSplashSeen();
+    window.sessionStorage.removeItem(SEEN);
+    markSplashSeen();
+    expect(window.sessionStorage.getItem(SEEN)).toBeNull();
   });
 });
 

@@ -106,6 +106,22 @@ them reintroduces the flash.
 
 The exit is a class, not a keyframe on a timer, for the same reason.
 
+### The launch screen on a device
+
+Two things broke it on real hardware, neither visible in a browser:
+
+**`sessionStorage` persists in a WKWebView.** The "already played" flag was
+stored there on the assumption it dies with the tab — true in a browser, false
+in Capacitor, which keeps the web view's data store across app launches. The
+splash played once ever and never again. It is a module variable now: cold
+launch gets a new JS context and replays, resume from the lock screen does not.
+`splashSession.js` never writes storage; it only *reads* an override the test
+setup sets so the suite is not 2.5s slower per render.
+
+**The logo was 614KB and did not arrive in time.** The ring animated around an
+empty centre. It is now sized for what it displays at (760px), served as WebP
+with a PNG fallback, and preloaded in `index.html`. A test pins the file size.
+
 ### App icons
 
 `npm run icons` builds the whole set from `brand/logo.png`.
@@ -176,7 +192,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 263 tests
+npm test            # 269 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

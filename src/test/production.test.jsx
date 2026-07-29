@@ -357,3 +357,32 @@ describe("iOS app icon catalog", () => {
     expect([4, 6]).not.toContain(readFileSync(f)[25]);   // PNG colour type byte
   });
 });
+
+/* The splash showed an empty centre on a real device because logo-mark.png was
+   614KB and had not downloaded before the 2.5s animation finished. Size is the
+   whole fix, so it is worth pinning. */
+describe("the splash logo arrives in time", () => {
+  const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  const kb = (p) => statSync(resolve(ROOT, p)).size / 1024;
+
+  it("ships a WebP small enough to land inside the animation", () => {
+    expect(existsSync(resolve(ROOT, "public/logo-mark.webp"))).toBe(true);
+    expect(kb("public/logo-mark.webp")).toBeLessThan(150);
+  });
+
+  it("keeps a PNG fallback, also within reason", () => {
+    expect(existsSync(resolve(ROOT, "public/logo-mark.png"))).toBe(true);
+    expect(kb("public/logo-mark.png")).toBeLessThan(400);
+  });
+
+  it("preloads it, so the download starts with the document", () => {
+    const html = readFileSync(resolve(ROOT, "index.html"), "utf8");
+    expect(html).toMatch(/rel="preload"[^>]*logo-mark\.webp/);
+  });
+
+  it("offers WebP first with a PNG fallback", () => {
+    const splash = readFileSync(resolve(ROOT, "src/components/Splash.jsx"), "utf8");
+    expect(splash).toContain('srcSet="/logo-mark.webp"');
+    expect(splash).toContain('src="/logo-mark.png"');
+  });
+});

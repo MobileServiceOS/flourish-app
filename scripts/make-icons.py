@@ -62,10 +62,19 @@ master = Image.new("RGB", (side, side), PAPER)
 master.paste(src, ((side - w) // 2, (side - h) // 2), src)
 
 # The wordmark alone, transparent, for the splash and the menu header.
+#
+# Size this for what it actually displays at, not for the master's resolution.
+# It renders ~286px wide on the splash, so 760px covers a 3x screen with room
+# to spare. The first version was 1200px / 614KB and simply did not finish
+# downloading inside the 2.5s splash — the ring animated over an empty centre.
+# WebP first (about a sixth of the bytes), PNG kept as a fallback.
 mark = src.copy()
-mark.thumbnail((1200, 1200), Image.LANCZOS)
+mark.thumbnail((760, 760), Image.LANCZOS)
+mark.save(ROOT / "public" / "logo-mark.webp", "WEBP", quality=88, method=6)
 mark.save(ROOT / "public" / "logo-mark.png", "PNG", optimize=True)
-print(f"  mark    {mark.size[0]}x{mark.size[1]} -> public/logo-mark.png (transparent)")
+_kb = lambda p: (ROOT / "public" / p).stat().st_size // 1024
+print(f"  mark    {mark.size[0]}x{mark.size[1]} -> logo-mark.webp {_kb('logo-mark.webp')}KB"
+      f" / .png {_kb('logo-mark.png')}KB")
 
 
 def write(px: int, path: Path) -> None:

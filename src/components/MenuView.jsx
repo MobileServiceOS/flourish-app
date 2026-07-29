@@ -55,8 +55,11 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
         <div className="hdr-row">
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>Order pickup from</div>
-            <img className="hdr-logo" src="/logo-mark.png" alt="Flourish"
-              width={168} height={111} decoding="async" fetchPriority="high" />
+            <picture>
+              <source srcSet="/logo-mark.webp" type="image/webp" />
+              <img className="hdr-logo" src="/logo-mark.png" alt="Flourish"
+                width={168} height={111} decoding="async" fetchPriority="high" />
+            </picture>
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
             <button onClick={openStaff} title="Staff" aria-label="Staff: mark items sold out"

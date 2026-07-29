@@ -85,9 +85,15 @@ export default function Splash({ leaving = false, reduced = false }) {
         )}
 
         {/* The artwork itself. alt rather than aria-hidden so the launch screen
-            still says what it is if the images fail to load. */}
-        <img className="splash-logo" src="/logo-mark.png" alt="Flourish"
-          width={286} height={190} decoding="async" fetchPriority="high" />
+            still says what it is if the image fails to load.
+            WebP first — the PNG is three times the bytes and was not arriving
+            before the splash finished, leaving the ring circling an empty
+            centre. Preloaded in index.html so it starts with the HTML. */}
+        <picture>
+          <source srcSet="/logo-mark.webp" type="image/webp" />
+          <img className="splash-logo" src="/logo-mark.png" alt="Flourish"
+            width={286} height={190} decoding="async" fetchPriority="high" />
+        </picture>
       </div>
 
       <div className="splash-sub">Bronx, NY</div>
