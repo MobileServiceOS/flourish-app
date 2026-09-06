@@ -2,6 +2,10 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {
+  isOpen, closingOn, formatTime, pickupSlots, readyFitsBeforeClose,
+} from "../lib/hours.js";
+import { cartPrepMinutes, readyWindow } from "../lib/prep.js";
 import { addItem, ACKEE } from "./helpers.js";
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
@@ -37,8 +41,30 @@ async function renderApp({ routes = {}, when = MON_NOON } = {}) {
 }
 
 const ONLINE = {
-  "GET /health": async () => ({ status: 200, body: { ok: true, configured: true, sandbox: true } }),
+  "GET /health": async () => ({ status: 200, body: {
+    ok: true, configured: true, sandbox: true,
+    printerConfigured: true, printerName: "Station Printer", printerType: "MY_LOCAL",
+  }}),
   "GET /inventory": async () => ({ status: 200, body: { items: [] } }),
+  /* The checkout will not promise a time it was not given, so a connected proxy
+     has to quote one. Worked out with the real shared functions against the
+     test's fake clock, the same way the server does it. */
+  "POST /quote": async (body) => {
+    const at = new Date();
+    const prepMinutes = cartPrepMinutes(body?.cart ?? []);
+    const w = readyWindow(at, prepMinutes);
+    return { status: 200, body: {
+      prepMinutes,
+      startISO: w.start.toISOString(),
+      endISO: w.end.toISOString(),
+      label: w.label,
+      fitsBeforeClose: readyFitsBeforeClose(w.end, at),
+      closesAt: closingOn(at).toISOString(),
+      open: isOpen(at),
+      slots: pickupSlots(at, prepMinutes).map((d) => ({ iso: d.toISOString(), label: formatTime(d) })),
+      opensAt: null,
+    }};
+  },
 };
 
 async function toCheckout(user) {

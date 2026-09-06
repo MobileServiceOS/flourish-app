@@ -136,16 +136,20 @@ describe("seafood friday", () => {
 });
 
 describe("pickup time", () => {
-  it("defaults to ASAP with the fifteen minute estimate", async () => {
+  it("defaults to the window the kitchen quoted for this cart", async () => {
+    /* Ackee & Shrimp is cooked to order, so noon gets a 12:30 window rather
+       than the 12:15 an ordinary plate would get. There is no ASAP option any
+       more — one figure for every dish is how a customer arrives to a wait. */
     const { user } = await renderApp(MON_NOON);
     await addItem(user);
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
     await user.click(await screen.findByRole("button", { name: /go to checkout/i }));
 
-    const asap = screen.getByRole("button", { name: /ASAP/ });
-    expect(asap).toHaveAttribute("aria-pressed", "true");
-    // a window, not a single minute
-    expect(screen.getByText(/Ready 12:15 PM – 12:25 PM/)).toBeInTheDocument();
+    const chosen = await screen.findByRole("button", { name: /Ready 12:30/ });
+    expect(chosen).toHaveAttribute("aria-pressed", "true");
+    // The window also heads the schedule picker, so both say the same thing.
+    expect(screen.getAllByText(/Ready 12:30–12:40 PM/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/ASAP/i)).not.toBeInTheDocument();
   });
 
   it("offers quarter-hour slots up to close and no further", async () => {
@@ -156,9 +160,11 @@ describe("pickup time", () => {
 
     const select = screen.getByLabelText(/schedule it/i);
     const opts = within(select).getAllByRole("option").map((o) => o.textContent);
-    expect(opts[0]).toBe("ASAP (15–25 min)");
-    expect(opts[1]).toBe("12:15 PM");
-    expect(opts[2]).toBe("12:30 PM");
+    // The first option is the quoted window; the rest are bookable slots, and
+    // they start after this cart's 30-minute prep, not after a flat fifteen.
+    expect(opts[0]).toBe("Ready 12:30–12:40 PM");
+    expect(opts[1]).toBe("12:30 PM");
+    expect(opts[2]).toBe("12:45 PM");
     expect(opts[opts.length - 1]).toBe("10:00 PM");   // Monday close
     expect(opts).not.toContain("10:15 PM");
   });
@@ -197,7 +203,9 @@ describe("pickup time", () => {
     // matters here is that the picker itself has nothing to sell.
     const { pickupSlots, isOpen } = await import("../lib/hours.js");
     expect(isOpen(MON_NIGHT)).toBe(false);
-    expect(pickupSlots(MON_NIGHT)).toEqual([]);
+    // Prep time is per-cart now, so the picker is asked for a specific one.
+    expect(pickupSlots(MON_NIGHT, 15)).toEqual([]);
+    expect(pickupSlots(MON_NIGHT, 30)).toEqual([]);
   });
 });
 

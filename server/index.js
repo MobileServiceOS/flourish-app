@@ -9,6 +9,7 @@
 process.env.TZ = process.env.TZ || "America/New_York";
 
 import { createApp } from "./app.js";
+import { resolvePrinter, describePrinter } from "./clover.js";
 import { PORT, CONFIGURED, IS_SANDBOX, assertSafeTarget, describe } from "./env.js";
 import { describeGuard } from "./guard.js";
 import { HOURS_LINE } from "../src/lib/hours.js";
@@ -40,4 +41,30 @@ createApp().listen(PORT, () => {
     console.log("  The app will run in preview mode: browsing works, ordering is disabled.");
   }
   console.log("");
+  reportPrinter();
 });
+
+/* Which printer the kitchen ticket will go to, said out loud at startup.
+   A silent printer is how an order reaches Clover and never reaches the
+   kitchen, so this is worth a line on every boot. */
+async function reportPrinter() {
+  if (!CONFIGURED) return;
+  try {
+    const { printer, printers } = await resolvePrinter();
+    if (!printer) {
+      console.error("  PRINTER  none — Clover lists no printers for this merchant.");
+      console.error("           Kitchen tickets will NOT print. Pair one in the Clover");
+      console.error("           dashboard, or set CLOVER_PRINTER_UUID in .env.local.\n");
+      return;
+    }
+    const d = describePrinter(printer);
+    const others = printers.length - 1;
+    console.log(
+      `  Printer  ${d.name ?? "(unnamed)"} · ${d.uuid} · type ${d.type ?? "(none)"}` +
+      (others > 0 ? `  (+${others} other${others > 1 ? "s" : ""})` : "")
+    );
+    console.log("");
+  } catch (e) {
+    console.warn(`  Printer  could not be read from Clover (${e?.message ?? "unknown"})\n`);
+  }
+}

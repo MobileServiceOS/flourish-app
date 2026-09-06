@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildAtomicOrder, buildPayment, resolveModifiers, trackingStage,
+  kitchenNote, MissingCustomerError, NOTE_MAX,
   toCents, ModifierResolutionError,
 } from "../lib/cloverOrder.js";
 
@@ -89,9 +90,17 @@ describe("modifier mapping", () => {
   });
 });
 
+/* A ticket with no name and number on it is useless at the counter, so the
+   builder now insists on both. Every payload below carries them; the tests that
+   are ABOUT them leave one out on purpose. */
+const ORDER_DEFAULTS = {
+  customer: { name: "Kay K", phone: "3475551234" },
+  pickupLabel: "2:10–2:20 PM",
+};
+
 describe("atomic order payload", () => {
   it("builds one line item per Clover item with its modifications", () => {
-    const body = buildAtomicOrder({ cart: [oxtail()], catalog: CATALOG });
+    const body = buildAtomicOrder({ ...ORDER_DEFAULTS, cart: [oxtail()], catalog: CATALOG });
     expect(body.orderCart.lineItems).toHaveLength(1);
     const li = body.orderCart.lineItems[0];
     expect(li.item).toEqual({ id: "60KCQ1V22Q98M" });
@@ -99,7 +108,7 @@ describe("atomic order payload", () => {
   });
 
   it("expands quantity into separate line items for the kitchen ticket", () => {
-    const body = buildAtomicOrder({ cart: [oxtail({ qty: 3 })], catalog: CATALOG });
+    const body = buildAtomicOrder({ ...ORDER_DEFAULTS, cart: [oxtail({ qty: 3 })], catalog: CATALOG });
     expect(body.orderCart.lineItems).toHaveLength(3);
     for (const li of body.orderCart.lineItems) {
       expect(li.item.id).toBe("60KCQ1V22Q98M");
@@ -108,33 +117,35 @@ describe("atomic order payload", () => {
 
   it("carries special instructions onto the line item", () => {
     const body = buildAtomicOrder({
+      ...ORDER_DEFAULTS,
       cart: [oxtail({ note: "no pepper, extra gravy" })], catalog: CATALOG,
     });
     expect(body.orderCart.lineItems[0].note).toBe("no pepper, extra gravy");
   });
 
   it("puts the pickup time on the order so the kitchen can see it", () => {
-    const body = buildAtomicOrder({ cart: [oxtail()], pickupLabel: "7:30 PM", catalog: CATALOG });
+    const body = buildAtomicOrder({ ...ORDER_DEFAULTS, cart: [oxtail()], pickupLabel: "7:30 PM", catalog: CATALOG });
     expect(body.orderCart.title).toContain("7:30 PM");
     expect(body.orderCart.note).toContain("7:30 PM");
   });
 
   it("attaches the Clover customer when we have one", () => {
-    const body = buildAtomicOrder({ cart: [oxtail()], customerId: "CUST-1", catalog: CATALOG });
+    const body = buildAtomicOrder({ ...ORDER_DEFAULTS, cart: [oxtail()], customerId: "CUST-1", catalog: CATALOG });
     expect(body.orderCart.customers).toEqual([{ id: "CUST-1" }]);
   });
 
   it("omits the customer block entirely for a guest", () => {
-    const body = buildAtomicOrder({ cart: [oxtail()], catalog: CATALOG });
+    const body = buildAtomicOrder({ ...ORDER_DEFAULTS, cart: [oxtail()], catalog: CATALOG });
     expect(body.orderCart.customers).toBeUndefined();
   });
 
   it("refuses an empty cart", () => {
-    expect(() => buildAtomicOrder({ cart: [], catalog: CATALOG })).toThrow(/empty/i);
+    expect(() => buildAtomicOrder({ ...ORDER_DEFAULTS, cart: [], catalog: CATALOG })).toThrow(/empty/i);
   });
 
   it("refuses a line with no Clover item id", () => {
     expect(() => buildAtomicOrder({
+      ...ORDER_DEFAULTS,
       cart: [oxtail({ itemId: undefined })], catalog: CATALOG,
     })).toThrow(/no Clover item id/);
   });
@@ -143,6 +154,7 @@ describe("atomic order payload", () => {
 describe("rewards become order discounts", () => {
   it("adds a negative discount naming the reward and its code", () => {
     const body = buildAtomicOrder({
+      ...ORDER_DEFAULTS,
       cart: [oxtail()],
       reward: { name: "Free side", code: "FL1234", amount: 6 },
       catalog: CATALOG,
@@ -152,18 +164,20 @@ describe("rewards become order discounts", () => {
 
   it("keeps the discount negative even if handed a negative amount", () => {
     const body = buildAtomicOrder({
+      ...ORDER_DEFAULTS,
       cart: [oxtail()], reward: { name: "Free plate", amount: -22 }, catalog: CATALOG,
     });
     expect(body.orderCart.discounts[0].amount).toBe(-2200);
   });
 
   it("adds no discount block when no reward was applied", () => {
-    const body = buildAtomicOrder({ cart: [oxtail()], catalog: CATALOG });
+    const body = buildAtomicOrder({ ...ORDER_DEFAULTS, cart: [oxtail()], catalog: CATALOG });
     expect(body.orderCart.discounts).toBeUndefined();
   });
 
   it("ignores a zero-value reward", () => {
     const body = buildAtomicOrder({
+      ...ORDER_DEFAULTS,
       cart: [oxtail()], reward: { name: "Nothing", amount: 0 }, catalog: CATALOG,
     });
     expect(body.orderCart.discounts).toBeUndefined();
@@ -172,6 +186,7 @@ describe("rewards become order discounts", () => {
 
 describe("tax and tip stay off the order", () => {
   const body = buildAtomicOrder({
+    ...ORDER_DEFAULTS,
     cart: [oxtail()], reward: { name: "Free side", amount: 6 }, catalog: CATALOG,
   });
   const json = JSON.stringify(body);
@@ -246,5 +261,117 @@ describe("baked-in modifier ids", () => {
     expect(() => resolveModifiers(
       [{ gid: "GONE", name: "Whatever", price: 5, mid: "MOD-X" }], {}
     )).not.toThrow();
+  });
+});
+
+/* ============================================================================
+   THE KITCHEN TICKET
+
+   A live order came off the printer reading only "PICKUP ORDER — PAY AT
+   REGISTER / Order FL-3412 / Pickup: ASAP". No name, no phone: staff had a bag
+   of food and nobody to give it to. The note builder had `if (customer?.name)`,
+   so it dropped the line silently whenever the caller had nothing to give it.
+   ============================================================================ */
+describe("kitchen ticket note", () => {
+  const FULL = {
+    orderNumber: "FL-3412",
+    customer: { name: "Kay K", phone: "3475551234" },
+    pickupLabel: "2:10–2:20 PM",
+  };
+
+  it("puts the name, the phone and the window on the ticket, in that order", () => {
+    const note = kitchenNote(FULL);
+    expect(note.split("\n")).toEqual([
+      "PICKUP ORDER — PAY AT REGISTER",
+      "Order FL-3412",
+      "Kay K · (347) 555-1234",
+      "Pickup: 2:10–2:20 PM",
+    ]);
+  });
+
+  it("formats a bare 10-digit phone the way a human reads one", () => {
+    expect(kitchenNote(FULL)).toContain("(347) 555-1234");
+  });
+
+  it("names a redeemed reward, and says nothing when there isn't one", () => {
+    expect(kitchenNote({ ...FULL, reward: { name: "Free drink" } }))
+      .toContain("Reward: Free drink");
+    expect(kitchenNote(FULL)).not.toContain("Reward:");
+  });
+
+  it("refuses to build a ticket with no name", () => {
+    expect(() => kitchenNote({ ...FULL, customer: { phone: "3475551234" } }))
+      .toThrow(MissingCustomerError);
+  });
+
+  it("refuses to build a ticket with no phone", () => {
+    expect(() => kitchenNote({ ...FULL, customer: { name: "Kay K" } }))
+      .toThrow(MissingCustomerError);
+  });
+
+  it("refuses when there is no customer at all — the guest-checkout bug", () => {
+    expect(() => kitchenNote({ ...FULL, customer: null })).toThrow(MissingCustomerError);
+  });
+
+  it("stays under Clover's note cap, keeping the customer when it has to trim", () => {
+    const note = kitchenNote({
+      ...FULL,
+      reward: { name: "R".repeat(200) },
+      note: "N".repeat(200),
+    });
+    expect(note.length).toBeLessThanOrEqual(NOTE_MAX);
+    expect(note).toContain("Kay K · (347) 555-1234");
+    expect(note).toContain("Pickup: 2:10–2:20 PM");
+  });
+
+  it("says the same window the customer was shown", () => {
+    // The label is passed through, never re-derived — that is what keeps the
+    // screen, the ticket and the confirmation message agreeing.
+    const body = buildAtomicOrder({
+      ...ORDER_DEFAULTS, cart: [oxtail()], pickupLabel: "9:45–9:55 PM", catalog: CATALOG,
+    });
+    expect(body.orderCart.note).toContain("Pickup: 9:45–9:55 PM");
+  });
+});
+
+describe("line grouping on the printed ticket", () => {
+  /* Ten of the same plate printed as ten identical blocks. groupLineItems makes
+     Clover collapse them into "10 Oxtail" — but only lines that are genuinely
+     identical, which is why two oxtails with different sides must not merge. */
+  it("asks Clover to group identical lines", () => {
+    const body = buildAtomicOrder({ ...ORDER_DEFAULTS, cart: [oxtail({ qty: 10 })], catalog: CATALOG });
+    expect(body.orderCart.groupLineItems).toBe(true);
+  });
+
+  it("sends identical lines that Clover can collapse", () => {
+    const body = buildAtomicOrder({ ...ORDER_DEFAULTS, cart: [oxtail({ qty: 10 })], catalog: CATALOG });
+    const lines = body.orderCart.lineItems;
+    expect(lines).toHaveLength(10);
+    const shapes = new Set(lines.map((l) => JSON.stringify(l)));
+    expect(shapes.size).toBe(1);
+  });
+
+  it("keeps two plates with DIFFERENT sides apart", () => {
+    const withRice = oxtail();
+    const withMac = oxtail({
+      modifiers: [
+        { gid: "45KGD3ZDMT2ZY", name: "Medium", price: 20 },
+        { gid: "YQWN3PKBKV9NG", name: "Seafood Mac", price: 3.5 },
+        { gid: "YQWN3PKBKV9NG", name: "White Rice", price: 0 },
+      ],
+    });
+    const body = buildAtomicOrder({ ...ORDER_DEFAULTS, cart: [withRice, withMac], catalog: CATALOG });
+    const shapes = new Set(body.orderCart.lineItems.map((l) => JSON.stringify(l)));
+    expect(shapes.size).toBe(2);
+  });
+
+  it("keeps two plates apart when only a special instruction differs", () => {
+    const body = buildAtomicOrder({
+      ...ORDER_DEFAULTS,
+      cart: [oxtail(), oxtail({ note: "extra gravy" })],
+      catalog: CATALOG,
+    });
+    const shapes = new Set(body.orderCart.lineItems.map((l) => JSON.stringify(l)));
+    expect(shapes.size).toBe(2);
   });
 });

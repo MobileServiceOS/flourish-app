@@ -11,6 +11,10 @@ android/
 .env
 .env.local
 clover-secrets.json
+# Editor backups of the above — nano/vim leave these behind holding live tokens
+*.save
+*.swp
+.env.*.bak
 
 # Simulator captures — regenerate, do not version
 brand/screenshots/

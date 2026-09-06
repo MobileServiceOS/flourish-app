@@ -23,6 +23,11 @@ export const PRIVATE_TOKEN = clean(process.env.CLOVER_PRIVATE_TOKEN);
 export const API_BASE = clean(process.env.CLOVER_API_BASE).replace(/\/+$/, "");
 export const PORT = Number(clean(process.env.PORT)) || 3001;
 
+/* Which printer the kitchen ticket goes to. Optional — the server discovers the
+   merchant's printers and picks one on its own — but setting it removes all
+   guesswork, which matters on a merchant with more than one station. */
+export const PRINTER_UUID = clean(process.env.CLOVER_PRINTER_UUID);
+
 export const IS_SANDBOX = /sandbox|dev\.clover/i.test(API_BASE);
 
 /* Ecommerce charges go to a different host than the platform API. */
@@ -51,4 +56,5 @@ export const describe = () => ({
   merchantId: MERCHANT_ID ? `${MERCHANT_ID.slice(0, 4)}…` : "(unset)",
   environment: IS_SANDBOX ? "sandbox" : "PRODUCTION",
   configured: CONFIGURED,
+  printerUuid: PRINTER_UUID || null,
 });

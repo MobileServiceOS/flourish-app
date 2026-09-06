@@ -1,17 +1,24 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { MapPin, Check, Clock, Award, ChevronRight, Store, AlertCircle } from "lucide-react";
 import { cents, money, taxOn, TAX_LABEL } from "../lib/money.js";
 import {
-  isOpen, nextOpening, pickupSlots, asapReadyAt, formatTime, describeOpening,
-  closingOn, formatWindow, HOURS_LINE, READY_WINDOW,
+  isOpen, nextOpening, formatTime, describeOpening, closingOn, HOURS_LINE,
 } from "../lib/hours.js";
-import { formatPhone, isValidPhone, isValidName } from "../lib/phone.js";
+import { PREP_RANGE_LABEL } from "../lib/prep.js";
+import { formatPhone, phoneDigits, isValidPhone, isValidName } from "../lib/phone.js";
 import { SubHeader, Section } from "./shared.jsx";
 
 /* ---------- CHECKOUT ---------- */
 export default function CheckoutView({
   subtotal, points, account, goJoin, discount = 0, appliedVoucher, onBack, onPay,
   cloverStatus = "preview", cloverReason = null, submitting = false, payError = null, onClearError,
+  /* When the food will be ready, worked out by the server from what is in the
+     cart. Null until it answers — the screen says it is checking rather than
+     guessing a number, because a guess here is a promise the kitchen never
+     made. There is no ASAP any more: a salmon plate and a jerk chicken do not
+     take the same time and quoting one figure for both is how a customer
+     arrives to a wait. */
+  quote = null,
 }) {
   /* Pay at pickup, always. The app takes no money — the order goes to the
      register unpaid and the customer settles at the counter. */
@@ -26,9 +33,8 @@ export default function CheckoutView({
   const tax = taxOn(base);
   const total = cents(base + tax + tip);
 
-  /* Pickup slots are recomputed on a one-minute tick: someone can sit on this
-     screen long enough for the first slot to pass, and we must not sell a time
-     that has already gone by, or a time after close. */
+  /* The clock still ticks here, but only to keep the closed/open messaging and
+     the "closes at" line honest. Times themselves come from the server. */
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000);
@@ -36,20 +42,34 @@ export default function CheckoutView({
   }, []);
 
   const open = isOpen(now);
-  const slots = useMemo(() => pickupSlots(now), [now]);
-  const [slotIso, setSlotIso] = useState("");        // "" = ASAP
-  // If the chosen slot has drifted into the past, fall back to ASAP.
+  // Bookable times are the server's too, for the same reason the window is.
+  const slots = quote?.slots ?? [];
+  const [slotIso, setSlotIso] = useState("");   // "" = the next available window
+  // A slot that has drifted out of the server's list has passed; drop back to
+  // the window rather than selling a time that is gone.
   useEffect(() => {
-    if (slotIso && !slots.some((s) => s.toISOString() === slotIso)) setSlotIso("");
+    if (slotIso && !slots.some((s) => s.iso === slotIso)) setSlotIso("");
   }, [slots, slotIso]);
 
-  const pickupChoice = () => (slotIso
-    ? { label: formatTime(new Date(slotIso)), at: new Date(slotIso) }
-    : { label: "ASAP", at: asapReadyAt(now) });
+  /* What gets sent. `iso` is set only for a scheduled slot; without it the
+     server uses the window it just quoted. The label is never invented here. */
+  const pickupChoice = () => {
+    const slot = slots.find((s) => s.iso === slotIso);
+    return slot
+      ? { label: slot.label, iso: slot.iso }
+      : { label: quote?.label ?? "", iso: null };
+  };
+
+  /* Sent with the order. The phone goes as bare digits — the ticket formats it
+     — and this is what puts the customer's name on the printed ticket at all. */
+  const contact = () => ({ name: name.trim(), phone: phoneDigits(phone) });
 
   const nameOk = isValidName(name);
   const phoneOk = isValidPhone(phone);
-  const ready = nameOk && phoneOk && open && subtotal > 0;
+  // No quote means we do not yet know the food can be cooked before close, and
+  // `fitsBeforeClose: false` means it cannot.
+  const canCook = Boolean(quote?.fitsBeforeClose);
+  const ready = nameOk && phoneOk && open && canCook && subtotal > 0;
 
   return (
     <>
@@ -59,7 +79,7 @@ export default function CheckoutView({
           background: "rgba(47,182,168,.10)", marginTop: 4 }}>
           <MapPin size={17} color="var(--teal-ink)" style={{ flex: "0 0 auto", marginTop: 1 }} />
           <div style={{ fontSize: 13, lineHeight: 1.4 }}>
-            <strong>Pickup only · ready in {READY_WINDOW}</strong><br />
+            <strong>Pickup only · ready in {PREP_RANGE_LABEL}</strong><br />
             <span style={{ color: "var(--muted)" }}>4035 Laconia Ave, Bronx, NY 10466</span>
           </div>
         </div>
@@ -90,31 +110,49 @@ export default function CheckoutView({
         <Section title="Pickup time">
           {open ? (
             <>
-              <button className={`slot-asap ${slotIso === "" ? "on" : ""}`} onClick={() => setSlotIso("")}
-                aria-pressed={slotIso === ""}>
+              {/* The window the kitchen quoted for THIS cart. Not a constant,
+                  and not computed here — cooked-to-order items push it out. */}
+              <button className={`slot-window ${slotIso === "" ? "on" : ""}`} onClick={() => setSlotIso("")}
+                aria-pressed={slotIso === ""} disabled={!quote}>
                 <Clock size={17} aria-hidden="true" />
                 <span>
-                  <strong>ASAP ({READY_WINDOW})</strong>
+                  <strong>
+                    {quote ? `Ready ${quote.label}` : "Checking with the kitchen…"}
+                  </strong>
                   <span style={{ display: "block", fontSize: 12, opacity: .85 }}>
-                    Ready {formatWindow(now)}
+                    {quote
+                      ? `About ${quote.prepMinutes} minutes from now`
+                      : "Working out how long your order needs"}
                   </span>
                 </span>
-                {slotIso === "" && <Check size={17} style={{ marginLeft: "auto" }} aria-hidden="true" />}
+                {slotIso === "" && quote && <Check size={17} style={{ marginLeft: "auto" }} aria-hidden="true" />}
               </button>
+
+              {!canCook && quote && (
+                <div className="closed-card" role="status" style={{ marginTop: 12 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
+                    Not enough time to cook this today
+                  </div>
+                  <div style={{ fontSize: 13.5, lineHeight: 1.45 }}>
+                    Your order needs {quote.prepMinutes} minutes and the kitchen closes at{" "}
+                    {formatTime(closingOn(now))}. Remove the cooked-to-order items, or
+                    order again tomorrow — your cart is kept.
+                  </div>
+                </div>
+              )}
 
               <label htmlFor="slot" className="slot-label">Or schedule it</label>
               <select id="slot" className="field" value={slotIso}
                 onChange={(e) => setSlotIso(e.target.value)}>
-                <option value="">{`ASAP (${READY_WINDOW})`}</option>
-                {slots.map((s) => {
-                  const iso = s.toISOString();
-                  return <option key={iso} value={iso}>{formatTime(s)}</option>;
-                })}
+                <option value="">{quote ? `Ready ${quote.label}` : "Next available"}</option>
+                {slots.map((s) => (
+                  <option key={s.iso} value={s.iso}>{s.label}</option>
+                ))}
               </select>
               <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 8 }}>
                 {slots.length
                   ? `${slots.length} pickup time${slots.length > 1 ? "s" : ""} left today · kitchen closes at ${formatTime(closingOn(now))}`
-                  : "No scheduled times left today — ASAP only."}
+                  : `No later times left today · kitchen closes at ${formatTime(closingOn(now))}`}
               </div>
             </>
           ) : (
@@ -206,7 +244,7 @@ export default function CheckoutView({
             )}
             {payError.retryable && (
               <button className="pill-btn ghost" style={{ marginTop: 10 }}
-                onClick={() => onPay(pickupChoice(), tip)}>
+                onClick={() => onPay(pickupChoice(), tip, contact())}>
                 Try again
               </button>
             )}
@@ -214,11 +252,14 @@ export default function CheckoutView({
         )}
 
         <button className="pill-btn" disabled={!ready || submitting || cloverStatus !== "online"}
-          onClick={() => onPay(pickupChoice(), tip)}>
+          onClick={() => onPay(pickupChoice(), tip, contact())}>
           {submitting ? "Sending to the kitchen…"
             : cloverStatus !== "online" ? "Ordering not available right now"
             : !open ? `Closed until ${formatTime(nextOpening(now))}`
-            : !ready ? (!nameOk ? "Enter your name" : "Enter your phone number")
+            : !nameOk ? "Enter your name"
+            : !phoneOk ? "Enter your phone number"
+            : !quote ? "Checking with the kitchen…"
+            : !canCook ? "Not enough time to cook this today"
             : `Place order · ${money(total)} at pickup`}
         </button>
         <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 11, marginTop: 10 }}>

@@ -91,6 +91,7 @@ flourish-app/
    │  ├─ money.js              cent-accurate rounding
    │  ├─ loyalty.js            tiers, rewards, discount rules
    │  ├─ hours.js              opening hours and pickup slots
+   │  ├─ prep.js               per-item prep times and the ready window
    │  ├─ phone.js              phone formatting and validation
    │  ├─ restaurant.js         address, phone, Popular, day helpers
    │  ├─ share.js              native share sheet + clipboard fallback
@@ -132,13 +133,23 @@ npm test          # once
 npm run test:watch
 ```
 
-300 tests. They cover the things that cost money if they break: pickup-slot
+398 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the
 Clover side they cover order payload construction, reward discounts, tax being
 left to Clover, modifier mapping, and every error state including a declined
 card and a proxy that isn't running.
+
+They also pin the four things that were found broken against the live register:
+printer selection (a `MY_LOCAL` station is chosen, an unknown type is chosen, an
+empty list is handled, retries and the 404 re-fetch fire, and a print failure
+never loses the order); the kitchen ticket carrying a name, a phone and the
+window, with the order refused outright when either is missing; per-item prep
+times, including that a cart takes the maximum and not the sum, that sides and
+drinks never push it out, that an unknown item falls back to 30 minutes rather
+than 15, and that **no code path anywhere emits "ASAP"**; and the confirmation
+screen following the real `printed` flag in both directions.
 
 ---
 
@@ -252,8 +263,15 @@ You'll need Xcode and an Apple Developer account to put it on the App Store.
 - Sizes, flavors, and two included sides, priced exactly as Clover prices them
 - Category chips that smooth-scroll, and highlight as you scroll past sections
 - Cart, checkout, tip, tax, order confirmation and live status
-- **Pickup times** on a 15-minute grid up to close (10PM, seven days a week),
-  with ASAP as the default and a proper "we're closed" state outside hours
+- **Ready windows worked out per order.** Fish, seafood and lamb are cooked to
+  order and take 30 minutes; everything else takes 15. A cart is quoted the
+  slowest plate in it — never the sum — and sides and drinks never push it out.
+  The window is a ten-minute range on a five-minute grid ("2:10–2:20 PM"),
+  computed on the **server** and only displayed by the app
+- **Pickup times** on a 15-minute grid from the earliest this cart could be
+  ready, up to close, with a proper "we're closed" state outside hours
+- The kitchen is asked whether it has time to **cook** the order, not just
+  whether the door is open: a 30-minute plate at 9:50PM is refused with a reason
 - **Seafood Fridays** leads the menu on Fridays and is marked "(Fri)" otherwise
 - One-tap **reorder** that restores modifiers, notes and reward eligibility, and
   tells you if anything on the old order is sold out today
@@ -274,7 +292,7 @@ Orders, payments, inventory and customers are wired to Clover through a small
 proxy server. Run both halves:
 
 ```bash
-npm run dev:all      # frontend on 5173 + proxy on 3001
+npm run dev:all      # frontend on 5180 + proxy on 3001
 ```
 
 or separately with `npm run dev` and `npm run server`.
@@ -309,7 +327,11 @@ VITE_CLOVER_MERCHANT_ID=
 VITE_CLOVER_PUBLIC_TOKEN=
 CLOVER_PRIVATE_TOKEN=
 CLOVER_API_BASE=https://apisandbox.dev.clover.com
+CLOVER_PRINTER_UUID=ZVZ9PRJ255V90
 ```
+
+`.env.example` has the full list with notes. `CLOVER_PRINTER_UUID` is optional —
+see **Printing** below — but pinning it removes the guesswork.
 
 ### Switching sandbox → production
 
@@ -325,10 +347,46 @@ non-sandbox host without it, so a stray edit can't quietly start billing real
 cards. While the base contains `sandbox`, a red **SANDBOX** badge shows in the
 app header; it disappears on its own in production.
 
-> **Heads up:** the credentials currently in `.env.local` return `401
-> Unauthorized` on every Clover endpoint, so the integration is built and
-> unit-tested but has never been confirmed against a live merchant. Regenerate
-> them in the sandbox dashboard. See `ROADMAP.md`.
+### Printing
+
+The kitchen ticket is what makes an order real to the staff, so this is worth
+understanding.
+
+On boot the server reads `GET /v3/merchants/{mId}/printers`, caches the list for
+ten minutes, and picks one:
+
+1. `CLOVER_PRINTER_UUID` if it names a printer that exists
+2. otherwise the first printer of type `order`, then `kitchen`, `fiscal`,
+   `receipt`, `MY_LOCAL`
+3. **otherwise the first printer in the list, whatever its type**
+
+Step 3 is the important one. This merchant has exactly one printer — the Clover
+Station's built-in roll, which reports type `MY_LOCAL` — and it was missing from
+the old selection list, so the server's print never fired at all. **Selection
+never returns nothing while the merchant has any printer**, because a ticket on
+the wrong roll is a nuisance and a ticket on no roll is an order the kitchen
+never sees.
+
+The chosen printer is named on the `print_event` itself. A print_event with no
+printer is routed nowhere, which is what was happening. A failure is retried once
+after two seconds; a 404 means the printer is gone rather than busy, so the list
+is re-read and the new choice tried instead.
+
+Printing never fails an order — the order is on the register either way — but the
+result is now reported honestly as `printed` and `printError`, and the
+confirmation screen says what actually happened rather than guessing.
+
+To see what the server chose:
+
+```bash
+curl localhost:3001/api/clover/printers      # the list, and which one is chosen
+curl localhost:3001/api/clover/health        # printerConfigured / Name / Type
+curl -X POST localhost:3001/api/clover/print-test   # reprint the last app order
+```
+
+`print-test` prints a real ticket on a real printer, so it respects `APP_KEY`
+like every other endpoint. The startup banner also prints the chosen printer,
+and says so loudly when Clover reports no printers at all.
 
 ### Deploying
 

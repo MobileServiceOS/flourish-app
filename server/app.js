@@ -15,10 +15,20 @@
      That is a hard failure, not a warning. */
 import express from "express";
 import cors from "cors";
-import { api, modifierCatalog, CloverError, humanise } from "./clover.js";
+import {
+  api, modifierCatalog, CloverError, humanise,
+  printOrderTicket, resolvePrinter, describePrinter,
+} from "./clover.js";
 import { CONFIGURED, IS_SANDBOX, describe } from "./env.js";
-import { buildAtomicOrder, buildPayment, toCents } from "../src/lib/cloverOrder.js";
-import { isOpen, nextOpening, describeOpening, READY_WINDOW } from "../src/lib/hours.js";
+import {
+  buildAtomicOrder, buildPayment, toCents, MissingCustomerError,
+} from "../src/lib/cloverOrder.js";
+import {
+  isOpen, nextOpening, describeOpening, closingOn, formatTime, pickupSlots,
+  readyFitsBeforeClose,
+} from "../src/lib/hours.js";
+import { cartPrepMinutes, readyWindow } from "../src/lib/prep.js";
+import { isValidName, isValidPhone, phoneDigits } from "../src/lib/phone.js";
 import { ADDRESS } from "../src/lib/restaurant.js";
 import {
   rateLimit, payRateLimit, checkOrigin, requireAppKey, capCharge,
@@ -28,15 +38,32 @@ import {
 /* What the customer receives. Kept here rather than inline so the wording is in
    one place — it is the only thing the restaurant "says" to a customer between
    ordering and collecting. */
-export const confirmationMessage = (orderNumber) =>
-  `Your order at Flourish BX is confirmed! We'll have it ready in ${READY_WINDOW}. ` +
+export const confirmationMessage = (orderNumber, pickupLabel) =>
+  `Your order at Flourish BX is confirmed! We'll have it ready ${pickupLabel}. ` +
   `Pay when you pick up at ${ADDRESS}.` + (orderNumber ? ` Order ${orderNumber}` : "");
+
+/* Phone numbers print on tickets and end up in logs. Keep the last two digits —
+   enough for staff to match a number they can already see on a ticket, useless
+   to anyone reading a log file. */
+export const maskPhone = (phone) => {
+  const d = phoneDigits(phone);
+  return d.length ? `(***) ***-**${d.slice(-2)}` : "(none)";
+};
 
 export const readyMessage = (orderNumber) =>
   `Your order at Flourish BX is ready for pickup! Come to ${ADDRESS}.` +
   (orderNumber ? ` Order ${orderNumber}` : "");
 
-export function createApp({ clover = api, catalog = modifierCatalog, now = () => new Date() } = {}) {
+export function createApp({
+  clover = api,
+  catalog = modifierCatalog,
+  now = () => new Date(),
+  /* Printing is injectable for the same reason the Clover client is: the real
+     one retries with a two-second pause, which a test suite must not sit
+     through. The default binds the orchestrator to whichever client is in use,
+     so the production path is the one in clover.js. */
+  printTicket = (orderId) => printOrderTicket(orderId, { client: clover }),
+} = {}) {
   const app = express();
 
   // Behind a host that terminates TLS, req.ip must come from the forwarded
@@ -63,15 +90,25 @@ export function createApp({ clover = api, catalog = modifierCatalog, now = () =>
     const base = { ok: true, ...describe(), sandbox: IS_SANDBOX };
     if (!CONFIGURED) return res.json({ ...base, configured: false, reason: "NO_CREDENTIALS" });
 
-    const now = Date.now();
-    if (now - probe.at > PROBE_TTL) {
-      try { await clover.merchant(); probe = { at: now, live: true }; }
-      catch { probe = { at: now, live: false }; }
+    const at = Date.now();
+    if (at - probe.at > PROBE_TTL) {
+      try { await clover.merchant(); probe = { at, live: true }; }
+      catch { probe = { at, live: false }; }
     }
+
+    /* Whether a ticket can actually be printed is the thing staff most need to
+       know and the thing nobody could see before. Best effort: a printer lookup
+       that fails must not make the app think ordering is off. */
+    let printer = null;
+    try { ({ printer } = await resolvePrinter({ client: clover })); } catch { /* reported as unconfigured */ }
+
     res.json({
       ...base,
       configured: probe.live,
       reason: probe.live ? null : "CREDENTIALS_REJECTED",
+      printerConfigured: Boolean(printer),
+      printerName: printer?.name ?? null,
+      printerType: printer?.type ?? null,
     });
   });
 
@@ -111,15 +148,71 @@ export function createApp({ clover = api, catalog = modifierCatalog, now = () =>
 
      Hours are New York wall-clock. server/index.js pins TZ so a host running in
      UTC does not decide the Bronx is open at 4am. */
+  const closedBody = (at) => ({
+    error: `We're closed right now. Flourish opens ${describeOpening(nextOpening(at), at)}.`,
+    code: "CLOSED",
+    opensAt: nextOpening(at).toISOString(),
+  });
+
   const requireOpen = (_req, res, next) => {
     const at = now();
     if (isOpen(at)) return next();
-    return res.status(409).json({
-      error: `We're closed right now. Flourish opens ${describeOpening(nextOpening(at), at)}.`,
-      code: "CLOSED",
-      opensAt: nextOpening(at).toISOString(),
-    });
+    return res.status(409).json(closedBody(at));
   };
+
+  /* ---- what the kitchen can promise ----
+
+     The window is worked out HERE, from the cart, and the client displays what
+     it is given. Prep time depends on what was ordered — salmon and shrimp meet
+     the fryer when the ticket lands and cannot be promised in fifteen minutes —
+     so a client computing its own number would quote a plate faster than the
+     kitchen can cook it.
+
+     `quote` is also the hours check that matters. Being open is not enough: at
+     9:50PM the door is unlocked but a 30-minute plate would come out twenty
+     minutes after close, so the ORDER TIME passing is irrelevant and the READY
+     TIME is what decides. */
+  function quoteFor(cart, at = now()) {
+    const prepMinutes = cartPrepMinutes(cart);
+    const window = readyWindow(at, prepMinutes);
+    return {
+      prepMinutes,
+      startISO: window.start.toISOString(),
+      endISO: window.end.toISOString(),
+      label: window.label,
+      fitsBeforeClose: readyFitsBeforeClose(window.end, at),
+      closesAt: closingOn(at).toISOString(),
+    };
+  }
+
+  const tooLateBody = (q, at) => ({
+    error:
+      `There isn't time to cook that before we close at ${formatTime(closingOn(at))}. ` +
+      `It needs ${q.prepMinutes} minutes and wouldn't be ready until ${q.label}.`,
+    code: "TOO_LATE_TO_COOK",
+    prepMinutes: q.prepMinutes,
+    closesAt: q.closesAt,
+    readyBy: q.endISO,
+  });
+
+  app.post("/api/clover/quote", (req, res) => {
+    const { cart } = req.body ?? {};
+    if (!Array.isArray(cart) || !cart.length) {
+      return res.status(400).json({ error: "Cart is empty" });
+    }
+    const at = now();
+    const open = isOpen(at);
+    const q = quoteFor(cart, at);
+    res.json({
+      ...q,
+      open,
+      // Bookable times for the picker, so the client never derives one either.
+      slots: open && q.fitsBeforeClose
+        ? pickupSlots(at, q.prepMinutes).map((d) => ({ iso: d.toISOString(), label: formatTime(d) }))
+        : [],
+      opensAt: open ? null : nextOpening(at).toISOString(),
+    });
+  });
 
   /* ---- inventory ---- */
   app.get("/api/clover/inventory", requireConfig, async (_req, res) => {
@@ -146,12 +239,61 @@ export function createApp({ clover = api, catalog = modifierCatalog, now = () =>
     catch (e) { fail(res, e); }
   });
 
-  /* ---- orders ---- */
+  /* ---- orders ----
+     `lastOrder` is what POST /print-test reprints. In memory on purpose: it is
+     an operational convenience for staff standing at the counter, not a record
+     — Clover holds the orders. */
+  let lastOrder = null;
+
   app.post("/api/clover/orders", requireConfig, requireOpen, async (req, res) => {
-    const { cart, reward, customerId, customer, orderNumber, pickupLabel, note } = req.body ?? {};
+    const { cart, reward, customerId, customer, orderNumber, pickupAt, note } = req.body ?? {};
     if (!Array.isArray(cart) || !cart.length) {
       return res.status(400).json({ error: "Cart is empty" });
     }
+
+    /* A ticket with no customer on it is useless at the counter, so it must be
+       impossible rather than unlikely. This is refused before anything reaches
+       Clover — an order that exists but cannot be handed to anyone is worse
+       than an order that was never taken. */
+    const name = String(customer?.name ?? "").trim();
+    const phone = String(customer?.phone ?? "").trim();
+    if (!isValidName(name) || !isValidPhone(phone)) {
+      return res.status(400).json({
+        error: "We need a name and a 10-digit phone number — staff can't hand over an order without them.",
+        code: "CUSTOMER_REQUIRED",
+        missing: [
+          ...(isValidName(name) ? [] : ["name"]),
+          ...(isValidPhone(phone) ? [] : ["phone"]),
+        ],
+      });
+    }
+
+    const at = now();
+    const quote = quoteFor(cart, at);
+    if (!quote.fitsBeforeClose) {
+      return res.status(409).json(tooLateBody(quote, at));
+    }
+
+    /* A scheduled slot has to clear the same two bars: not before the kitchen
+       could have it, not after the door shuts. Anything else falls back to the
+       computed window rather than being taken on trust. */
+    let pickupLabel = quote.label;
+    if (pickupAt) {
+      const when = new Date(pickupAt);
+      const valid = !Number.isNaN(when.getTime())
+        && when >= new Date(quote.startISO)
+        && readyFitsBeforeClose(when, at);
+      if (!valid) {
+        return res.status(409).json({
+          error: `That pickup time has passed or is after we close. The earliest is ${quote.label}.`,
+          code: "BAD_PICKUP_TIME",
+          earliest: quote.startISO,
+          closesAt: quote.closesAt,
+        });
+      }
+      pickupLabel = formatTime(when);
+    }
+
     try {
       const cat = await catalog();
 
@@ -169,61 +311,114 @@ export function createApp({ clover = api, catalog = modifierCatalog, now = () =>
       });
 
       const body = buildAtomicOrder({
-        cart: priced, reward, customerId, customer, orderNumber,
-        pickupLabel, note, catalog: cat,
+        cart: priced, reward, customerId,
+        customer: { name, phone },
+        orderNumber, pickupLabel, note, catalog: cat,
       });
       const order = await clover.createOrder(body);
+      lastOrder = { id: order.id, orderNumber: orderNumber ?? null, at: Date.now() };
 
-      // Print is best effort. The order exists in Clover either way and staff
-      // can see it on the register, so a dead printer must not lose the sale.
-      let printed = false, printError = null;
-      try { await clover.printOrder(order.id); printed = true; }
-      catch (e) { printError = e instanceof CloverError ? e.message : "Print failed"; }
+      /* Print is best effort. The order exists in Clover either way and staff
+         can see it on the register, so a dead printer must not lose the sale —
+         but it is a real attempt now: a printer is chosen from the merchant's
+         own list, the event names it, and a failure is retried once. */
+      const print = await printTicket(order.id);
+      if (!print.printed) {
+        console.warn(`  order ${order.id}: ticket not printed (${print.printError ?? "unknown"})`);
+      }
 
       /* Everything below is cosmetic. Attaching the customer and messaging them
          is nice; losing the order because Clover's messaging is not on this
          merchant's plan would not be. Each step is caught on its own so one
          failing does not skip the next. */
-      let messaged = false, customerRef = customerId ?? null;
-      if (customer?.phone) {
-        try {
+      let messaged = false, attached = false, customerRef = customerId ?? null;
+      try {
+        if (!customerRef) {
+          const found = await clover.findCustomerByPhone(phone);
+          customerRef = found?.elements?.[0]?.id ?? null;
           if (!customerRef) {
-            const found = await clover.findCustomerByPhone(customer.phone);
-            customerRef = found?.elements?.[0]?.id ?? null;
-            if (!customerRef) {
-              const [firstName, ...rest] = String(customer.name || "").trim().split(/\s+/);
-              const made = await clover.createCustomer({
-                firstName: firstName || "Guest",
-                lastName: rest.join(" ") || undefined,
-                phone: customer.phone,
-              });
-              customerRef = made?.id ?? null;
-            }
+            const [firstName, ...rest] = name.split(/\s+/);
+            const made = await clover.createCustomer({
+              firstName: firstName || "Guest",
+              lastName: rest.join(" ") || undefined,
+              phone,
+            });
+            customerRef = made?.id ?? null;
           }
-          if (customerRef) await clover.attachCustomer(order.id, customerRef);
-        } catch { /* the order stands without a customer attached */ }
-
-        try {
-          await clover.sendOrderMessage(order.id, confirmationMessage(orderNumber));
-          messaged = true;
-        } catch (e) {
-          // Not on every Clover plan. Worth knowing, not worth failing.
-          console.warn(`  order ${order.id}: customer message not sent (${e?.message ?? "unknown"})`);
         }
+        if (customerRef) {
+          await clover.attachCustomer(order.id, customerRef);
+          attached = true;
+        }
+      } catch (e) {
+        // The register still shows the customer's name and number on the
+        // ticket note, so the order stands.
+        console.warn(
+          `  order ${order.id}: customer ${maskPhone(phone)} not attached (${e?.message ?? "unknown"})`
+        );
+      }
+
+      try {
+        await clover.sendOrderMessage(order.id, confirmationMessage(orderNumber, pickupLabel));
+        messaged = true;
+      } catch (e) {
+        // Not on every Clover plan. Worth knowing, not worth failing.
+        console.warn(`  order ${order.id}: customer message not sent (${e?.message ?? "unknown"})`);
       }
 
       /* success:true even when the printer refused. The order is on the
          register either way, and telling a customer their food failed when it
-         did not is the worse mistake. */
+         did not is the worse mistake — but `printed` is now the truth of what
+         happened, so the confirmation screen can stop guessing. */
       res.json({
         success: true,
         orderId: order.id,
         orderNumber: orderNumber ?? null,
         total: order.total ?? null,
         paid: false,          // pay-at-pickup: nothing is collected here
-        printed, printError, messaged,
+        printed: print.printed,
+        printError: print.printError ?? null,
+        printer: print.printer ?? null,
+        messaged, attached,
+        pickupLabel,
+        readyWindow: { startISO: quote.startISO, endISO: quote.endISO, label: quote.label },
+        prepMinutes: quote.prepMinutes,
+      });
+    } catch (e) {
+      if (e instanceof MissingCustomerError) {
+        return res.status(400).json({ error: e.message, code: "CUSTOMER_REQUIRED", missing: e.missing });
+      }
+      fail(res, e);
+    }
+  });
+
+  /* ---- printers ----
+     Staff and whoever is deploying this need to see what the server chose, and
+     be able to prove a ticket prints without putting a fake order through the
+     kitchen. */
+  app.get("/api/clover/printers", requireConfig, async (_req, res) => {
+    try {
+      const { printer, printers } = await resolvePrinter({ client: clover });
+      res.json({
+        chosen: describePrinter(printer),
+        printers: printers.map(describePrinter),
       });
     } catch (e) { fail(res, e); }
+  });
+
+  app.post("/api/clover/print-test", requireConfig, async (_req, res) => {
+    if (!lastOrder) {
+      return res.status(404).json({
+        error: "No order has been placed through the app yet, so there is nothing to reprint.",
+        code: "NO_RECENT_ORDER",
+      });
+    }
+    const print = await printTicket(lastOrder.id);
+    res.json({
+      ...print,
+      orderId: lastOrder.id,
+      orderNumber: lastOrder.orderNumber,
+    });
   });
 
   app.get("/api/clover/orders/:orderId", requireConfig, async (req, res) => {

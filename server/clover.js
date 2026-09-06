@@ -4,7 +4,7 @@
    Clover echoes request context back in some error bodies and we must never
    relay a token into a log or an HTTP response. */
 import {
-  API_BASE, ECOMM_BASE, MERCHANT_ID, PRIVATE_TOKEN, CONFIGURED,
+  API_BASE, ECOMM_BASE, MERCHANT_ID, PRIVATE_TOKEN, CONFIGURED, PRINTER_UUID,
 } from "./env.js";
 
 export class CloverError extends Error {
@@ -91,8 +91,16 @@ export const api = {
 
   getOrder: (orderId) => request(API_BASE, m(`/orders/${orderId}`)),
 
-  printOrder: (orderId) =>
-    request(API_BASE, m(`/orders/${orderId}/print_event`), { method: "POST", body: { orderRef: { id: orderId } } }),
+  /** Every printer the merchant has. Station built-ins report type MY_LOCAL. */
+  printers: () => request(API_BASE, m("/printers")),
+
+  /* A print_event with no printer names none, and Clover routes it nowhere.
+     The printer id is the whole point of this call. */
+  printEvent: (orderId, printerId) =>
+    request(API_BASE, m(`/orders/${orderId}/print_event`), {
+      method: "POST",
+      body: { orderRef: { id: orderId }, printer: { id: printerId } },
+    }),
 
   findCustomerByPhone: (phone) =>
     request(API_BASE, m(`/customers?filter=phoneNumber=${encodeURIComponent(phone)}&limit=1`)),
@@ -156,4 +164,141 @@ export async function modifierCatalog({ force = false, now = Date.now() } = {}) 
 }
 
 export const __resetCatalog = () => { catalogCache = { at: 0, value: null }; };
+
+/* ============================================================================
+   PRINTERS
+
+   The bug this section exists to fix: the proxy used to POST a print_event that
+   named no printer at all, and Clover routed it nowhere. Meanwhile the only
+   printer this merchant has reports type "MY_LOCAL" — the Station's built-in
+   roll — which any list of "real" printer types leaves out.
+
+   So the selection order below ends in a fallback that cannot fail: **if the
+   merchant has any printer at all, one of them is chosen.** Preferring an order
+   or kitchen printer is an optimisation; never returning null when the list is
+   non-empty is the actual fix. A ticket on the wrong roll is a nuisance. A
+   ticket on no roll is an order the kitchen never sees.
+   ============================================================================ */
+
+/* Most-wanted first. Anything not on this list still gets picked by the final
+   fallback, so a printer type Clover invents next year is not a dead end. */
+export const PRINTER_TYPE_ORDER = ["order", "kitchen", "fiscal", "receipt", "MY_LOCAL"];
+
+/**
+ * Choose one printer from the merchant's list.
+ *
+ * Returns null ONLY when the list is genuinely empty — that is the one case
+ * nothing can be printed, and the caller says so loudly.
+ */
+export function selectPrinter(printers = [], envUuid = PRINTER_UUID) {
+  const list = (printers ?? []).filter((p) => p && (p.uuid || p.id));
+  if (!list.length) return null;
+
+  const uuidOf = (p) => p.uuid || p.id;
+
+  // An explicit CLOVER_PRINTER_UUID is a decision someone made on purpose.
+  if (envUuid) {
+    const pinned = list.find((p) => uuidOf(p) === envUuid);
+    if (pinned) return pinned;
+    // Configured but absent: worth saying out loud, then fall through rather
+    // than refusing to print at all.
+    console.warn(`  printer: CLOVER_PRINTER_UUID ${envUuid} is not in the merchant's printer list`);
+  }
+
+  for (const type of PRINTER_TYPE_ORDER) {
+    const hit = list.find((p) => String(p.type ?? "").toLowerCase() === type.toLowerCase());
+    if (hit) return hit;
+  }
+
+  // Unknown type, or no type at all. Still a printer.
+  return list[0];
+}
+
+/** Printer list, cached — it changes when hardware changes, which is rarely. */
+let printerCache = { at: 0, list: null, chosen: null };
+export const PRINTER_TTL_MS = 10 * 60_000;
+
+export async function resolvePrinter({ force = false, now = Date.now(), client = api } = {}) {
+  if (!force && printerCache.list && now - printerCache.at < PRINTER_TTL_MS) {
+    return { printer: printerCache.chosen, printers: printerCache.list };
+  }
+  const res = await client.printers();
+  const list = res?.elements ?? (Array.isArray(res) ? res : []);
+  const chosen = selectPrinter(list);
+  printerCache = { at: now, list, chosen };
+  if (!list.length) {
+    console.error(
+      "  printer: Clover reports NO printers for this merchant. Kitchen tickets " +
+      "cannot be printed — staff must work from the register screen. Pair a " +
+      "printer in the Clover dashboard, or set CLOVER_PRINTER_UUID."
+    );
+  }
+  return { printer: chosen, printers: list };
+}
+
+export const describePrinter = (p) =>
+  p ? { uuid: p.uuid || p.id, name: p.name ?? null, type: p.type ?? null } : null;
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** How long to hold off before the one retry. */
+export const PRINT_RETRY_MS = 2_000;
+
+/**
+ * Print a kitchen ticket. Best effort by contract — the caller must not lose an
+ * order because a roll of paper jammed — but it tries properly first:
+ *
+ *   - one retry after 2s, because a Station that is briefly busy is the common
+ *     failure and a second attempt usually lands
+ *   - on a 404 the cached printer is stale (unpaired, replaced, renamed), so the
+ *     list is re-fetched and the new choice tried once
+ *
+ * Never throws. Returns what actually happened so the confirmation screen can
+ * tell the customer the truth instead of guessing.
+ */
+export async function printOrderTicket(orderId, { client = api, sleep = wait } = {}) {
+  let printer;
+  try {
+    ({ printer } = await resolvePrinter({ client }));
+  } catch (e) {
+    return { printed: false, printer: null, printError: printMessage(e) };
+  }
+  if (!printer) {
+    return { printed: false, printer: null, printError: "No printer is paired with this merchant" };
+  }
+
+  const attempt = async (p) => {
+    await client.printEvent(orderId, p.uuid || p.id);
+    return { printed: true, printer: describePrinter(p), printError: null };
+  };
+
+  try {
+    return await attempt(printer);
+  } catch (first) {
+    /* A 404 means this printer is not there any more, so waiting will not help —
+       re-read the list and try whatever replaced it. */
+    if (first?.status === 404) {
+      try {
+        const { printer: fresh } = await resolvePrinter({ force: true, client });
+        if (fresh) return await attempt(fresh);
+        return { printed: false, printer: null, printError: "No printer is paired with this merchant" };
+      } catch (e) {
+        return { printed: false, printer: describePrinter(printer), printError: printMessage(e) };
+      }
+    }
+
+    await sleep(PRINT_RETRY_MS);
+    try {
+      return await attempt(printer);
+    } catch (second) {
+      return { printed: false, printer: describePrinter(printer), printError: printMessage(second) };
+    }
+  }
+}
+
+/* Print failures are shown to staff, not customers, so the Clover message is
+   useful — but it still goes through scrub() before it can reach a log. */
+const printMessage = (e) => scrub(e?.message || "Print failed").slice(0, 200);
+
+export const __resetPrinters = () => { printerCache = { at: 0, list: null, chosen: null }; };
 export { scrub as __scrub };

@@ -14,7 +14,10 @@ async function app(env = {}) {
     items: vi.fn().mockResolvedValue({ elements: [] }),
     charge: vi.fn().mockResolvedValue({ id: "CHG", status: "succeeded", amount: 100 }),
     createOrder: vi.fn().mockResolvedValue({ id: "ORD", total: 100 }),
-    printOrder: vi.fn().mockResolvedValue({}),
+    printers: vi.fn().mockResolvedValue({ elements: [
+      { uuid: "ZVZ9PRJ255V90", name: "Station Printer", type: "MY_LOCAL" },
+    ]}),
+    printEvent: vi.fn().mockResolvedValue({}),
     getOrder: vi.fn(), setStock: vi.fn(),
     findCustomerByPhone: vi.fn(), createCustomer: vi.fn(),
   };
@@ -48,6 +51,23 @@ describe("the app key", () => {
     const { agent } = await app({ APP_KEY: "s3cret" });
     const r = await agent.get("/api/clover/inventory").set("x-flourish-key", "s3cret");
     expect(r.status).not.toBe(401);
+  });
+
+  it("gates the new printer endpoints too", async () => {
+    /* print-test fires a real print at the merchant's station. It is a staff
+       convenience, not something the internet gets to poke. */
+    const { agent } = await app({ APP_KEY: "s3cret" });
+    expect((await agent.get("/api/clover/printers")).status).toBe(401);
+    expect((await agent.post("/api/clover/print-test").send({})).status).toBe(401);
+
+    const ok = await agent.get("/api/clover/printers").set("x-flourish-key", "s3cret");
+    expect(ok.status).not.toBe(401);
+  });
+
+  it("gates the quote endpoint", async () => {
+    const { agent } = await app({ APP_KEY: "s3cret" });
+    const r = await agent.post("/api/clover/quote").send({ cart: [] });
+    expect(r.status).toBe(401);
   });
 
   it("never gates health, which the app asks before anything else", async () => {

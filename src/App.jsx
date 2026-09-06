@@ -8,7 +8,7 @@ import { rewardOf, discountFor } from "./lib/loyalty.js";
 import { loadAccount, saveAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
 import { createOrder, syncCustomer, setStock } from "./lib/clover.js";
-import { useCloverHealth, useInventorySync } from "./hooks/clover.js";
+import { useCloverHealth, useInventorySync, useReadyQuote } from "./hooks/clover.js";
 
 import Splash from "./components/Splash.jsx";
 import {
@@ -56,6 +56,11 @@ export default function App() {
   const clover = useCloverHealth();
   const inventory = useInventorySync({ enabled: clover.status === "online" });
   const soldOut = inventory.soldOut;
+
+  /* When the food will be ready, as told to us by the server. Never computed
+     here: prep time depends on what is in the cart, and the server is the only
+     side that also knows when the kitchen runs out of time to cook it. */
+  const { quote } = useReadyQuote(cart, { enabled: clover.status === "online" });
 
   /* The manual toggle also pushes back to Clover when connected, so the 86
      shows up on the register and on every other ordering channel — not just
@@ -299,7 +304,7 @@ export default function App() {
      Doing it the other way round risks a charged customer with no order on the
      register, which is the one outcome staff cannot fix from the counter.
      A failed charge on an existing order is recoverable — they pay at pickup. */
-  const placeOrder = async (pickup, tip) => {
+  const placeOrder = async (pickup, tip, contact) => {
     setPayError(null);
     setSubmitting(true);
 
@@ -317,19 +322,32 @@ export default function App() {
     try {
       let cloverOrderId = null;
       let printed = null;
+      let printError = null;
       let messaged = false;
+      let pickupLabel = pickup.label;
+      let readyWindow = null;
 
       if (clover.status === "online") {
+        /* The name and phone come from the CHECKOUT, not from the saved
+           account. This used to read `account ? {...} : null`, so a guest — and
+           a signed-in customer who corrected their number at the counter — sent
+           no customer at all, and the printed ticket had nothing on it but an
+           order number. The server refuses an order without them now. */
         const res = await createOrder({
           cart, reward,
           customerId: account?.cloverCustomerId ?? null,
-          customer: account ? { name: account.name, phone: account.phone } : null,
+          customer: { name: contact.name, phone: contact.phone },
           orderNumber: num,
-          pickupLabel: pickup.label,
+          pickupAt: pickup.iso ?? null,
         });
         cloverOrderId = res.orderId;
         printed = res.printed;
+        printError = res.printError ?? null;
         messaged = res.messaged ?? false;
+        /* The label and window are the server's, so the confirmation screen and
+           the kitchen ticket say the same thing. */
+        pickupLabel = res.pickupLabel ?? pickupLabel;
+        readyWindow = res.readyWindow ?? null;
         if (printed === false) {
           flash("Order received — the printer is down, staff have it on screen");
         }
@@ -337,9 +355,16 @@ export default function App() {
 
       const order = {
         num, cloverOrderId, when: "Today", total: localTotal, status: "preparing",
-        pickup: pickup.label, readyAt: pickup.at.toISOString(), tip,
+        pickup: pickupLabel,
+        scheduled: Boolean(pickup.iso),
+        readyWindow,
+        // The far edge of the window is what a notification should fire on:
+        // telling someone their food is ready at the earliest it *might* be is
+        // how they arrive to a wait.
+        readyAt: readyWindow?.endISO ?? null,
+        tip,
         paidBy: "pickup",          // the app never takes money
-        printed, messaged, reward,
+        printed, printError, messaged, reward,
         lines: cart.map((l) => ({ ...l })),
       };
 
@@ -406,12 +431,14 @@ export default function App() {
       {view === "orders" && <OrdersView orders={orders} active={active} onReorder={reorder}
         onBrowse={() => setView("menu")} onTrack={() => active && setView("track")} />}
       {view === "cart" && <CartView {...{ cart, subtotal, saved, account, setQty, removeLine, setView,
-          vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher: () => setApplied(null) }} />}
+          vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher: () => setApplied(null),
+          quote }} />}
       {view === "checkout" && (
         <CheckoutView subtotal={subtotal} points={points} account={account} goJoin={() => setView("rewards")}
           discount={discount} appliedVoucher={appliedVoucher}
           onBack={() => setView("cart")}
           cloverStatus={clover.status} cloverReason={clover.reason}
+          quote={quote}
           submitting={submitting} payError={payError}
           onClearError={() => setPayError(null)}
           onPay={placeOrder} />

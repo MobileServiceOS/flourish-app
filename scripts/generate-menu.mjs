@@ -223,6 +223,51 @@ const DESC = {
   "D7MBX5PWRCGCE": "Sodas, juices, and coconut water",
 };
 
+/* ============================================================================
+   PREP TIME
+
+   How long the kitchen needs before a plate can be promised, in minutes, keyed
+   by Clover item id. Baked into menu.data.js as `prepMinutes` so the id — not
+   the name — is what carries the knowledge through a regeneration. Clover has
+   no prep-time field, so this map is the only place it lives.
+
+   DEFAULT_PREP (15) covers everything held on the steam table. COOKED_TO_ORDER
+   (30) is for anything that meets the fryer or the grill when the ticket lands:
+   fish, salmon, shrimp, crab legs, lobster and lamb cannot be promised in 15
+   minutes and quoting 15 is how a customer arrives to a twenty-minute wait.
+
+   NO_PREP items — sides on their own, and drinks — are handed over from the
+   counter and never raise a cart's window. They are excluded from the maximum
+   rather than given a small number, so a Coke can never be the thing that
+   decides when an order is ready.
+   ============================================================================ */
+const DEFAULT_PREP = 15;
+const COOKED_TO_ORDER = 30;
+
+const PREP_MINUTES = {
+  "598S0BJH4J7DE": COOKED_TO_ORDER,   // Crab Legs Platter
+  "VGZYVZCB2NCRY": COOKED_TO_ORDER,   // Lobster
+  "7916EWVQFPGH8": COOKED_TO_ORDER,   // Lamb
+  "VQZ0T4XK707EC": COOKED_TO_ORDER,   // Snapper Fish — brown stew, escovitch or steamed
+  "32VDQ4G5J131P": COOKED_TO_ORDER,   // Seafood Stew Peas
+  "H9520PFNBT2NY": COOKED_TO_ORDER,   // Salmon
+  "AYBW9QMTC6154": COOKED_TO_ORDER,   // Ackee & Shrimp
+  "VHHCS7EDV70HC": COOKED_TO_ORDER,   // Shrimp
+  "PSGB77QNZR2WM": COOKED_TO_ORDER,   // Blue Crab
+  "QB9EKT4QGVWDA": COOKED_TO_ORDER,   // Shrimp & Waffles
+  "BRMP82TR0Z45C": COOKED_TO_ORDER,   // Crab Legs Platter (Shrimp & 2 Sides)
+  "A1YZ2ZD5CA1SW": COOKED_TO_ORDER,   // Lobster Platter (Shrimp & 2 Sides)
+  "06Z80836S0GZR": COOKED_TO_ORDER,   // Fish Platter (Shrimp & 2 Sides)
+  "CAFAH5FKPTRW8": COOKED_TO_ORDER,   // Shrimp (Seafood Fridays)
+  "0NQ5E11VABFDY": COOKED_TO_ORDER,   // Salmon (Shrimp & 2 Sides)
+};
+
+/* Handed over from the counter, so they never decide a cart's ready time. */
+const NO_PREP_IDS = new Set([
+  "6NX7XK602V0ZM",   // Side, on its own
+]);
+const NO_PREP_CATEGORIES = new Set(["Drinks"]);
+
 // The six on the website's "What We're Known For", in that order.
 const POPULAR_IDS = [
   "60KCQ1V22Q98M", // Oxtail
@@ -397,7 +442,12 @@ for (const cat of CATEGORY_ORDER) {
     const desc = DESC[i.id] ? `, desc: ${q(DESC[i.id])}` : "";
     const itemDays = ITEM_DAYS[i.id] ?? CATEGORY_DAYS[cat];
     const days = itemDays ? `, days: ${JSON.stringify(itemDays)}` : "";
-    js += `    { id: ${q(i.id)}, name: ${q(i.name)}, emoji: ${q(EMOJI[i.name] ?? "🍽️")}${desc}${days}, base: ${i.base}, lo: ${i.lo}, hi: ${i.hi}, groups: [${gs}\n      ] },\n`;
+    /* Every item carries a prep time, so nothing downstream has to guess. A
+       no-prep item is marked rather than given minutes — the cart excludes it
+       from the maximum instead of treating it as a fast plate. */
+    const noPrep = NO_PREP_IDS.has(i.id) || NO_PREP_CATEGORIES.has(cat);
+    const prep = `, prepMinutes: ${PREP_MINUTES[i.id] ?? DEFAULT_PREP}${noPrep ? ", noPrep: true" : ""}`;
+    js += `    { id: ${q(i.id)}, name: ${q(i.name)}, emoji: ${q(EMOJI[i.name] ?? "🍽️")}${desc}${days}, base: ${i.base}, lo: ${i.lo}, hi: ${i.hi}${prep}, groups: [${gs}\n      ] },\n`;
   }
   js += `  ]},\n`;
 }
@@ -412,6 +462,11 @@ export const SIDE_ID  = "6NX7XK602V0ZM";
 // The six on the website's "What We're Known For". The Popular section in the
 // app renders these same item objects — it does not copy them.
 export const POPULAR_IDS = ${JSON.stringify(POPULAR_IDS, null, 2)};
+
+/* Prep-time constants travel with the data so src/lib/prep.js has a single
+   source for them and never re-declares a number the generator owns. */
+export const DEFAULT_PREP_MINUTES = ${DEFAULT_PREP};
+export const COOKED_TO_ORDER_MINUTES = ${COOKED_TO_ORDER};
 
 export const CAT_OF = {};
 export const PLATE_IDS = new Set();   // anything served with two sides
@@ -434,6 +489,9 @@ for (const id of Object.keys(UE)) {
 }
 for (const id of POPULAR_IDS) {
   if (!ids.has(id)) console.warn(`  ! Popular item ${id} is not on the menu anymore`);
+}
+for (const id of Object.keys(PREP_MINUTES)) {
+  if (!ids.has(id)) console.warn(`  ! Prep time set for ${id}, which is not on the menu anymore`);
 }
 const undescribed = out.filter((i) => !DESC[i.id]);
 if (undescribed.length) {

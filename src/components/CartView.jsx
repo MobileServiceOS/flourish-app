@@ -3,11 +3,12 @@ import { ShoppingBag, Plus, Minus, Sparkles, Ticket, Clock } from "lucide-react"
 import { money } from "../lib/money.js";
 import { rewardOf, discountFor } from "../lib/loyalty.js";
 import { isOpen, nextOpening, describeOpening, HOURS_LINE } from "../lib/hours.js";
+import { cartPrepMinutes, isCookedToOrder, COOKED_TO_ORDER_MINUTES } from "../lib/prep.js";
 import { SubHeader, Empty } from "./shared.jsx";
 
 /* ---------- CART ---------- */
 export default function CartView({ cart, subtotal, saved, account, setQty, removeLine, setView,
-  vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher }) {
+  vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher, quote = null }) {
   /* Say it here rather than letting someone build an order, walk to checkout
      and only then find out. Re-checked on a minute tick so a cart left open
      across closing time notices. */
@@ -17,6 +18,12 @@ export default function CartView({ cart, subtotal, saved, account, setQty, remov
     return () => clearInterval(t);
   }, []);
   const open = isOpen(now);
+
+  /* Which lines are the reason this order takes as long as it does. Working out
+     *which* item is slow is a display question and stays here; how long the
+     order actually needs is the server's answer (`quote`), never this one. */
+  const slowLines = cart.filter((l) => isCookedToOrder(l.itemId));
+  const pushedOut = slowLines.length > 0 && cartPrepMinutes(cart) >= COOKED_TO_ORDER_MINUTES;
 
   return (
     <>
@@ -102,6 +109,30 @@ export default function CartView({ cart, subtotal, saved, account, setQty, remov
             </>
           )}
 
+          {open && (
+            <div style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "12px 14px",
+              borderRadius: 14, background: "rgba(47,182,168,.10)", marginTop: 14 }}>
+              <Clock size={16} color="var(--teal-ink)" style={{ flex: "0 0 auto", marginTop: 2 }} aria-hidden="true" />
+              <div style={{ fontSize: 13, lineHeight: 1.45 }} aria-live="polite">
+                {quote
+                  ? <>Ready <strong>{quote.label}</strong></>
+                  : "Working out when this will be ready…"}
+                {pushedOut && (
+                  <div style={{ color: "var(--muted)", fontSize: 11.5, marginTop: 3 }}>
+                    {slowLines.length === 1
+                      ? `${slowLines[0].name} is cooked to order, so this one takes longer.`
+                      : "Some of these are cooked to order, so this one takes longer."}
+                  </div>
+                )}
+                {quote && quote.fitsBeforeClose === false && (
+                  <div className="field-hint bad" style={{ marginTop: 4 }}>
+                    There isn't time to cook this before we close today.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {!open && (
             <div className="closed-card" role="status" style={{ marginTop: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 700, fontSize: 15 }}>
@@ -115,11 +146,12 @@ export default function CartView({ cart, subtotal, saved, account, setQty, remov
             </div>
           )}
 
-          <button className="pill-btn" style={{ marginTop: 16 }} disabled={!open}
+          <button className="pill-btn" style={{ marginTop: 16 }}
+            disabled={!open || quote?.fitsBeforeClose === false}
             onClick={() => open && setView("checkout")}>
-            {open
-              ? `Go to checkout · ${money(Math.max(0, subtotal - discount))}`
-              : "Closed — order when we open"}
+            {!open ? "Closed — order when we open"
+              : quote?.fitsBeforeClose === false ? "Not enough time to cook this today"
+              : `Go to checkout · ${money(Math.max(0, subtotal - discount))}`}
           </button>
         </div>
       )}

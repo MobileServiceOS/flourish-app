@@ -10,14 +10,14 @@
 
 export const OPEN_HOUR = 11;
 
-/* An ASAP order is quoted as a window, not a single number — the kitchen needs
-   15 minutes on a quiet afternoon and 25 in the middle of a rush, and promising
-   the optimistic end is how customers arrive to a wait.
-   PREP_MINUTES stays the *earliest* it could be ready, because that is what
-   decides the first bookable slot; nothing can be promised sooner. */
-export const PREP_MINUTES = 15;
-export const PREP_MAX_MINUTES = 25;
-export const READY_WINDOW = "15–25 min";
+/* There is no ASAP here any more, and no prep constant either. How long an
+   order needs depends on what is in it — fish and seafood are cooked to order
+   and cannot be promised in fifteen minutes — so prep time lives in lib/prep.js
+   keyed by item, and every function below that needs it is HANDED it.
+
+   A default parameter would quietly re-introduce the bug: a caller that forgot
+   to pass a cart's prep time would get fifteen minutes and promise a salmon
+   plate twice as fast as the kitchen can cook it. So these throw instead. */
 
 export const SLOT_MINUTES = 15;   // granularity of the pickup picker
 
@@ -55,27 +55,41 @@ function ceilToSlot(d) {
   return x;
 }
 
-/** The earliest an ASAP order could be ready. */
-export const asapReadyAt = (now = new Date()) =>
-  new Date(now.getTime() + PREP_MINUTES * 60_000);
+/** The earliest this cart could be ready, given the prep time it needs. */
+export function earliestReady(now, prepMinutes) {
+  requirePrep(prepMinutes);
+  return new Date(now.getTime() + prepMinutes * 60_000);
+}
 
-/** The far end of the quoted window. */
-export const asapReadyBy = (now = new Date()) =>
-  new Date(now.getTime() + PREP_MAX_MINUTES * 60_000);
+function requirePrep(prepMinutes) {
+  if (!Number.isFinite(prepMinutes) || prepMinutes <= 0) {
+    throw new Error("prepMinutes is required — it depends on what is in the cart");
+  }
+}
 
-/** "12:15 – 12:25 PM" — the window as clock times. */
-export const formatWindow = (now = new Date()) =>
-  `${formatTime(asapReadyAt(now))} – ${formatTime(asapReadyBy(now))}`;
+/**
+ * Does the kitchen have time to cook this before the door shuts?
+ *
+ * This is the check that matters, and it is about the READY time, not the order
+ * time. At 9:50PM the shop is open, but a 30-minute plate would come out of the
+ * fryer twenty minutes after close — so the order has to be refused even though
+ * `isOpen` says yes.
+ */
+export function readyFitsBeforeClose(readyBy, now = new Date()) {
+  return readyBy <= closingOn(now);
+}
 
 /**
  * Bookable pickup times: every 15 minutes from the earliest the kitchen could
- * plausibly have it, up to and including closing time. Empty when closed.
+ * plausibly have this cart, up to and including closing time. Empty when closed,
+ * and empty when nothing in the cart could be cooked before the door shuts.
  */
-export function pickupSlots(now = new Date()) {
+export function pickupSlots(now, prepMinutes) {
+  requirePrep(prepMinutes);
   if (!isOpen(now)) return [];
   const close = closingOn(now);
   const slots = [];
-  let t = ceilToSlot(asapReadyAt(now));
+  let t = ceilToSlot(earliestReady(now, prepMinutes));
   while (t <= close) {
     slots.push(new Date(t));
     t = new Date(t.getTime() + SLOT_MINUTES * 60_000);

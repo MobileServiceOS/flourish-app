@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import request from "supertest";
 import { createApp, confirmationMessage, readyMessage } from "../../server/app.js";
 import { __resetRateLimit } from "../../server/guard.js";
-import { READY_WINDOW } from "../lib/hours.js";
+
 
 const OPEN = new Date(2026, 6, 27, 12, 0);
 const CATALOG = { "45KGD3ZDMT2ZY": { Medium: { id: "MOD-MED", price: 20 } } };
@@ -17,7 +17,10 @@ function proxy(over = {}) {
   const clover = {
     merchant: vi.fn().mockResolvedValue({ id: "M" }),
     createOrder: vi.fn().mockResolvedValue({ id: "CLV-9", total: 2000 }),
-    printOrder: vi.fn().mockResolvedValue({}),
+    printers: vi.fn().mockResolvedValue({ elements: [
+      { uuid: "ZVZ9PRJ255V90", name: "Station Printer", type: "MY_LOCAL" },
+    ]}),
+    printEvent: vi.fn().mockResolvedValue({}),
     findCustomerByPhone: vi.fn().mockResolvedValue({ elements: [] }),
     createCustomer: vi.fn().mockResolvedValue({ id: "CUST-9" }),
     attachCustomer: vi.fn().mockResolvedValue({}),
@@ -33,16 +36,27 @@ function proxy(over = {}) {
 }
 
 const place = (agent, body = {}) => agent.post("/api/clover/orders")
-  .send({ cart: CART, customer: CUSTOMER, orderNumber: "FL-4821", pickupLabel: "ASAP", ...body });
+  .send({ cart: CART, customer: CUSTOMER, orderNumber: "FL-4821", ...body });
+
+/* The window is the server's, so tests that assert on the message ask the
+   server what it quoted rather than hardcoding a time. */
+const WINDOW = "2:10–2:20 PM";
 
 describe("what the customer is told", () => {
-  it("quotes the real ready window, not a hardcoded fifteen minutes", () => {
-    expect(confirmationMessage("FL-4821")).toContain(READY_WINDOW);
-    expect(confirmationMessage("FL-4821")).not.toMatch(/\b15 min\b/);
+  it("quotes the window this order was actually given", () => {
+    // Not a constant: a cooked-to-order plate gets a later window and the
+    // message has to say so.
+    expect(confirmationMessage("FL-4821", WINDOW)).toContain(WINDOW);
+    expect(confirmationMessage("FL-4821", "9:45–9:55 PM")).toContain("9:45–9:55 PM");
+  });
+
+  it("never says ASAP", () => {
+    expect(confirmationMessage("FL-4821", WINDOW)).not.toMatch(/asap/i);
+    expect(readyMessage("FL-4821")).not.toMatch(/asap/i);
   });
 
   it("says where to go and that payment is on collection", () => {
-    const m = confirmationMessage("FL-4821");
+    const m = confirmationMessage("FL-4821", WINDOW);
     expect(m).toContain("4035 Laconia Ave");
     expect(m).toMatch(/pay when you pick up/i);
     expect(m).toContain("FL-4821");
@@ -80,7 +94,9 @@ describe("messaging on order creation", () => {
   it("sends the confirmation and reports that it went", async () => {
     const { agent, clover } = proxy();
     const r = await place(agent).expect(200);
-    expect(clover.sendOrderMessage).toHaveBeenCalledWith("CLV-9", confirmationMessage("FL-4821"));
+    expect(clover.sendOrderMessage).toHaveBeenCalledWith(
+      "CLV-9", confirmationMessage("FL-4821", r.body.pickupLabel)
+    );
     expect(r.body.messaged).toBe(true);
   });
 
@@ -105,10 +121,25 @@ describe("messaging on order creation", () => {
     expect(r.body.success).toBe(true);
   });
 
-  it("skips messaging entirely for a guest with no phone", async () => {
+  it("refuses the order outright when there is no phone to reach them on", async () => {
+    /* This used to be "skip messaging for a guest with no phone" — the order
+       went through and the ticket came out anonymous. A ticket staff cannot
+       hand to anyone is not an order, so it is refused before Clover sees it. */
     const { agent, clover } = proxy();
-    await place(agent, { customer: { name: "Walk In" } }).expect(200);
+    await place(agent, { customer: { name: "Walk In" } }).expect(400);
+    expect(clover.createOrder).not.toHaveBeenCalled();
     expect(clover.sendOrderMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not lose the order when attaching the customer fails", async () => {
+    const { agent, clover } = proxy({
+      attachCustomer: vi.fn().mockRejectedValue(new Error("409 conflict")),
+    });
+    const r = await place(agent).expect(200);
+    expect(r.body.success).toBe(true);
+    expect(r.body.attached).toBe(false);
+    // The name and number are still on the printed ticket either way.
+    expect(clover.createOrder.mock.calls[0][0].orderCart.note).toContain("Nevaeh Reid");
   });
 });
 

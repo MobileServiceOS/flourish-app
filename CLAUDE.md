@@ -72,7 +72,9 @@ Opening hours are enforced in three places, and only one of them is real:
 
 - the cart will not go to checkout, and says when the shop opens
 - the checkout's pay button disables, re-checked on a minute tick
-- **the proxy refuses `POST /orders` and `POST /pay` with 409 CLOSED**
+- **the proxy refuses `POST /orders` and `POST /pay` with 409 CLOSED**, and
+  refuses with 409 TOO_LATE_TO_COOK when the order could not be ready before
+  close even though the shop is open right now
 
 The first two are a courtesy to an honest client. A tab left open past closing,
 or a request replayed by hand, is stopped by the third. Do not remove it on the
@@ -84,7 +86,7 @@ where 11am-10pm local would have the Bronx open from 6am.
 
 ### Sales tax
 
-`TAX_RATE` in `src/lib/money.js` is **8.5%**, and that constant is the only
+`TAX_RATE` in `src/lib/money.js` is **8.875%**, and that constant is the only
 place the rate appears. It used to be a bare `0.08875` in three files, which is
 how the number shown at checkout and the number charged to a card drift apart.
 A test fails the build if a rate literal reappears outside `money.js`.
@@ -99,9 +101,9 @@ Two things to know:
   only when Clover does not return a total. Clover is the register — if the two
   ever disagree, the card follows the order, not the app.
 
-For reference, the combined New York City rate on prepared food is 8.875%
-(4% state + 4.5% city + 0.375% MCTD). 8.5% was set deliberately on request; if
-that turns out to be wrong the difference is owed at filing time.
+8.875% is the combined New York City rate on prepared food: 4% state + 4.5%
+city + 0.375% MCTD. It was 8.5% for a while, set deliberately on request, and
+was corrected in `dba387e`.
 
 ### Launch screen
 
@@ -166,27 +168,46 @@ so the phone talks to Vite and Vite talks to 3001.
 
 Open **11AM**, closing 10PM Sunday to Thursday and 11PM Friday and Saturday.
 All of it comes from `src/lib/hours.js` — `OPEN_HOUR`, `closeHourFor`,
-`HOURS_LINE`, `READY_WINDOW` — and every screen reads those constants rather
-than repeating a time. The printed trifold still says 9AM-10PM daily and is now
-the stale one.
+`HOURS_LINE` — and every screen reads those constants rather than repeating a
+time. The printed trifold still says 9AM-10PM daily and is now the stale one.
 
-An ASAP order is quoted as a **window**, `15–25 min`, not a single number.
-`PREP_MINUTES` (15) stays the earliest it could be ready because that decides
-the first bookable slot; `PREP_MAX_MINUTES` (25) is only ever for display.
-Promising the optimistic end is how customers arrive to a wait.
+**There is no ASAP, and no single prep constant.** Fish, seafood and lamb are
+cooked to order and cannot be promised in fifteen minutes, so how long an order
+needs depends on what is in it. `src/lib/prep.js` owns that:
 
-### Customer messaging
+- every item carries `prepMinutes`, baked into `menu.data.js` from the
+  `PREP_MINUTES` map in `scripts/generate-menu.mjs`, keyed by **Clover item id**
+  so it survives a regeneration. Default 15; 30 for cooked-to-order
+- a cart takes the **maximum** of its lines, never the sum — the kitchen cooks in
+  parallel, and six plates are ready when the slowest one is
+- sides and drinks are marked `noPrep` and excluded from that maximum, so a Coke
+  can never be the thing that decides when an order is ready
+- an item id we do not recognise resolves to **30**, never 15. It is either new
+  in Clover or something has gone wrong, and in both cases fifteen minutes is a
+  promise we cannot keep
 
-After an order is created the proxy finds or creates the Clover customer,
-attaches them to the order, and sends a confirmation through Clover's own
-messaging. `POST /api/clover/orders/:id/ready` is the staff action: it flips the
-order to fulfilled — which is what the customer's tracking screen polls for —
-and sends the ready message.
+The window is `[now + prep, +10 min]`, both edges rounded to the nearest five
+minutes, rendered as `2:10–2:20 PM`.
 
-**Every messaging step is best effort and individually caught.** Clover's order
-messaging is not on every plan; a probe against this merchant returned 405. An
-order must never be lost because a text could not be sent, so a failure is
-logged, reported as `messaged: false`, and otherwise ignored.
+**It is computed on the server and only displayed by the client.** `POST
+/api/clover/quote` takes a cart and returns the window, the prep time, the
+bookable slots and whether it can be cooked before close; the cart and checkout
+render what comes back, and show "checking with the kitchen" rather than a
+number when they have not been told one yet. `hours.js` and `prep.js` throw
+rather than defaulting when a caller forgets to pass a prep time — a default
+would quietly reintroduce the bug it exists to remove.
+
+The same window label goes on the kitchen ticket and into the confirmation
+message, so the screen, the ticket and the text cannot disagree.
+
+### The hours guard is about the READY time
+
+Being open is not enough. At 9:50PM the door is unlocked, but a 30-minute plate
+would come out of the fryer twenty minutes after close and the kitchen would be
+gone. So `POST /orders` refuses when the *end of the window* falls after closing
+— with a reason naming the prep time and the closing time — on top of the plain
+closed check. Server-side, not just in the UI, for the same reason as everything
+else here: a stale tab and a replayed request must both hit it.
 
 ### Pay at pickup
 
@@ -200,12 +221,93 @@ kitchen ticket and the customer's screen show the same `FL-1234`. Deriving it
 from the Clover id afterwards, which is what it used to do, meant the printed
 ticket could not carry it.
 
-The ticket also carries the customer's name and phone, the pickup time, any
-redeemed reward, and per-item special instructions.
+### The ticket must name a customer
 
-Card entry is gone: no `CardForm`, no tokenization, no SDK. The server's `/pay`
-endpoint still exists and is still guarded, but nothing calls it — it is there
-for if card payments come back.
+The note is exactly this, in this order:
+
+```
+PICKUP ORDER — PAY AT REGISTER
+Order FL-3412
+Kay K · (347) 555-1234
+Pickup: 2:10–2:20 PM
+Reward: Free drink          <- only when one was redeemed
+```
+
+A live order printed with only the first, second and fourth lines: staff had a
+bag of food and nobody to give it to. Two things caused it, and both are fixed:
+
+- `App.jsx` sent `customer: account ? {...} : null` — the saved *account*, not
+  the name and phone typed into the checkout. Every guest order, and every
+  signed-in customer who corrected their number, sent no customer at all
+- `kitchenNote` was written `if (customer?.name)`, so it dropped the line in
+  silence rather than complaining
+
+So the name and phone now come from the checkout fields, `kitchenNote` throws
+without them, and **the proxy returns 400 before anything reaches Clover**. An
+order nobody can be handed is worse than an order that was never taken. The
+customer lines also sit above the optional ones, so a note trimmed to Clover's
+255-character cap keeps what staff actually need.
+
+The proxy still finds-or-creates the Clover customer by phone and attaches them
+to the order, so the register shows them too — but that is best effort and
+individually caught, because the ticket already carries the name and number.
+
+### Customer messaging
+
+After an order is created the proxy sends a confirmation through Clover's own
+messaging, quoting the window this order was actually given.
+`POST /api/clover/orders/:id/ready` is the staff action: it flips the order to
+fulfilled — which is what the customer's tracking screen polls for — and sends
+the ready message.
+
+**Every messaging step is best effort and individually caught.** Clover's order
+messaging is not on every plan; a probe against this merchant returned 405. An
+order must never be lost because a text could not be sent, so a failure is
+logged, reported as `messaged: false`, and otherwise ignored.
+
+Phone numbers print on tickets, so `maskPhone` in `server/app.js` reduces them to
+`(***) ***-**13` before anything is logged.
+
+### Printing the ticket
+
+`server/clover.js` owns this. On first need it reads the merchant's printers and
+caches the list for ten minutes, then chooses one:
+
+`CLOVER_PRINTER_UUID` → type `order` → `kitchen` → `fiscal` → `receipt` →
+`MY_LOCAL` → **the first printer in the list, whatever its type**.
+
+That last fallback is the actual fix. This merchant has exactly one printer —
+the Station's built-in roll, type `MY_LOCAL` — and it was not on the old
+selection list, so nothing was ever chosen and the server's print never fired.
+Worse, the `print_event` named no printer at all, and Clover routes those
+nowhere. **Selection never returns null while the list is non-empty**: a ticket
+on the wrong roll is a nuisance, a ticket on no roll is an order the kitchen
+never sees.
+
+`printOrderTicket` retries once after two seconds, and on a **404** re-reads the
+list and tries the new choice instead — a 404 means the printer is gone, not
+busy, so waiting achieves nothing. It never throws; it returns
+`{ printed, printer, printError }`.
+
+Printing is still best effort and must never fail an order. But the result is
+reported honestly now, and the confirmation screen is driven off the real flag —
+it used to tell customers "the kitchen printer didn't answer" on orders that had
+printed perfectly well.
+
+Visibility, because a silent printer is how an order reaches Clover and never
+reaches the kitchen: the startup banner names the chosen printer (and shouts
+when there are none), `/health` carries `printerConfigured`, `printerName` and
+`printerType`, `GET /api/clover/printers` shows the list and the choice, and
+`POST /api/clover/print-test` reprints the most recent app order. `print-test`
+fires a real print, so it sits behind `APP_KEY` like everything else.
+
+### Grouping line items
+
+Orders are created with `groupLineItems: true`. Ten of the same plate was
+printing as ten identical blocks instead of "10 Oxtail", which runs a ticket off
+the end of the roll and makes a cook miscount. Clover collapses only lines whose
+item, modifications and note all match, so two oxtails with different sides — or
+one with a special instruction — stay separate, which is what the kitchen needs.
 
 ### The proxy on the internet
 
@@ -263,7 +365,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 300 tests
+npm test            # 398 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
@@ -272,12 +374,17 @@ mode — ordering is not connected yet"* rather than throwing.
 
 ## Known blockers
 
-**The credentials in `.env.local` return 401.** Every endpoint, both hosts, both
-tokens, and unauthenticated all return `401 Unauthorized`, so the sandbox is
-reachable but the tokens are rejected at auth. Everything downstream of a live
-call is therefore built and unit-tested but **not verified against real Clover**.
-Regenerate the tokens in the Clover sandbox dashboard (Business Operations → API
-tokens, needs 2FA enabled) and re-run `npm run server`.
+**The credentials now work, and they point at PRODUCTION.** `.env.local` has
+`CLOVER_API_BASE=https://api.clover.com` with `CLOVER_ALLOW_PRODUCTION=yes`, and
+the server authenticates: a boot against it reads the merchant's real printer
+list and finds `ZVZ9PRJ255V90`, type `MY_LOCAL`. The old note here said every
+endpoint returned 401; that is out of date.
+
+Be aware of what that means. There is no SANDBOX badge, and an order placed
+through this app lands on the real register as a real open ticket. Nothing is
+charged — the app takes no money — but a test order is a real order somebody has
+to void. `POST /api/clover/print-test` prints a real ticket on the shop's
+printer, so do not fire it casually.
 
 `VITE_CLOVER_MERCHANT_ID` also has a trailing `/` in `.env.local`. The server
 strips it, but it's worth fixing at the source.
@@ -301,6 +408,14 @@ or lose a customer, rather than on markup:
 - tax **not** being sent to Clover
 - WCAG contrast, recomputed from `styles.css` rather than asserted by eye
 - the private token never reaching the bundle
+- printer selection, including a `MY_LOCAL`-only merchant and an unknown type
+- the ticket carrying name, phone and window — and the order being refused
+  without them
+- prep being the maximum of a cart and not the sum, and an unknown item
+  falling back to 30 minutes
+- no shipped file emitting the string "ASAP", checked by scanning the source
+- `PREP_MINUTES` in the generator and `prepMinutes` in the generated data
+  still agreeing, so a regeneration cannot silently drop them
 
 Run `npm test` before committing. The suite is deterministic — if it's flaky,
 that's a bug worth fixing, not retrying.

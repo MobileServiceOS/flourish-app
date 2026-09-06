@@ -14,6 +14,12 @@
       instead of dropping unresolved modifiers: refusing the order is the only
       safe failure. */
 
+import { formatPhone } from "./phone.js";
+
+/* Newline as a named constant so the note's shape survives a careless edit to
+   this file's escaping. */
+const NL = String.fromCharCode(10);
+
 /** Dollars (float) -> Clover cents (int). Half-up, matching lib/money.js. */
 export const toCents = (dollars) => Math.round((Number(dollars) + 1e-9) * 100);
 
@@ -74,24 +80,51 @@ export function resolveModifiers(modifiers = [], catalog = {}) {
  *     pre-calculated figure would double-tax the order.
  *   - tip. That rides on the payment, not the order.
  */
-/* The ticket the kitchen tears off. Pay-at-pickup means the register has to be
-   told, in words, that money is still owed — an order with no payment attached
-   is "open" in Clover, but nobody reads state codes off a printed ticket. */
-export function kitchenNote({ orderNumber, customer, pickupLabel, reward, note }) {
-  const lines = ["PICKUP ORDER — PAY AT REGISTER"];
-  if (orderNumber) lines.push(`Order ${orderNumber}`);
-  if (customer?.name) {
-    lines.push(customer.phone ? `${customer.name} · ${customer.phone}` : customer.name);
+/* Clover truncates a long order note, and a truncated note loses whatever is at
+   the bottom. So the customer's name and phone sit near the TOP, above anything
+   optional, and the builder measures itself against this cap rather than hoping.
+   255 is Clover's documented order-note length. */
+export const NOTE_MAX = 255;
+
+export class MissingCustomerError extends Error {
+  constructor(missing) {
+    super(`A kitchen ticket needs ${missing.join(" and ")}`);
+    this.name = "MissingCustomerError";
+    this.missing = missing;
   }
-  lines.push(`Pickup: ${pickupLabel}`);
-  if (reward && Math.abs(Number(reward.amount) || 0) > 0) {
-    lines.push(`REWARD APPLIED: ${reward.name}${reward.code ? ` (${reward.code})` : ""} −${money(reward.amount)}`);
-  }
-  if (note) lines.push(`Note: ${note}`);
-  return lines.join("\n");
 }
 
-const money = (n) => `$${(Math.round((Number(n) + 1e-9) * 100) / 100).toFixed(2)}`;
+/* The ticket the kitchen tears off. Pay-at-pickup means the register has to be
+   told, in words, that money is still owed — an order with no payment attached
+   is "open" in Clover, but nobody reads state codes off a printed ticket.
+
+   The customer line is NOT optional. A ticket reading only "PICKUP ORDER /
+   Order FL-3412 / Pickup: ..." is useless at the counter: staff have a bag of
+   food and no idea whose it is. This was written `if (customer?.name)`, which
+   silently dropped the line whenever the caller had no customer to give — which
+   was every order, because App.jsx passed the saved *account* rather than the
+   name and phone typed into the checkout. It throws now, and the proxy turns
+   that into a 400 before anything reaches Clover. */
+export function kitchenNote({ orderNumber, customer, pickupLabel, reward, note }) {
+  const name = String(customer?.name ?? "").trim();
+  const phone = String(customer?.phone ?? "").trim();
+  const missing = [];
+  if (!name) missing.push("a name");
+  if (!phone) missing.push("a phone number");
+  if (missing.length) throw new MissingCustomerError(missing);
+
+  const lines = ["PICKUP ORDER — PAY AT REGISTER"];
+  if (orderNumber) lines.push(`Order ${orderNumber}`);
+  lines.push(`${name} · ${formatPhone(phone) || phone}`);
+  lines.push(`Pickup: ${pickupLabel}`);
+  if (reward?.name) lines.push(`Reward: ${reward.name}`);
+  if (note) lines.push(`Note: ${note}`);
+
+  /* Trim from the bottom if it will not fit. The optional lines go first, so
+     what survives a truncation is always what staff need to hand the bag over. */
+  while (lines.length > 4 && lines.join(NL).length > NOTE_MAX) lines.pop();
+  return lines.join(NL).slice(0, NOTE_MAX);
+}
 
 export function buildAtomicOrder({
   cart,
@@ -99,7 +132,7 @@ export function buildAtomicOrder({
   customerId = null,
   customer = null,
   orderNumber = null,
-  pickupLabel = "ASAP",
+  pickupLabel,
   note = "",
   catalog = {},
 } = {}) {
@@ -113,9 +146,11 @@ export function buildAtomicOrder({
       throw new Error(`Cart line "${line.name}" has no Clover item id`);
     }
     const modifications = resolveModifiers(line.modifiers, catalog);
-    // Clover has no line-level quantity on atomic orders for modified items;
-    // n of the same plate is n line items, which is also how the kitchen
-    // ticket needs to read.
+    /* Clover has no line-level quantity on atomic orders for modified items, so
+       n of the same plate is still n line items on the wire. `groupLineItems`
+       below is what makes them PRINT as "10 Oxtail" instead of ten identical
+       blocks — Clover collapses lines only when their item, modifications and
+       note all match, so two oxtails with different sides stay apart. */
     for (let i = 0; i < (line.qty || 1); i++) {
       lineItems.push({
         item: { id: line.itemId },
@@ -127,6 +162,11 @@ export function buildAtomicOrder({
 
   const orderCart = {
     lineItems,
+    /* Ten of the same plate printed as ten separate blocks, which is how a
+       ticket runs off the end of the roll and how a cook miscounts. Identical
+       lines collapse to "10 Oxtail"; anything that differs — a different side,
+       a special instruction — is a different line and stays its own. */
+    groupLineItems: true,
     // The title is what shows in the Clover order list; the note is what prints.
     title: orderNumber ? `${orderNumber} · PAY AT REGISTER` : `Flourish app · pickup ${pickupLabel}`,
     note: kitchenNote({ orderNumber, customer, pickupLabel, reward, note }),

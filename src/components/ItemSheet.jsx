@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Plus, Minus, X, Sparkles } from "lucide-react";
 import { UE, CAT_OF, PLATE_IDS } from "../data/menu.data.js";
 import { cents, money } from "../lib/money.js";
+import { isCookedToOrder, prepMinutesForItem } from "../lib/prep.js";
 import { Group, Option, useSheet } from "./shared.jsx";
 
 /* ---------- ITEM CUSTOMIZE SHEET ---------- */
@@ -62,6 +63,13 @@ export default function ItemSheet({ item, onClose, onAdd }) {
             <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 2 }}>
               {sideG ? "Comes with two sides" : CAT_OF[item.id]}
             </div>
+            {/* Said before it goes in the cart, not discovered at checkout. Fish
+                and seafood meet the fryer when the ticket lands. */}
+            {isCookedToOrder(item.id) && (
+              <div className="note-chip" style={{ marginTop: 6, display: "inline-block" }}>
+                Cooked to order · about {prepMinutesForItem(item.id)} min
+              </div>
+            )}
           </div>
           <button className="x-btn" onClick={onClose} aria-label={`Close ${item.name} options`}>
             <X size={18} aria-hidden="true" />

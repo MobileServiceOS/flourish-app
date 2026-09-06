@@ -1,13 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { createApp } from "../../server/app.js";
-import { CloverError, __scrub } from "../../server/clover.js";
+import {
+  CloverError, __scrub, printOrderTicket, __resetPrinters,
+} from "../../server/clover.js";
 import { __resetRateLimit } from "../../server/guard.js";
 
 const CATALOG = {
   "45KGD3ZDMT2ZY": { "Medium": { id: "MOD-OX-MED", price: 20 }, "Large": { id: "MOD-OX-LRG", price: 25 } },
   "YQWN3PKBKV9NG": { "White Rice": { id: "MOD-RICE", price: 0 }, "Seafood Mac": { id: "MOD-SFM", price: 3.5 } },
 };
+
+/* A ticket with no name and number is useless at the counter, so the proxy
+   refuses an order without both. Every order posted below carries them. */
+const CUSTOMER = { name: "Nevaeh Reid", phone: "3478599413" };
 
 const CART = [{
   name: "Oxtail", itemId: "60KCQ1V22Q98M", qty: 1, price: 20, note: "no pepper",
@@ -28,11 +34,16 @@ function fakeClover(over = {}) {
     setStock: vi.fn().mockResolvedValue({ id: "A", stockCount: 0 }),
     createOrder: vi.fn().mockResolvedValue({ id: "ORD-1", total: 2000 }),
     getOrder: vi.fn().mockResolvedValue({ id: "ORD-1", state: "open", total: 2000, printed: true }),
-    printOrder: vi.fn().mockResolvedValue({ id: "PRINT-1" }),
+    printers: vi.fn().mockResolvedValue({ elements: [
+      { uuid: "ZVZ9PRJ255V90", name: "Station Printer", type: "MY_LOCAL" },
+    ]}),
+    printEvent: vi.fn().mockResolvedValue({ id: "PRINT-1" }),
     charge: vi.fn().mockResolvedValue({ id: "CHG-1", status: "succeeded", amount: 2178 }),
     merchant: vi.fn().mockResolvedValue({ id: "M1", name: "Flourish bx inc" }),
     findCustomerByPhone: vi.fn().mockResolvedValue({ elements: [] }),
     createCustomer: vi.fn().mockResolvedValue({ id: "CUST-1" }),
+    attachCustomer: vi.fn().mockResolvedValue({ id: "ORD-1" }),
+    sendOrderMessage: vi.fn().mockResolvedValue({ id: "MSG-1" }),
     ...over,
   };
 }
@@ -40,8 +51,17 @@ function fakeClover(over = {}) {
    pin the clock — otherwise they pass or fail depending on the time of day they
    are run, which is exactly the flakiness a test suite must not have. */
 const OPEN = new Date(2026, 6, 27, 12, 0);
-const app = (clover = fakeClover()) => ({
-  agent: request(createApp({ clover, catalog: async () => CATALOG, now: () => OPEN })),
+/* The real print path retries once after a two-second pause, which a test suite
+   must not sit through — so printing is injected with an instant sleep. The
+   orchestrator itself, retries and all, is tested in printer.test.js. */
+const app = (clover = fakeClover(), over = {}) => ({
+  agent: request(createApp({
+    clover,
+    catalog: async () => CATALOG,
+    now: () => OPEN,
+    printTicket: (orderId) => printOrderTicket(orderId, { client: clover, sleep: async () => {} }),
+    ...over,
+  })),
   clover,
 });
 
@@ -50,6 +70,8 @@ beforeEach(() => {
   // guard.js keeps its counters in a module-level map, so requests from earlier
   // tests would otherwise spend this test's budget.
   __resetRateLimit();
+  // The printer list is cached for ten minutes; each test gets a clean one.
+  __resetPrinters();
 });
 
 describe("health", () => {
@@ -84,7 +106,7 @@ describe("order push", () => {
   it("creates a Clover atomic order from the cart and returns its id", async () => {
     const { agent, clover } = app();
     const r = await agent.post("/api/clover/orders")
-      .send({ cart: CART, pickupLabel: "ASAP" }).expect(200);
+      .send({ cart: CART, customer: CUSTOMER }).expect(200);
 
     expect(r.body.orderId).toBe("ORD-1");
     const body = clover.createOrder.mock.calls[0][0];
@@ -98,7 +120,7 @@ describe("order push", () => {
     const tampered = [{ ...CART[0], price: 0.01,
       modifiers: [{ gid: "45KGD3ZDMT2ZY", name: "Large", price: 0.01 }] }];
     const { agent, clover } = app();
-    await agent.post("/api/clover/orders").send({ cart: tampered }).expect(200);
+    await agent.post("/api/clover/orders").send({ cart: tampered, customer: CUSTOMER }).expect(200);
 
     const mod = clover.createOrder.mock.calls[0][0].orderCart.lineItems[0].modifications[0];
     expect(mod.modifier.id).toBe("MOD-OX-LRG");
@@ -107,14 +129,14 @@ describe("order push", () => {
 
   it("sends no pre-calculated tax to Clover", async () => {
     const { agent, clover } = app();
-    await agent.post("/api/clover/orders").send({ cart: CART }).expect(200);
+    await agent.post("/api/clover/orders").send({ cart: CART, customer: CUSTOMER }).expect(200);
     expect(JSON.stringify(clover.createOrder.mock.calls[0][0])).not.toMatch(/tax/i);
   });
 
   it("applies a redeemed reward as a negative order discount", async () => {
     const { agent, clover } = app();
     await agent.post("/api/clover/orders")
-      .send({ cart: CART, reward: { name: "Free side", code: "FL1234", amount: 6 } }).expect(200);
+      .send({ cart: CART, customer: CUSTOMER, reward: { name: "Free side", code: "FL1234", amount: 6 } }).expect(200);
     expect(clover.createOrder.mock.calls[0][0].orderCart.discounts)
       .toEqual([{ name: "Free side (FL1234)", amount: -600 }]);
   });
@@ -123,7 +145,7 @@ describe("order push", () => {
     const stale = [{ ...CART[0],
       modifiers: [{ gid: "45KGD3ZDMT2ZY", name: "Enormous", price: 99 }] }];
     const { agent, clover } = app();
-    const r = await agent.post("/api/clover/orders").send({ cart: stale }).expect(409);
+    const r = await agent.post("/api/clover/orders").send({ cart: stale, customer: CUSTOMER }).expect(409);
 
     expect(r.body.code).toBe("MODIFIER_UNRESOLVED");
     expect(clover.createOrder).not.toHaveBeenCalled();
@@ -138,18 +160,20 @@ describe("order push", () => {
 describe("print event", () => {
   it("fires after the order is created", async () => {
     const { agent, clover } = app();
-    const r = await agent.post("/api/clover/orders").send({ cart: CART }).expect(200);
-    expect(clover.printOrder).toHaveBeenCalledWith("ORD-1");
+    const r = await agent.post("/api/clover/orders").send({ cart: CART, customer: CUSTOMER }).expect(200);
+    // The print event names a printer. Without one Clover routes it nowhere,
+    // which is exactly how the kitchen stopped getting tickets.
+    expect(clover.printEvent).toHaveBeenCalledWith("ORD-1", "ZVZ9PRJ255V90");
     expect(r.body.printed).toBe(true);
   });
 
   it("still confirms the order when the printer is down", async () => {
     // The order exists in Clover regardless; staff can read it off the register.
     const clover = fakeClover({
-      printOrder: vi.fn().mockRejectedValue(new CloverError(500, "Printer offline", {})),
+      printEvent: vi.fn().mockRejectedValue(new CloverError(500, "Printer offline", {})),
     });
     const { agent } = app(clover);
-    const r = await agent.post("/api/clover/orders").send({ cart: CART }).expect(200);
+    const r = await agent.post("/api/clover/orders").send({ cart: CART, customer: CUSTOMER }).expect(200);
 
     expect(r.body.orderId).toBe("ORD-1");
     expect(r.body.printed).toBe(false);
@@ -257,7 +281,7 @@ describe("errors never leak the token", () => {
       createOrder: vi.fn().mockRejectedValue(new CloverError(503, "The restaurant's system is having trouble. Try again shortly.", {})),
     });
     const { agent } = app(clover);
-    const r = await agent.post("/api/clover/orders").send({ cart: CART }).expect(503);
+    const r = await agent.post("/api/clover/orders").send({ cart: CART, customer: CUSTOMER }).expect(503);
     expect(r.body.error).toMatch(/try again/i);
   });
 });

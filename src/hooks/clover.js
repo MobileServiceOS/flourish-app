@@ -1,8 +1,8 @@
 /* React glue for the Clover proxy. Each hook is defensive by default: if the
    proxy isn't running the app keeps working as a menu, it just can't take an
    order. Nothing here holds a secret. */
-import { useState, useEffect, useRef, useCallback } from "react";
-import { health, getInventory, getOrder } from "../lib/clover.js";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { health, getInventory, getOrder, quoteOrder } from "../lib/clover.js";
 import { trackingStage } from "../lib/cloverOrder.js";
 
 /**
@@ -116,4 +116,53 @@ export function useOrderStatus(cloverOrderId, { intervalMs = 15_000, maxMs = 30 
   }, [cloverOrderId, intervalMs, maxMs, enabled]);
 
   return { stage, error };
+}
+
+/**
+ * When the kitchen could have this cart ready.
+ *
+ * The window is the SERVER's answer, always. Prep time depends on what was
+ * ordered — fish and seafood are cooked to order and cannot be promised in
+ * fifteen minutes — and the server is the only side that also knows when the
+ * door shuts. Nothing here recomputes it; a null quote means "we do not know
+ * yet", and the screens say so rather than inventing a number.
+ *
+ * Re-asked when the cart changes and on a minute tick, because a customer can
+ * sit on the cart screen long enough for the window to move — or for the
+ * kitchen to run out of time to cook what is in it.
+ */
+export function useReadyQuote(cart, { enabled = true, intervalMs = 60_000 } = {}) {
+  const [quote, setQuote] = useState(null);
+  const [error, setError] = useState(null);
+
+  // The cart's identity changes on every render; its *contents* are what move
+  // the window, so key the effect on those.
+  const key = useMemo(
+    () => cart.map((l) => `${l.itemId}x${l.qty}`).join("|"),
+    [cart]
+  );
+
+  useEffect(() => {
+    if (!enabled || !cart.length) { setQuote(null); setError(null); return; }
+    let alive = true;
+    const ctrl = new AbortController();
+
+    const ask = async () => {
+      try {
+        const q = await quoteOrder(cart, ctrl.signal);
+        if (alive) { setQuote(q); setError(null); }
+      } catch (e) {
+        // Keep the last good window rather than blanking it — a dropped poll
+        // is not news the customer needs.
+        if (alive) setError(e.message);
+      }
+    };
+
+    ask();
+    const t = setInterval(ask, intervalMs);
+    return () => { alive = false; ctrl.abort(); clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, enabled, intervalMs]);
+
+  return { quote, error };
 }

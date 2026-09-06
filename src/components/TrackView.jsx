@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Clock, MapPin, Phone, ChevronLeft, Check, Navigation, Store } from "lucide-react";
 import { money } from "../lib/money.js";
-import { formatTime, PREP_MAX_MINUTES, PREP_MINUTES, READY_WINDOW } from "../lib/hours.js";
+import { formatTime } from "../lib/hours.js";
 import { PHONE_E164, PHONE_HUMAN, MAPS_URL } from "../lib/restaurant.js";
 import { useOrderStatus } from "../hooks/clover.js";
 import { Hummingbird } from "./shared.jsx";
@@ -38,11 +38,12 @@ export default function TrackView({ order, setView, live = false }) {
   const stage = simulated ? simStage : tracked.stage;
 
   const readyAt = order.readyAt ? new Date(order.readyAt) : null;
-  /* readyAt is the earliest; quote the window rather than a single minute, so
-     nobody turns up at 12:15 for something promised "about 15 to 25". */
-  const readyWindowLabel = readyAt && order.pickup === "ASAP"
-    ? `${formatTime(readyAt)} – ${formatTime(new Date(readyAt.getTime() + (PREP_MAX_MINUTES - PREP_MINUTES) * 60_000))}`
-    : readyAt ? formatTime(readyAt) : READY_WINDOW;
+  /* The window is whatever the server quoted when the order was placed, kept on
+     the order itself. Nothing is recomputed here: the label on this screen, the
+     line on the kitchen ticket and the confirmation message are all the same
+     string, and they stay that way by not being worked out three times. */
+  const readyWindowLabel = order.readyWindow?.label
+    ?? (readyAt ? formatTime(readyAt) : order.pickup);
   const itemCount = order.lines.reduce((n, l) => n + l.qty, 0);
 
   return (
@@ -74,10 +75,10 @@ export default function TrackView({ order, setView, live = false }) {
             <div>
               <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600 }}>Estimated ready time</div>
               <div className="serif" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>
-                {readyAt ? readyWindowLabel : READY_WINDOW}
+                {readyWindowLabel}
               </div>
               <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>
-                {order.pickup === "ASAP" ? `About ${READY_WINDOW} from when you ordered` : `Scheduled pickup · ${order.pickup}`}
+                {order.scheduled ? `Scheduled pickup · ${order.pickup}` : "We'll have it ready in this window"}
               </div>
             </div>
           </div>
@@ -103,10 +104,21 @@ export default function TrackView({ order, setView, live = false }) {
           {stage < 2 && (
             <NotifyPrompt orderNum={order.num} readyAt={readyAt} itemCount={itemCount} />
           )}
+          {/* Driven off what the server actually reported. This used to say the
+              printer had not answered on orders that printed perfectly well —
+              the proxy sent a print_event naming no printer, Clover routed it
+              nowhere, and the app reported the failure of a request the kitchen
+              never needed. `printed` is now the truth, so only say this when it
+              is false. */}
           {order.printed === false && (
             <div className="field-hint" style={{ marginTop: 6 }}>
               The kitchen printer didn't answer, so staff are working from the register screen.
               Your order is in.
+            </div>
+          )}
+          {order.printed === true && (
+            <div className="field-hint" style={{ marginTop: 6 }}>
+              Your ticket printed in the kitchen.
             </div>
           )}
           {tracked.error && !simulated && (

@@ -11,16 +11,20 @@ const CART = [{
 }];
 const CUSTOMER = { name: "Nevaeh Reid", phone: "3478599413" };
 
+/* There is no ASAP any more. A pickup label is always a real window, worked out
+   by the server from what is in the cart. */
+const WINDOW = "2:10–2:20 PM";
+
 describe("the kitchen ticket says money is still owed", () => {
   it("leads with PAY AT REGISTER", () => {
-    const note = kitchenNote({ orderNumber: "FL-4821", customer: CUSTOMER, pickupLabel: "ASAP" });
+    const note = kitchenNote({ orderNumber: "FL-4821", customer: CUSTOMER, pickupLabel: WINDOW });
     expect(note.split("\n")[0]).toBe("PICKUP ORDER — PAY AT REGISTER");
   });
 
   it("carries the same order number the customer sees", () => {
     const body = buildAtomicOrder({
       cart: CART, catalog: CATALOG, orderNumber: "FL-4821",
-      customer: CUSTOMER, pickupLabel: "ASAP",
+      customer: CUSTOMER, pickupLabel: WINDOW,
     });
     expect(body.orderCart.note).toContain("FL-4821");
     expect(body.orderCart.title).toContain("FL-4821");
@@ -30,17 +34,20 @@ describe("the kitchen ticket says money is still owed", () => {
   it("names the customer and their number, so staff can call it out", () => {
     const note = kitchenNote({ customer: CUSTOMER, pickupLabel: "7:30 PM" });
     expect(note).toContain("Nevaeh Reid");
-    expect(note).toContain("3478599413");
+    // Formatted the way a human reads a number off a printed ticket.
+    expect(note).toContain("(347) 859-9413");
     expect(note).toContain("Pickup: 7:30 PM");
   });
 
   it("shows a redeemed reward, so the register knows to take it off", () => {
+    /* The name is what staff need to see; the amount is on the order as a real
+       Clover discount, which is what actually moves the money. Restating the
+       figure on the ticket only creates something to disagree with. */
     const note = kitchenNote({
-      customer: CUSTOMER, pickupLabel: "ASAP",
+      orderNumber: "FL-4821", customer: CUSTOMER, pickupLabel: WINDOW,
       reward: { name: "Free side", code: "FL1234", amount: 6 },
     });
-    expect(note).toContain("REWARD APPLIED: Free side (FL1234)");
-    expect(note).toContain("$6.00");
+    expect(note).toContain("Reward: Free side");
   });
 
   it("attaches no payment at all — that is what leaves it owing", () => {
@@ -74,7 +81,7 @@ describe("the order endpoint", () => {
   it("reports success and that nothing was paid", async () => {
     const { agent } = proxy();
     const r = await agent.post("/api/clover/orders")
-      .send({ cart: CART, customer: CUSTOMER, orderNumber: "FL-4821", pickupLabel: "ASAP" })
+      .send({ cart: CART, customer: CUSTOMER, orderNumber: "FL-4821", pickupLabel: WINDOW })
       .expect(200);
 
     expect(r.body.success).toBe(true);
@@ -85,15 +92,48 @@ describe("the order endpoint", () => {
 
   it("puts the customer and the number on the ticket it sends Clover", async () => {
     const { agent, clover } = proxy();
-    await agent.post("/api/clover/orders")
-      .send({ cart: CART, customer: CUSTOMER, orderNumber: "FL-4821", pickupLabel: "7:30 PM" })
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER, orderNumber: "FL-4821" })
       .expect(200);
 
     const note = clover.createOrder.mock.calls[0][0].orderCart.note;
     expect(note).toContain("PAY AT REGISTER");
     expect(note).toContain("FL-4821");
     expect(note).toContain("Nevaeh Reid");
-    expect(note).toContain("7:30 PM");
+    expect(note).toContain("(347) 859-9413");
+    /* The window on the ticket is the same string the customer was shown — the
+       server hands back exactly what it printed. */
+    expect(note).toContain(`Pickup: ${r.body.readyWindow.label}`);
+  });
+
+  it("refuses an order with no customer, so an anonymous ticket is impossible", async () => {
+    const { agent, clover } = proxy();
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: CART, orderNumber: "FL-4821" })
+      .expect(400);
+
+    expect(r.body.code).toBe("CUSTOMER_REQUIRED");
+    expect(r.body.missing).toEqual(["name", "phone"]);
+    // Nothing reached Clover — an order nobody can be handed is worse than none.
+    expect(clover.createOrder).not.toHaveBeenCalled();
+  });
+
+  it("refuses a name with no phone, and a phone with no name", async () => {
+    const { agent } = proxy();
+    const noPhone = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: { name: "Nevaeh Reid" } }).expect(400);
+    expect(noPhone.body.missing).toEqual(["phone"]);
+
+    const noName = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: { phone: "3478599413" } }).expect(400);
+    expect(noName.body.missing).toEqual(["name"]);
+  });
+
+  it("refuses a phone that is not ten digits", async () => {
+    const { agent } = proxy();
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: { name: "Nevaeh Reid", phone: "347859" } }).expect(400);
+    expect(r.body.missing).toEqual(["phone"]);
   });
 
   it("still succeeds when the printer refuses — the order is on the register", async () => {

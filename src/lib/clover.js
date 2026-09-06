@@ -80,9 +80,15 @@ export async function health() {
       configured: Boolean(h.configured),
       sandbox: Boolean(h.sandbox),
       reason: h.reason ?? null,
+      printerConfigured: Boolean(h.printerConfigured),
+      printerName: h.printerName ?? null,
+      printerType: h.printerType ?? null,
     };
   } catch {
-    return { online: false, configured: false, sandbox: false, reason: "PROXY_DOWN" };
+    return {
+      online: false, configured: false, sandbox: false, reason: "PROXY_DOWN",
+      printerConfigured: false, printerName: null, printerType: null,
+    };
   }
 }
 
@@ -92,6 +98,18 @@ export const setStock = (itemId, stockCount) =>
   call(`/inventory/${encodeURIComponent(itemId)}/stock`, { method: "POST", body: { stockCount } });
 
 export const createOrder = (payload) => call("/orders", { method: "POST", body: payload });
+
+/* When the food will be ready. Asked of the server rather than worked out here:
+   prep time depends on what is in the cart — fish and seafood are cooked to
+   order — and two independent calculations of the same window is how the screen
+   and the kitchen ticket come to disagree. The client only ever displays this. */
+export const quoteOrder = (cart, signal) =>
+  call("/quote", { method: "POST", body: { cart }, signal });
+
+export const getPrinters = (signal) => call("/printers", { signal });
+
+/** Staff: reprint the most recent app order, to prove the printer works. */
+export const printTest = () => call("/print-test", { method: "POST", body: {} });
 
 export const getOrder = (orderId, signal) =>
   call(`/orders/${encodeURIComponent(orderId)}`, { signal });
