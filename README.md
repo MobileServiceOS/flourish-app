@@ -133,7 +133,7 @@ npm test          # once
 npm run test:watch
 ```
 
-398 tests. They cover the things that cost money if they break: pickup-slot
+454 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the
@@ -277,7 +277,11 @@ You'll need Xcode and an Apple Developer account to put it on the App Store.
   tells you if anything on the old order is sold out today
 - Special instructions per item, carried through to the cart, the confirmation
   and the order history
-- Customer accounts with points that persist across launches
+- Customer accounts with points that persist across launches. **Points are
+  earned at the register**, not when the order is placed: the app takes no money,
+  so the tracking screen polls Clover every 30 seconds and credits the points
+  once the payment is confirmed. Close the app before paying and nothing is
+  awarded — it had not been earned
 - Reward redemption that applies a real discount to the cart
 - Savings badges showing what ordering direct beats Uber Eats by
 - Staff 86 control — tap the lock icon on the menu to mark items sold out

@@ -67,7 +67,7 @@ export default function CartView({ cart, subtotal, saved, account, setQty, remov
               </div>
             )}
             {account && (
-              <div className="rowline"><span style={{ color: "var(--muted)" }}>You'll earn</span>
+              <div className="rowline"><span style={{ color: "var(--muted)" }}>You'll earn when you pay</span>
                 <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>+{Math.round(subtotal)} pts</span></div>
             )}
           </div>

@@ -38,8 +38,22 @@ export async function fillDetails(user, name = "Nevaeh Reid", phone = "347859941
 /* Pay-at-pickup still needs the proxy: with it unreachable the checkout button
    reads "Ordering not available right now" and is disabled, by design. Any test
    that actually places an order has to stand a healthy proxy up first. */
-export function stubOnlineProxy({ vi, order = {}, sandbox = true, quote = {} } = {}) {
-  const calls = { orders: [], quotes: [] };
+/* The register's answer to "has this been paid for?", which is what loyalty
+   points hang on. `payment` is a mutable object so a test can place an order,
+   assert no points, then flip it to paid and let the poll pick it up. */
+export const unpaidOrder = () => ({
+  paid: false, voided: false, refunded: false,
+  paymentState: "OPEN", state: "open",
+  total: 2000, amountPaid: 0,
+  printed: true, manualReady: false, settled: false,
+});
+
+export function stubOnlineProxy({
+  vi, order = {}, sandbox = true, quote = {},
+  payment = unpaidOrder(),
+  loyalty = { configured: false, reason: "NO_PROGRAM", program: null, tiers: [], source: "in-app" },
+} = {}) {
+  const calls = { orders: [], quotes: [], status: [] };
 
   /* The ready window and the bookable slots are the SERVER's answers now, so
      the stub works them out the way server/app.js does — from the same shared
@@ -91,13 +105,31 @@ export function stubOnlineProxy({ vi, order = {}, sandbox = true, quote = {} } =
       };
     },
     "POST /customers": () => ({ customerId: "CUST-TEST", existing: false }),
+    "GET /loyalty": () => loyalty,
+  };
+
+  /* Paths with an id in them cannot be looked up by exact string. */
+  const dynamic = (method, path) => {
+    const status = /^\/orders\/([^/]+)\/status$/.exec(path);
+    if (method === "GET" && status) {
+      return () => { calls.status.push(status[1]); return { id: status[1], ...payment }; };
+    }
+    const get = /^\/orders\/([^/]+)$/.exec(path);
+    if (method === "GET" && get) {
+      return () => ({ id: get[1], state: payment.state, total: payment.total, printed: payment.printed });
+    }
+    return null;
   };
   vi.stubGlobal("fetch", vi.fn(async (url, init = {}) => {
     const path = String(url).replace("/api/clover", "").split("?")[0];
-    const handler = routes[`${init.method || "GET"} ${path}`];
+    const method = init.method || "GET";
+    const handler = routes[`${method} ${path}`] ?? dynamic(method, path);
     if (!handler) throw new TypeError("Failed to fetch");
     const body = handler(init.body ? JSON.parse(init.body) : undefined);
     return { ok: true, status: 200, json: async () => body };
   }));
+  /* Let a test change the register's answer mid-flight — the whole point of
+     polling is that the answer changes while the customer is standing there. */
+  calls.setPayment = (next) => Object.assign(payment, next);
   return calls;
 }

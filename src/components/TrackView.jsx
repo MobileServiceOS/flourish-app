@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { Clock, MapPin, Phone, ChevronLeft, Check, Navigation, Store } from "lucide-react";
+import { Clock, MapPin, Phone, ChevronLeft, Check, Navigation, Store, Award } from "lucide-react";
 import { money } from "../lib/money.js";
 import { formatTime } from "../lib/hours.js";
 import { PHONE_E164, PHONE_HUMAN, MAPS_URL } from "../lib/restaurant.js";
-import { useOrderStatus } from "../hooks/clover.js";
+import { useOrderStatus, useOrderPayment } from "../hooks/clover.js";
 import { Hummingbird } from "./shared.jsx";
 import NotifyPrompt from "./NotifyPrompt.jsx";
 
 /* ---------- ORDER CONFIRMATION + TRACKING ---------- */
 /* Everything a customer needs after paying, without leaving the screen:
    what they ordered, when it's ready, where to go, and how to call. */
-export default function TrackView({ order, setView, live = false }) {
+export default function TrackView({ order, setView, live = false, signedIn = false, onPaid }) {
   const steps = ["Order received", "In the kitchen", "Ready for pickup"];
 
   /* Real status when we're connected to the register. The old simulation is
@@ -36,6 +36,22 @@ export default function TrackView({ order, setView, live = false }) {
   }, [simulated]);
 
   const stage = simulated ? simStage : tracked.stage;
+
+  /* ---------- points are earned at the register, not here ----------
+     The app collects no money, so an order on this screen is unpaid until the
+     customer hands over cash or a card at the counter. Clover is asked every
+     thirty seconds; when it says the order is paid, the points land.
+
+     Polling stops as soon as the answer is final. An order voided at the
+     register settles too — with `paid` false, so nothing is awarded. */
+  const payment = useOrderPayment(order.cloverOrderId, {
+    enabled: live && Boolean(order.cloverOrderId) && !order.pointsAwarded,
+  });
+
+  const earned = order.pointsAwarded || false;
+  useEffect(() => {
+    if (payment.paid && !order.pointsAwarded) onPaid?.(order);
+  }, [payment.paid, order, onPaid]);
 
   const readyAt = order.readyAt ? new Date(order.readyAt) : null;
   /* The window is whatever the server quoted when the order was placed, kept on
@@ -101,6 +117,29 @@ export default function TrackView({ order, setView, live = false }) {
                 ? "We texted you — come grab it at 4035 Laconia Ave 🌺"
                 : "Come grab it at 4035 Laconia Ave 🌺"}
           </div>
+          {/* Only ever shown off the real flag. Points are not "pending" as a
+              figure of speech — they genuinely are not the customer's until the
+              register says so. */}
+          {signedIn && order.earnable > 0 && (
+            earned ? (
+              <div className="points-earned" role="status">
+                <Award size={17} aria-hidden="true" style={{ flex: "0 0 auto" }} />
+                <div>
+                  <strong>Points earned!</strong>
+                  <span style={{ display: "block", fontSize: 12, opacity: .9 }}>
+                    +{order.earnable} points added for this order.
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="field-hint" style={{ marginTop: 8 }}>
+                {payment.voided
+                  ? "This order was cancelled at the register, so no points were added."
+                  : `You'll earn ${order.earnable} points when you pay at the counter.`}
+              </div>
+            )
+          )}
+
           {stage < 2 && (
             <NotifyPrompt orderNum={order.num} readyAt={readyAt} itemCount={itemCount} />
           )}

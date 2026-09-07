@@ -114,6 +114,15 @@ export const printTest = () => call("/print-test", { method: "POST", body: {} })
 export const getOrder = (orderId, signal) =>
   call(`/orders/${encodeURIComponent(orderId)}`, { signal });
 
+/* Has the customer paid at the register yet? The app takes no money, so this
+   is the only thing that can answer it — and loyalty points hang on the answer.
+   `settled` means paid or voided: either way there is nothing left to wait for. */
+export const getOrderStatus = (orderId, signal) =>
+  call(`/orders/${encodeURIComponent(orderId)}/status`, { signal });
+
+/** Whose loyalty rules apply — Clover's programme, or our in-app one. */
+export const getLoyalty = (signal) => call("/loyalty", { signal });
+
 export const pay = (payload) => call("/pay", { method: "POST", body: payload });
 
 export const syncCustomer = (name, phone) =>

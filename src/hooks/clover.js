@@ -2,7 +2,9 @@
    proxy isn't running the app keeps working as a menu, it just can't take an
    order. Nothing here holds a secret. */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { health, getInventory, getOrder, quoteOrder } from "../lib/clover.js";
+import {
+  health, getInventory, getOrder, quoteOrder, getOrderStatus, getLoyalty,
+} from "../lib/clover.js";
 import { trackingStage } from "../lib/cloverOrder.js";
 
 /**
@@ -165,4 +167,91 @@ export function useReadyQuote(cart, { enabled = true, intervalMs = 60_000 } = {}
   }, [key, enabled, intervalMs]);
 
   return { quote, error };
+}
+
+/**
+ * Poll Clover for whether this order has actually been paid for.
+ *
+ * Loyalty points are awarded HERE and nowhere else. When the order is placed
+ * the customer owes for food they have not paid for and might never collect,
+ * so awarding then gives points away for nothing. The register is the only
+ * thing that knows, so the app asks it every thirty seconds.
+ *
+ * Polling stops the moment the answer is final — paid, or voided at the
+ * register — because there is nothing further to learn and a phone left on a
+ * confirmation screen should not sit there asking all afternoon. It also stops
+ * at `maxMs`, for a customer who never came back for their food.
+ *
+ * If the app is closed before the customer pays, no points are awarded. They
+ * had not been earned.
+ */
+export function useOrderPayment(cloverOrderId, {
+  intervalMs = 30_000,
+  maxMs = 2 * 60 * 60_000,
+  enabled = true,
+} = {}) {
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState(null);
+  const startedAt = useRef(Date.now());
+
+  useEffect(() => {
+    if (!enabled || !cloverOrderId) return;
+    let alive = true;
+    const ctrl = new AbortController();
+    startedAt.current = Date.now();
+
+    let timer = null;
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+
+    const tick = async () => {
+      if (!alive) return;
+      if (Date.now() - startedAt.current > maxMs) { stop(); return; }
+      try {
+        const s = await getOrderStatus(cloverOrderId, ctrl.signal);
+        if (!alive) return;
+        setStatus(s);
+        setError(null);
+        // Paid or voided: the answer cannot change in a way we care about.
+        if (s.settled) stop();
+      } catch (e) {
+        if (!alive || e.name === "AbortError") return;
+        // Keep polling through a blip — a dropped request is not an answer.
+        setError(e.message);
+      }
+    };
+
+    tick();
+    timer = setInterval(tick, intervalMs);
+    return () => { alive = false; ctrl.abort(); stop(); };
+  }, [cloverOrderId, intervalMs, maxMs, enabled]);
+
+  return {
+    status,
+    error,
+    paid: Boolean(status?.paid),
+    voided: Boolean(status?.voided),
+    settled: Boolean(status?.settled),
+  };
+}
+
+/**
+ * Which loyalty scheme is in force. Asked once — a merchant does not turn a
+ * loyalty programme on and off mid-session — and null until it answers, which
+ * every caller reads as "our own scheme", the same as no programme at all.
+ */
+export function useLoyaltySource({ enabled = true } = {}) {
+  const [loyalty, setLoyalty] = useState(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    const ctrl = new AbortController();
+    getLoyalty(ctrl.signal)
+      .then((l) => { if (alive) setLoyalty(l); })
+      // A failed lookup is not worth showing anyone: the in-app scheme runs.
+      .catch(() => {});
+    return () => { alive = false; ctrl.abort(); };
+  }, [enabled]);
+
+  return loyalty;
 }

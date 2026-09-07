@@ -18,6 +18,7 @@ import cors from "cors";
 import {
   api, modifierCatalog, CloverError, humanise,
   printOrderTicket, resolvePrinter, describePrinter,
+  paymentStatus, loyaltyConfig,
 } from "./clover.js";
 import { CONFIGURED, IS_SANDBOX, describe } from "./env.js";
 import {
@@ -418,6 +419,53 @@ export function createApp({
       ...print,
       orderId: lastOrder.id,
       orderNumber: lastOrder.orderNumber,
+    });
+  });
+
+  /* ---- has it been paid for? ----
+     The app collects no money, so this is the only way to know. Loyalty points
+     hang on the answer: they are awarded on a confirmed payment and never on
+     an order being placed, because at that moment the customer owes for food
+     they have not paid for and may never collect. */
+  app.get("/api/clover/orders/:orderId/status", requireConfig, async (req, res) => {
+    try {
+      const o = await clover.getOrder(req.params.orderId);
+      const status = paymentStatus(o);
+      res.json({
+        id: o.id,
+        ...status,
+        printed: Boolean(o.printed),
+        manualReady: Boolean(o.manualReady),
+        // Nothing more to wait for: the client can stop polling.
+        settled: status.paid || status.voided,
+      });
+    } catch (e) {
+      /* A deleted order 404s. That is an answer, not a failure — it is the
+         "voided at the register" case, and the client must stop polling and
+         award nothing. */
+      if (e instanceof CloverError && e.status === 404) {
+        return res.json({
+          id: req.params.orderId,
+          paid: false, voided: true, refunded: false,
+          paymentState: null, state: "deleted",
+          total: 0, amountPaid: 0,
+          printed: false, manualReady: false,
+          settled: true,
+        });
+      }
+      fail(res, e);
+    }
+  });
+
+  /* ---- whose loyalty rules apply ----
+     If the merchant runs Clover's own programme its rules win, because two
+     schemes disagreeing about a customer's balance is worse than either. A
+     merchant without one is the ordinary case and gets our in-app scheme. */
+  app.get("/api/clover/loyalty", requireConfig, async (_req, res) => {
+    const cfg = await loyaltyConfig({ client: clover });
+    res.json({
+      ...cfg,
+      source: cfg.configured ? "clover" : "in-app",
     });
   });
 

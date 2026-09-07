@@ -323,6 +323,61 @@ With no `APP_KEY` set the proxy serves localhost and **refuses remote callers
 outright**, rather than sitting open. Set `APP_KEY`, `ALLOWED_ORIGINS` and
 `MAX_CHARGE_DOLLARS` before deploying.
 
+### Points are earned at the register, not in the app
+
+The app takes no money. An order leaves here **open and owing**, and the
+customer pays at the counter — or walks out and never collects it. Points used
+to be added the moment the order was placed, which gave them away for food
+nobody had paid for.
+
+They are awarded on one thing only now: Clover confirming the payment.
+
+- `GET /api/clover/orders/:id/status` reports `{ paid, voided, settled, ... }`
+- `useOrderPayment` polls it every **30 seconds** from the tracking screen, and
+  stops the moment the answer is final — paid, or voided at the register. It
+  also gives up after two hours, for a customer who never came back
+- on `paid`, `App.awardPoints` credits the order's `earnable` and the screen
+  says **"Points earned!"**
+
+If the app is closed before the customer pays, no points are awarded. They had
+not been earned, so nothing was lost.
+
+**Never award on order creation.** Two guards keep the award to exactly once:
+`pointsAwarded` is persisted on the order and survives a relaunch, and an
+in-memory `awardedRef` catches two polls landing in the same tick, which the
+persisted flag cannot because React has not re-rendered between them.
+
+`earnable` is computed and stored when the order is placed, while the cart still
+exists — re-deriving it at payment time would read an emptied cart as zero.
+
+Reading the payment state is deliberately strict, because a wrong "yes" gives
+points away and a wrong "no" only means the screen waits another thirty seconds.
+`paymentStatus` in `server/clover.js` trusts either Clover's `paymentState`
+summary **or** the payments themselves adding up to the total: a split payment
+leaves the summary `OPEN` while the money is all there. Failed payments and
+refunds are subtracted, a zero-total order with no payments is never "paid in
+full", and a deleted order is voided no matter what its summary says. A 404 from
+Clover is an *answer* — the order was voided — not an error, so the client stops
+polling and awards nothing.
+
+### Clover loyalty, if the merchant ever turns it on
+
+If the merchant runs Clover's own loyalty programme, its rules are the ones that
+count — two schemes disagreeing about a customer's balance is worse than either
+alone. `GET /api/clover/loyalty` reports which is in force, cached 30 minutes.
+
+**This merchant has none.** Probed live: every loyalty path answers `405 GET not
+allowed`, which is exactly what Clover says for a path it does not route at all —
+a made-up endpoint returns the identical response, while real endpoints return
+200. So 404 and 405 both mean "no programme here", and the in-app scheme runs.
+
+Because of that, **the Clover branch has never run against a live programme.**
+That is why `cloverEarnRate` in `src/lib/loyalty.js` returns `null` rather than a
+guess when it does not recognise the payload: an earn rate invented from a field
+name that turned out to mean something else would quietly credit every customer
+the wrong number. Points are only ever computed from a rate we actually
+understood, and an unrecognised programme falls back to 1 point per dollar.
+
 ### Order-ready notifications
 
 `src/lib/notify.js` schedules a **local** notification on the device for the
@@ -365,7 +420,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 398 tests
+npm test            # 454 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
@@ -414,6 +469,9 @@ or lose a customer, rather than on markup:
 - prep being the maximum of a cart and not the sum, and an unknown item
   falling back to 30 minutes
 - no shipped file emitting the string "ASAP", checked by scanning the source
+- points NOT awarded on order creation, awarded on confirmed payment, awarded
+  exactly once across a relaunch, and never for a voided order
+- polling stopping the moment the answer is final
 - `PREP_MINUTES` in the generator and `prepMinutes` in the generated data
   still agreeing, so a regeneration cannot silently drop them
 

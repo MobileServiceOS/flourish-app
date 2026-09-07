@@ -4,11 +4,13 @@ import { ShoppingBag, Check, Home, Receipt, User, Award } from "lucide-react";
 import "./styles.css";
 import { MENU, UE, CAT_OF, PLATE_IDS, hasChoices } from "./data/menu.data.js";
 import { cents, withTax } from "./lib/money.js";
-import { rewardOf, discountFor } from "./lib/loyalty.js";
+import { rewardOf, discountFor, pointsFor } from "./lib/loyalty.js";
 import { loadAccount, saveAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
 import { createOrder, syncCustomer, setStock } from "./lib/clover.js";
-import { useCloverHealth, useInventorySync, useReadyQuote } from "./hooks/clover.js";
+import {
+  useCloverHealth, useInventorySync, useReadyQuote, useLoyaltySource,
+} from "./hooks/clover.js";
 
 import Splash from "./components/Splash.jsx";
 import {
@@ -61,6 +63,11 @@ export default function App() {
      here: prep time depends on what is in the cart, and the server is the only
      side that also knows when the kitchen runs out of time to cook it. */
   const { quote } = useReadyQuote(cart, { enabled: clover.status === "online" });
+
+  /* Clover's own loyalty programme takes precedence over ours when the merchant
+     has one. This merchant does not, so the in-app scheme runs — see the note
+     in lib/loyalty.js. */
+  const loyalty = useLoyaltySource({ enabled: clover.status === "online" });
 
   /* The manual toggle also pushes back to Clover when connected, so the 86
      shows up on the register and on every other ordering channel — not just
@@ -323,6 +330,35 @@ export default function App() {
     return () => io.disconnect();
   }, [view, catKeys, menuMounted]);
 
+  /* ---------- earning the points ----------
+     Called by the tracking screen when Clover confirms the customer has paid at
+     the register. Never on order creation: at that moment the order is open and
+     owing, and the customer might never come back for it.
+
+     Two guards, because one is not enough:
+
+       - `pointsAwarded`, persisted on the order, survives a relaunch, so
+         reopening a paid order's confirmation screen cannot pay it twice
+       - `awardedRef` catches the same-session case the flag cannot — two polls
+         landing in the same tick both read the old state, and React has not
+         re-rendered between them
+
+     The amount comes off the order itself. Re-deriving it from the cart would
+     read zero: the cart was emptied when the order was placed. */
+  const awardedRef = useRef(new Set());
+  const awardPoints = useCallback((order) => {
+    const num = order?.num;
+    if (!num || order.pointsAwarded || awardedRef.current.has(num)) return;
+    awardedRef.current.add(num);
+
+    const earned = Math.max(0, Number(order.earnable) || 0);
+    const settle = (o) => ({ ...o, pointsAwarded: true, paidBy: "paid" });
+
+    setOrders((list) => list.map((o) => (o.num === num && !o.pointsAwarded ? settle(o) : o)));
+    setActive((a) => (a && a.num === num && !a.pointsAwarded ? settle(a) : a));
+    if (earned > 0) setPoints((p) => p + earned);
+  }, []);
+
   /* ---------- placing the order ----------
      Order of operations matters here:
        1. push the order to Clover first, so the kitchen has it
@@ -390,13 +426,22 @@ export default function App() {
         readyAt: readyWindow?.endISO ?? null,
         tip,
         paidBy: "pickup",          // the app never takes money
+        /* What this order will earn once it is paid for, worked out now while
+           the cart still exists. `pointsAwarded` is the guard that makes the
+           award happen exactly once, and it is persisted with the order so a
+           relaunch cannot pay it twice. */
+        earnable: account ? pointsFor(subtotal - discount, loyalty) : 0,
+        pointsAwarded: false,
         printed, printError, messaged, reward,
         lines: cart.map((l) => ({ ...l })),
       };
 
       setActive(order);
       setOrders((o) => [order, ...o]);
-      if (account) setPoints((p) => p + Math.round(subtotal - discount));
+      /* NO POINTS HERE. The order has just been pushed to Clover unpaid — the
+         customer owes for food they have not paid for and might never collect.
+         Points are awarded from the tracking screen once Clover confirms the
+         payment; see awardPoints below. */
       if (appliedVoucher) {
         setVouchers((v) => v.filter((x) => x.code !== appliedVoucher.code));
         setApplied(null);
@@ -469,7 +514,10 @@ export default function App() {
           onClearError={() => setPayError(null)}
           onPay={placeOrder} />
       )}
-      {view === "track" && active && <TrackView order={active} setView={setView} live={clover.status === "online"} />}
+      {view === "track" && active && (
+        <TrackView order={active} setView={setView} live={clover.status === "online"}
+          signedIn={Boolean(account)} onPaid={awardPoints} />
+      )}
 
       {detail && (
         <ItemSheet item={detail} onClose={() => setDetail(null)}

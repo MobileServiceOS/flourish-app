@@ -192,7 +192,7 @@ export default function CheckoutView({
           <div className="rowline" style={{ fontWeight: 700, fontSize: 16 }}><span>Total</span><span>{money(total)}</span></div>
           {account && (
             <div className="rowline" style={{ marginTop: 4 }}>
-              <span style={{ color: "var(--muted)" }}>You'll earn</span>
+              <span style={{ color: "var(--muted)" }}>You'll earn when you pay</span>
               <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>+{Math.round(subtotal)} pts</span>
             </div>
           )}

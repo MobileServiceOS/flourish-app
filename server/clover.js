@@ -89,7 +89,17 @@ export const api = {
   createOrder: (orderCartBody) =>
     request(API_BASE, m("/atomic_order/orders"), { method: "POST", body: orderCartBody }),
 
-  getOrder: (orderId) => request(API_BASE, m(`/orders/${orderId}`)),
+  /* expand=payments so payment state can be worked out from the payments
+     themselves, not just the summary field — a partially-paid order reports
+     paymentState OPEN while carrying real money. */
+  getOrder: (orderId) =>
+    request(API_BASE, m(`/orders/${orderId}?expand=payments,lineItems`)),
+
+  /* Clover's own loyalty programme, when the merchant has one. Both of these
+     404/405 on a merchant without loyalty enabled, which is not an error — see
+     loyaltyConfig() below. */
+  loyaltyProgram: () => request(API_BASE, m("/loyalty/program")),
+  loyaltyTiers: () => request(API_BASE, m("/loyalty/tiers")),
 
   /** Every printer the merchant has. Station built-ins report type MY_LOCAL. */
   printers: () => request(API_BASE, m("/printers")),
@@ -301,4 +311,120 @@ export async function printOrderTicket(orderId, { client = api, sleep = wait } =
 const printMessage = (e) => scrub(e?.message || "Print failed").slice(0, 200);
 
 export const __resetPrinters = () => { printerCache = { at: 0, list: null, chosen: null }; };
+
+/* ============================================================================
+   PAYMENT STATE
+
+   The app takes no money: an order is pushed to Clover open and owing, and the
+   customer pays at the register. So "has this been paid?" is a question only
+   Clover can answer, and it is the question loyalty points hang on.
+
+   Read from two places and trust either, because they disagree in normal
+   operation: `paymentState` is a summary Clover sets, and `payments` is what
+   actually happened. A split payment leaves paymentState OPEN while real money
+   has been taken, so summing the payments is what catches "paid in full".
+   ============================================================================ */
+
+/** Cents actually taken against this order, refunds subtracted. */
+export function amountPaid(order) {
+  const payments = order?.payments?.elements ?? order?.payments ?? [];
+  if (!Array.isArray(payments)) return 0;
+  return payments.reduce((sum, p) => {
+    // A voided or failed payment is not money.
+    const result = String(p?.result ?? "SUCCESS").toUpperCase();
+    if (result && result !== "SUCCESS" && result !== "APPROVED") return sum;
+    const refunded = (p?.refunds?.elements ?? p?.refunds ?? [])
+      .reduce((r, x) => r + (Number(x?.amount) || 0), 0);
+    return sum + (Number(p?.amount) || 0) - refunded;
+  }, 0);
+}
+
+/**
+ * Has this order been paid for?
+ *
+ * Deliberately strict: points are only ever awarded on a yes, so a wrong yes
+ * gives away points for food nobody paid for. A wrong no just means the
+ * customer keeps waiting on a screen, which the next poll fixes.
+ */
+export function paymentStatus(order) {
+  const state = String(order?.state ?? "").toLowerCase();
+  const paymentState = String(order?.paymentState ?? "").toUpperCase();
+  const total = Number(order?.total) || 0;
+  const paid = amountPaid(order);
+
+  /* A deleted order is gone — voided at the register, or a mistake someone
+     backed out of. No points, and stop asking. */
+  const voided = Boolean(order?.deletedTime) || state === "deleted";
+
+  const isPaid = !voided && (
+    paymentState === "PAID"
+    // Only count a payment sum when there is a total to compare it against;
+    // total 0 with no payments must never read as "paid in full".
+    || (total > 0 && paid >= total)
+  );
+
+  return {
+    paid: isPaid,
+    voided,
+    refunded: paymentState === "REFUNDED",
+    paymentState: order?.paymentState ?? null,
+    state: order?.state ?? null,
+    total,
+    amountPaid: paid,
+  };
+}
+
+/* ============================================================================
+   CLOVER LOYALTY
+
+   If the merchant runs Clover's own loyalty programme, its rules are the ones
+   that count and ours would be a second, disagreeing scheme. So this asks.
+
+   A merchant WITHOUT loyalty is the normal case, not an error. Clover answers
+   an unrouted path with `405 GET not allowed` — the same thing it says for a
+   made-up endpoint — so 404 and 405 both mean "no programme here", and the app
+   quietly keeps its own scheme. Probed against this merchant: 405 on every
+   loyalty path, identical to a nonsense path, so Flourish has none today.
+   ============================================================================ */
+let loyaltyCache = { at: 0, value: null };
+export const LOYALTY_TTL_MS = 30 * 60_000;
+
+const NOT_CONFIGURED = new Set([404, 405, 401, 403, 501]);
+
+export async function loyaltyConfig({ force = false, now = Date.now(), client = api } = {}) {
+  if (!force && loyaltyCache.value && now - loyaltyCache.at < LOYALTY_TTL_MS) {
+    return loyaltyCache.value;
+  }
+
+  let value;
+  try {
+    const program = await client.loyaltyProgram();
+    // An empty body is Clover saying "routed, but nothing configured".
+    if (!program || (typeof program === "object" && !Object.keys(program).length)) {
+      value = { configured: false, reason: "NO_PROGRAM", program: null, tiers: [] };
+    } else {
+      let tiers = [];
+      try {
+        const t = await client.loyaltyTiers();
+        tiers = t?.elements ?? (Array.isArray(t) ? t : []);
+      } catch { /* a programme without tiers is still a programme */ }
+      value = { configured: true, reason: null, program, tiers };
+    }
+  } catch (e) {
+    const status = e?.status ?? 0;
+    value = {
+      configured: false,
+      // Worth telling apart: "this merchant has no loyalty" from "we could not
+      // ask". Only the second is worth anybody's attention.
+      reason: NOT_CONFIGURED.has(status) ? "NO_PROGRAM" : "LOOKUP_FAILED",
+      program: null,
+      tiers: [],
+    };
+  }
+
+  loyaltyCache = { at: now, value };
+  return value;
+}
+
+export const __resetLoyalty = () => { loyaltyCache = { at: 0, value: null }; };
 export { scrub as __scrub };
