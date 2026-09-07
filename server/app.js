@@ -19,6 +19,7 @@ import {
   api, modifierCatalog, CloverError, humanise,
   printOrderTicket, resolvePrinter, describePrinter,
   paymentStatus, loyaltyConfig,
+  sendCustomerMessage, messagingState, printEventUrl,
 } from "./clover.js";
 import { CONFIGURED, IS_SANDBOX, describe } from "./env.js";
 import {
@@ -110,6 +111,8 @@ export function createApp({
       printerConfigured: Boolean(printer),
       printerName: printer?.name ?? null,
       printerType: printer?.type ?? null,
+      printEventUrl: printEventUrl(),
+      messaging: messagingState(),
     });
   });
 
@@ -323,9 +326,29 @@ export function createApp({
          can see it on the register, so a dead printer must not lose the sale —
          but it is a real attempt now: a printer is chosen from the merchant's
          own list, the event names it, and a failure is retried once. */
-      const print = await printTicket(order.id);
+      /* Printing is best effort, and that has to hold even if the print path
+         throws rather than returning a failure. The order is already on the
+         register; losing it to a printer problem is the one outcome this whole
+         section exists to avoid. */
+      let print;
+      try {
+        print = await printTicket(order.id);
+      } catch (e) {
+        print = {
+          printed: false, printer: null,
+          printError: e?.message ?? "Print failed",
+          status: e?.status ?? null,
+          url: e?.url ?? printEventUrl(),
+        };
+      }
       if (!print.printed) {
-        console.warn(`  order ${order.id}: ticket not printed (${print.printError ?? "unknown"})`);
+        /* The URL goes in the log next to the status. "405 POST not allowed"
+           on its own says the path is not routed while omitting the one thing
+           that would identify it. */
+        console.warn(
+          `  order ${order.id}: ticket not printed ` +
+          `(${print.status ?? "?"} ${print.printError ?? "unknown"}) POST ${print.url ?? "(no url)"}`
+        );
       }
 
       /* Everything below is cosmetic. Attaching the customer and messaging them
@@ -359,13 +382,13 @@ export function createApp({
         );
       }
 
-      try {
-        await clover.sendOrderMessage(order.id, confirmationMessage(orderNumber, pickupLabel));
-        messaged = true;
-      } catch (e) {
-        // Not on every Clover plan. Worth knowing, not worth failing.
-        console.warn(`  order ${order.id}: customer message not sent (${e?.message ?? "unknown"})`);
-      }
+      /* Messaging is detected once and then left alone. It is not on this
+         merchant's plan, and warning about it on every single order buried the
+         printing failure underneath it — two unrelated problems reporting the
+         identical 405. This shares no error handling with the print above. */
+      messaged = await sendCustomerMessage(
+        order.id, confirmationMessage(orderNumber, pickupLabel), { client: clover }
+      );
 
       /* success:true even when the printer refused. The order is on the
          register either way, and telling a customer their food failed when it
@@ -407,19 +430,49 @@ export function createApp({
     } catch (e) { fail(res, e); }
   });
 
+  /* ALWAYS answers with JSON — including when there is no order to reprint and
+     when the print fails. This returned an empty body on the no-order path,
+     which gave curl nothing to parse and made a diagnostic tool need its own
+     diagnosing. Every branch carries the resolved URL, so the thing being
+     tested is visible in the answer. */
   app.post("/api/clover/print-test", requireConfig, async (_req, res) => {
+    const url = printEventUrl();
     if (!lastOrder) {
       return res.status(404).json({
+        ok: false,
+        printed: false,
         error: "No order has been placed through the app yet, so there is nothing to reprint.",
         code: "NO_RECENT_ORDER",
+        url,
+        orderId: null,
+        orderNumber: null,
       });
     }
-    const print = await printTicket(lastOrder.id);
-    res.json({
-      ...print,
-      orderId: lastOrder.id,
-      orderNumber: lastOrder.orderNumber,
-    });
+    try {
+      const print = await printTicket(lastOrder.id);
+      return res.status(print.printed ? 200 : 502).json({
+        ok: print.printed,
+        printed: print.printed,
+        printer: print.printer ?? null,
+        error: print.printError ?? null,
+        status: print.status ?? null,
+        url: print.url ?? url,
+        orderId: lastOrder.id,
+        orderNumber: lastOrder.orderNumber,
+      });
+    } catch (e) {
+      // printOrderTicket is contracted never to throw; if it ever does, this
+      // endpoint still answers in JSON rather than hanging up on the caller.
+      return res.status(500).json({
+        ok: false,
+        printed: false,
+        error: e?.message ?? "Print failed",
+        status: e?.status ?? null,
+        url: e?.url ?? url,
+        orderId: lastOrder.id,
+        orderNumber: lastOrder.orderNumber,
+      });
+    }
   });
 
   /* ---- has it been paid for? ----
@@ -490,13 +543,9 @@ export function createApp({
       await clover.fulfillOrder(orderId);
     } catch (e) { return fail(res, e); }
 
-    let messaged = false;
-    try {
-      await clover.sendOrderMessage(orderId, readyMessage(orderNumber));
-      messaged = true;
-    } catch (e) {
-      console.warn(`  order ${orderId}: ready message not sent (${e?.message ?? "unknown"})`);
-    }
+    const messaged = await sendCustomerMessage(
+      orderId, readyMessage(orderNumber), { client: clover }
+    );
     res.json({ success: true, orderId, state: "fulfilled", messaged });
   });
 

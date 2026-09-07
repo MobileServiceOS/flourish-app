@@ -260,18 +260,52 @@ messaging, quoting the window this order was actually given.
 fulfilled — which is what the customer's tracking screen polls for — and sends
 the ready message.
 
-**Every messaging step is best effort and individually caught.** Clover's order
-messaging is not on every plan; a probe against this merchant returned 405. An
-order must never be lost because a text could not be sent, so a failure is
-logged, reported as `messaged: false`, and otherwise ignored.
+**Messaging is detected once, at startup, and then left alone.** Clover's order
+messaging is not on this merchant's plan: every attempt answers `405 POST not
+allowed`. `probeMessaging` POSTs to the messages path with a sentinel order id —
+405 means the path is not routed at all, while a 404 would mean it is routed and
+merely disliked the sentinel. On 405 it logs **one line** and skips messaging for
+the rest of the process.
+
+It used to warn on every order, for a feature that was never coming back within a
+session — and because printing was failing with the *same* 405 for a completely
+unrelated reason, that noise is part of what buried the print bug. Messaging and
+printing now share no error handling at all, deliberately.
+
+An order must never be lost because a text could not be sent, so a failure is
+still reported as `messaged: false` and otherwise ignored.
 
 Phone numbers print on tickets, so `maskPhone` in `server/app.js` reduces them to
 `(***) ***-**13` before anything is logged.
 
 ### Printing the ticket
 
-`server/clover.js` owns this. On first need it reads the merchant's printers and
-caches the list for ten minutes, then chooses one:
+**The URL is merchant-scoped, and getting that wrong cost three rounds:**
+
+```
+POST {API_BASE}/v3/merchants/{mId}/print_event
+{"orderRef":{"id":"<orderId>"},"printer":{"id":"<printerUuid>"}}
+```
+
+The order is named by `orderRef` in the **body**. It does not go in the path.
+This was `/v3/merchants/{mId}/orders/{orderId}/print_event`, which Clover does
+not route — and an unrouted path answers `405 POST not allowed`, the identical
+response a made-up endpoint gets. So printer discovery worked, the right printer
+was chosen, the body was correct, and every single ticket still 405'd, with a
+status that said nothing about the path being the problem.
+
+`PRINT_EVENT_PATH` and `printEventUrl()` are exported and pinned by tests that
+assert the URL character for character, that it contains no `/orders/`, that it
+is not pluralised, and that it has no doubled slash — plus tests that intercept
+`fetch` and check the method, headers and body that actually go on the wire, so
+a wrapper rewriting the method could not slip through either.
+
+The startup banner prints the resolved URL on every boot, `/health` carries it,
+and **every print failure logs the status and the URL together**. A bare
+"405 POST not allowed" with no URL is what made this so hard to find.
+
+`server/clover.js` owns the rest. On first need it reads the merchant's printers
+and caches the list for ten minutes, then chooses one:
 
 `CLOVER_PRINTER_UUID` → type `order` → `kitchen` → `fiscal` → `receipt` →
 `MY_LOCAL` → **the first printer in the list, whatever its type**.
@@ -299,7 +333,11 @@ reaches the kitchen: the startup banner names the chosen printer (and shouts
 when there are none), `/health` carries `printerConfigured`, `printerName` and
 `printerType`, `GET /api/clover/printers` shows the list and the choice, and
 `POST /api/clover/print-test` reprints the most recent app order. `print-test`
-fires a real print, so it sits behind `APP_KEY` like everything else.
+fires a real print, so it sits behind `APP_KEY` like everything else — and it
+**always answers in JSON**, including when there is no order to reprint and when
+the print fails, with the status and resolved URL in the payload. It used to
+return an empty body on the no-order path, which gave `curl` nothing to parse and
+made the diagnostic tool need its own diagnosing.
 
 ### Grouping line items
 
@@ -420,7 +458,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 454 tests
+npm test            # 479 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
@@ -463,6 +501,8 @@ or lose a customer, rather than on markup:
 - tax **not** being sent to Clover
 - WCAG contrast, recomputed from `styles.css` rather than asserted by eye
 - the private token never reaching the bundle
+- the print URL, character for character, including no `/orders/` in the path,
+  no doubled slash, and the method and body that reach `fetch`
 - printer selection, including a `MY_LOCAL`-only merchant and an unknown type
 - the ticket carrying name, phone and window — and the order being refused
   without them

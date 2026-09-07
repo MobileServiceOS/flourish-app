@@ -8,11 +8,16 @@ import {
 } from "./env.js";
 
 export class CloverError extends Error {
-  constructor(status, message, body) {
+  /* `url` is the resolved request URL. A bare "405 POST not allowed" with no
+     URL is what made a wrong-path bug take three rounds to find: the status
+     says the path is not routed, and the path is the one thing it omitted.
+     It carries no token — those live in the Authorization header. */
+  constructor(status, message, body, url = null) {
     super(message);
     this.name = "CloverError";
     this.status = status;
     this.body = body;
+    this.url = url;
   }
 }
 
@@ -38,14 +43,15 @@ export function humanise(status, body) {
 }
 
 async function request(base, path, { method = "GET", body, timeoutMs = 15_000 } = {}) {
+  const url = `${base}${path}`;
   if (!CONFIGURED) {
-    throw new CloverError(503, "Clover is not configured on this server", { code: "NOT_CONFIGURED" });
+    throw new CloverError(503, "Clover is not configured on this server", { code: "NOT_CONFIGURED" }, url);
   }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res;
   try {
-    res = await fetch(`${base}${path}`, {
+    res = await fetch(url, {
       method,
       signal: ctrl.signal,
       headers: {
@@ -58,7 +64,7 @@ async function request(base, path, { method = "GET", body, timeoutMs = 15_000 } 
   } catch (e) {
     clearTimeout(timer);
     const aborted = e.name === "AbortError";
-    throw new CloverError(504, aborted ? "Clover timed out" : scrub(e.message), { code: "NETWORK" });
+    throw new CloverError(504, aborted ? "Clover timed out" : scrub(e.message), { code: "NETWORK" }, url);
   }
   clearTimeout(timer);
 
@@ -66,11 +72,21 @@ async function request(base, path, { method = "GET", body, timeoutMs = 15_000 } 
   const text = await res.text();
   if (text) { try { payload = JSON.parse(text); } catch { payload = { message: scrub(text).slice(0, 400) }; } }
 
-  if (!res.ok) throw new CloverError(res.status, humanise(res.status, payload), payload);
+  if (!res.ok) throw new CloverError(res.status, humanise(res.status, payload), payload, url);
   return payload;
 }
 
 const m = (path) => `/v3/merchants/${MERCHANT_ID}${path}`;
+
+/* The one URL this whole file exists to get right. Exported so a test can
+   assert it character for character against the request that is known to
+   print, rather than trusting that a template literal still reads correctly. */
+export const PRINT_EVENT_PATH = m("/print_event");
+export const printEventUrl = () => `${API_BASE}${PRINT_EVENT_PATH}`;
+
+/** Exactly what will be POSTed, so it can be logged and asserted on. */
+export const printEventBody = (orderId, printerId) =>
+  ({ orderRef: { id: orderId }, printer: { id: printerId } });
 
 export const api = {
   merchant: () => request(API_BASE, m("")),
@@ -104,10 +120,18 @@ export const api = {
   /** Every printer the merchant has. Station built-ins report type MY_LOCAL. */
   printers: () => request(API_BASE, m("/printers")),
 
-  /* A print_event with no printer names none, and Clover routes it nowhere.
-     The printer id is the whole point of this call. */
+  /* print_event is MERCHANT-scoped, not order-scoped. The order is named by
+     `orderRef` in the BODY, and the path carries no order id at all:
+
+         POST /v3/merchants/{mId}/print_event
+
+     This was `/v3/merchants/{mId}/orders/{orderId}/print_event`, which Clover
+     does not route — and an unrouted path answers `405 POST not allowed`, the
+     same thing it says for a made-up endpoint. So printer discovery worked,
+     the printer was chosen correctly, the body was right, and every ticket
+     still 405'd. See PRINT_EVENT_PATH and the test that pins it. */
   printEvent: (orderId, printerId) =>
-    request(API_BASE, m(`/orders/${orderId}/print_event`), {
+    request(API_BASE, PRINT_EVENT_PATH, {
       method: "POST",
       body: { orderRef: { id: orderId }, printer: { id: printerId } },
     }),
@@ -267,19 +291,44 @@ export const PRINT_RETRY_MS = 2_000;
  * tell the customer the truth instead of guessing.
  */
 export async function printOrderTicket(orderId, { client = api, sleep = wait } = {}) {
+  const url = printEventUrl();
+
+  /* Every failure carries the URL that failed, next to the status. Declared
+     first because the printer lookup below can fail before anything else has
+     run. */
+  const failed = (p, e) => ({
+    printed: false,
+    printer: describePrinter(p),
+    printError: printMessage(e),
+    status: e?.status ?? null,
+    url: e?.url ?? url,
+  });
+
+  const noPrinter = (status = null) => ({
+    printed: false, printer: null,
+    printError: "No printer is paired with this merchant",
+    status, url,
+  });
+
   let printer;
   try {
     ({ printer } = await resolvePrinter({ client }));
   } catch (e) {
-    return { printed: false, printer: null, printError: printMessage(e) };
+    return failed(null, e);
   }
-  if (!printer) {
-    return { printed: false, printer: null, printError: "No printer is paired with this merchant" };
-  }
+  if (!printer) return noPrinter();
 
   const attempt = async (p) => {
-    await client.printEvent(orderId, p.uuid || p.id);
-    return { printed: true, printer: describePrinter(p), printError: null };
+    const printerId = p.uuid || p.id;
+    /* Say exactly what is about to go on the wire. The token is not here — it
+       rides in the Authorization header — so this is safe to log, and it is
+       what turns "405 POST not allowed" from a riddle into a one-line fix. */
+    console.log(
+      `  print: POST ${url} ` +
+      `body=${JSON.stringify(printEventBody(orderId, printerId))}`
+    );
+    await client.printEvent(orderId, printerId);
+    return { printed: true, printer: describePrinter(p), printError: null, status: 200, url };
   };
 
   try {
@@ -291,9 +340,9 @@ export async function printOrderTicket(orderId, { client = api, sleep = wait } =
       try {
         const { printer: fresh } = await resolvePrinter({ force: true, client });
         if (fresh) return await attempt(fresh);
-        return { printed: false, printer: null, printError: "No printer is paired with this merchant" };
+        return noPrinter(404);
       } catch (e) {
-        return { printed: false, printer: describePrinter(printer), printError: printMessage(e) };
+        return failed(printer, e);
       }
     }
 
@@ -301,7 +350,7 @@ export async function printOrderTicket(orderId, { client = api, sleep = wait } =
     try {
       return await attempt(printer);
     } catch (second) {
-      return { printed: false, printer: describePrinter(printer), printError: printMessage(second) };
+      return failed(printer, second);
     }
   }
 }
@@ -427,4 +476,74 @@ export async function loyaltyConfig({ force = false, now = Date.now(), client = 
 }
 
 export const __resetLoyalty = () => { loyaltyCache = { at: 0, value: null }; };
+
+/* ============================================================================
+   CUSTOMER MESSAGING — DETECTED ONCE, THEN LEFT ALONE
+
+   Clover's order messaging is not on this merchant's plan. Every attempt
+   answers `405 POST not allowed`, which is what Clover says for a path it does
+   not route at all — the same answer a made-up endpoint gets.
+
+   That produced a warning on EVERY order, for a feature that is never coming
+   back within a session. So it is probed once and then skipped: no attempt, no
+   log, no error handling shared with printing. Printing and messaging failed
+   with the identical status code for completely unrelated reasons, and sharing
+   a code path is how one got mistaken for the other.
+
+   The probe POSTs to the messages path with a sentinel order id:
+     405 / 501  -> the path is not routed: the feature is absent
+     404 / 400  -> routed, and it simply did not like the sentinel: available
+   ============================================================================ */
+export const MESSAGING_PROBE_ORDER = "__flourish_probe__";
+
+let messaging = { state: "unknown", reason: null };
+
+export const messagingState = () => messaging.state;
+
+/** Announce it once. Called again, it says nothing. */
+function noteMessagingUnavailable(reason) {
+  if (messaging.state === "unavailable") return;
+  messaging = { state: "unavailable", reason };
+  console.log(
+    `  Messaging  not available on this merchant's Clover plan (${reason}). ` +
+    "Order confirmations will not be sent; the app never promised a text."
+  );
+}
+
+export async function probeMessaging({ client = api } = {}) {
+  if (messaging.state !== "unknown") return messaging.state;
+  try {
+    await client.sendOrderMessage(MESSAGING_PROBE_ORDER, "probe");
+    // Routed and it accepted a sentinel: available, oddly, but available.
+    messaging = { state: "available", reason: null };
+  } catch (e) {
+    const status = e?.status ?? 0;
+    if (status === 405 || status === 501) noteMessagingUnavailable(`HTTP ${status}`);
+    // Any other status means the path IS routed and merely rejected the
+    // sentinel order, which is the answer we wanted.
+    else messaging = { state: "available", reason: null };
+  }
+  return messaging.state;
+}
+
+/**
+ * Send a confirmation, unless we already know this merchant cannot.
+ * Returns whether it went. Never throws — and never shares a code path with
+ * printing.
+ */
+export async function sendCustomerMessage(orderId, message, { client = api } = {}) {
+  if (messaging.state === "unavailable") return false;
+  try {
+    await client.sendOrderMessage(orderId, message);
+    messaging = { state: "available", reason: null };
+    return true;
+  } catch (e) {
+    const status = e?.status ?? 0;
+    // First real 405 is the detection, if the startup probe never ran.
+    if (status === 405 || status === 501) noteMessagingUnavailable(`HTTP ${status}`);
+    return false;
+  }
+}
+
+export const __resetMessaging = () => { messaging = { state: "unknown", reason: null }; };
 export { scrub as __scrub };

@@ -9,7 +9,7 @@
 process.env.TZ = process.env.TZ || "America/New_York";
 
 import { createApp } from "./app.js";
-import { resolvePrinter, describePrinter } from "./clover.js";
+import { resolvePrinter, describePrinter, probeMessaging, printEventUrl } from "./clover.js";
 import { PORT, CONFIGURED, IS_SANDBOX, assertSafeTarget, describe } from "./env.js";
 import { describeGuard } from "./guard.js";
 import { HOURS_LINE } from "../src/lib/hours.js";
@@ -42,6 +42,9 @@ createApp().listen(PORT, () => {
   }
   console.log("");
   reportPrinter();
+  /* Detected once, here, so it never warns per order again. It prints its own
+     single line when the feature is absent. */
+  probeMessaging().catch(() => {});
 });
 
 /* Which printer the kitchen ticket will go to, said out loud at startup.
@@ -63,6 +66,9 @@ async function reportPrinter() {
       `  Printer  ${d.name ?? "(unnamed)"} · ${d.uuid} · type ${d.type ?? "(none)"}` +
       (others > 0 ? `  (+${others} other${others > 1 ? "s" : ""})` : "")
     );
+    // The URL tickets actually go to, so a wrong one is visible on every boot
+    // rather than only in the failure it causes.
+    console.log(`  Print to POST ${printEventUrl()}`);
     console.log("");
   } catch (e) {
     console.warn(`  Printer  could not be read from Clover (${e?.message ?? "unknown"})\n`);

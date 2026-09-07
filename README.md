@@ -133,7 +133,7 @@ npm test          # once
 npm run test:watch
 ```
 
-454 tests. They cover the things that cost money if they break: pickup-slot
+479 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the
@@ -371,8 +371,14 @@ never returns nothing while the merchant has any printer**, because a ticket on
 the wrong roll is a nuisance and a ticket on no roll is an order the kitchen
 never sees.
 
+The ticket is POSTed to `{API_BASE}/v3/merchants/{mId}/print_event` — **merchant
+scoped**, with the order named by `orderRef` in the body. Putting the order id in
+the path instead gives `405 POST not allowed`, which is what Clover says for any
+path it does not route, and is a failure that never mentions the path. The
+startup banner prints the resolved URL on every boot for exactly that reason.
+
 The chosen printer is named on the `print_event` itself. A print_event with no
-printer is routed nowhere, which is what was happening. A failure is retried once
+printer is routed nowhere, which was also happening. A failure is retried once
 after two seconds; a 404 means the printer is gone rather than busy, so the list
 is re-read and the new choice tried instead.
 
