@@ -18,7 +18,15 @@
 
 const clean = (v) => String(v ?? "").trim();
 
-export const APP_KEY = clean(process.env.APP_KEY);
+/* Read at request time, not at import time.
+   As a module-level const this was a snapshot of whatever the environment
+   happened to hold the moment guard.js was first imported — which made the
+   test suite intermittently fail, because a worker that imported this while
+   another file had APP_KEY set inherited that key and then rejected its own
+   requests with 401. Reading per request is also the more honest behaviour on
+   a server: the key in force is the one configured now, not the one that was
+   configured at boot. */
+export const appKey = () => clean(process.env.APP_KEY);
 export const ALLOWED_ORIGINS = clean(process.env.ALLOWED_ORIGINS)
   .split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -86,7 +94,8 @@ export function requireAppKey(req, res, next) {
   // needs no ceremony; anything remote is refused outright rather than left
   // open, because an unauthenticated payment endpoint on the internet is the
   // failure mode this whole file exists to prevent.
-  if (!APP_KEY) {
+  const key = appKey();
+  if (!key) {
     return isLocal(req)
       ? next()
       : res.status(503).json({
@@ -94,7 +103,7 @@ export function requireAppKey(req, res, next) {
           code: "NO_APP_KEY",
         });
   }
-  if (req.get("x-flourish-key") === APP_KEY) return next();
+  if (req.get("x-flourish-key") === key) return next();
   return res.status(401).json({ error: "Not authorised", code: "BAD_APP_KEY" });
 }
 
@@ -112,7 +121,7 @@ export function capCharge(req, res, next) {
 }
 
 export const describeGuard = () => ({
-  appKey: APP_KEY ? "set" : "unset (localhost only)",
+  appKey: appKey() ? "set" : "unset (localhost only)",
   origins: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS.join(", ") : "any (unset)",
   maxCharge: MAX_CHARGE_DOLLARS,
 });

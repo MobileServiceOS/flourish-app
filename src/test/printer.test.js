@@ -33,6 +33,26 @@ beforeEach(() => {
   __resetRateLimit();
 });
 
+describe("the app key is read per request, not per import", () => {
+  /* This suite used to fail roughly one run in nine with a 401: guard.js
+     captured APP_KEY at import time, so a worker that imported it while
+     guard.test.js had a key set inherited that key and rejected these
+     requests. The key in force must be the one set right now. */
+  it("does not inherit a key another test file happened to set", async () => {
+    const { appKey } = await import("../../server/guard.js");
+    const saved = process.env.APP_KEY;
+    try {
+      process.env.APP_KEY = "set-by-someone-else";
+      expect(appKey()).toBe("set-by-someone-else");
+      delete process.env.APP_KEY;
+      expect(appKey()).toBe("");
+    } finally {
+      if (saved === undefined) delete process.env.APP_KEY;
+      else process.env.APP_KEY = saved;
+    }
+  });
+});
+
 describe("choosing a printer", () => {
   it("picks MY_LOCAL when it is the only printer — the live bug", () => {
     expect(selectPrinter([LOCAL])?.uuid).toBe("ZVZ9PRJ255V90");
