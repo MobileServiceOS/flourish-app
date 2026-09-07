@@ -18,3 +18,6 @@ clover-secrets.json
 
 # Simulator captures — regenerate, do not version
 brand/screenshots/
+
+# gstack skill reports and screenshots
+.gstack/

@@ -175,14 +175,32 @@ export default function App() {
   const discount = discountFor(appliedVoucher, cart);
 
   const query = search.trim().toLowerCase();
+
+  /* How well an item matches, lowest first. Searching "Side" used to return the
+     standalone Side item EIGHTH, below seven plates whose descriptions read
+     "with two sides" — so as far as anyone scanning the list was concerned, the
+     item was missing. A name match has to outrank a description match. */
+  const matchRank = (it, cat) => {
+    const name = it.name.toLowerCase();
+    if (name === query) return 0;
+    if (name.startsWith(query)) return 1;
+    if (name.includes(query)) return 2;
+    if ((it.desc || "").toLowerCase().includes(query)) return 3;
+    return 4;                                    // only the category or emoji matched
+  };
+
   const filteredMenu = useMemo(() => {
     if (!query) return MENU;
     return MENU.map((c) => ({
       ...c,
-      items: c.items.filter((it) => {
-        const hay = [it.name, it.desc || "", it.emoji || "", c.cat].join(" ").toLowerCase();
-        return hay.includes(query);
-      }),
+      items: c.items
+        .filter((it) => {
+          const hay = [it.name, it.desc || "", it.emoji || "", c.cat].join(" ").toLowerCase();
+          return hay.includes(query);
+        })
+        // Stable: Array#sort is stable in every engine we ship to, so items of
+        // equal rank keep the menu's own order.
+        .sort((a, b) => matchRank(a, c.cat) - matchRank(b, c.cat)),
     })).filter((c) => c.items.length > 0);
   }, [query]);
   useEffect(() => {
@@ -274,10 +292,18 @@ export default function App() {
     if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  /* Highlight the chip for whichever section is under the nav as you scroll. */
+  /* Highlight the chip for whichever section is under the nav as you scroll.
+
+     `menuMounted` is in the deps for a reason. The splash returns early from
+     this component, so on the first render MenuView does not exist and none of
+     the section refs are set — this effect ran, found nothing to observe, and
+     bailed. `view` and `catKeys` never changed afterwards, so it never ran
+     again and the spy was dead for the whole session: the chips only ever
+     highlighted whatever you last tapped. */
   const catKeys = activeMenu.map((c) => c.cat).join("|");
+  const menuMounted = !loadingAcct && splash === "gone";
   useEffect(() => {
-    if (view !== "menu") return;
+    if (view !== "menu" || !menuMounted) return;
     if (typeof IntersectionObserver === "undefined") return;
     const cats = catKeys.split("|").filter(Boolean);
     const els = cats.map((c) => catRefs.current[c]).filter(Boolean);
@@ -295,7 +321,7 @@ export default function App() {
 
     els.forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, [view, catKeys]);
+  }, [view, catKeys, menuMounted]);
 
   /* ---------- placing the order ----------
      Order of operations matters here:

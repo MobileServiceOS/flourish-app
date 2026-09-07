@@ -26,10 +26,37 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
     });
   };
 
-  // Keep the highlighted chip on screen as the spy moves it.
+  /* Keep the highlighted chip on screen as the spy moves it.
+
+     This moves the CHIP STRIP's own scrollLeft, and nothing else. It used to
+     call `chip.scrollIntoView({ block: "nearest", inline: "center" })`, which
+     is the bug that made the menu snap back to the top on iOS:
+     `scrollIntoView` scrolls EVERY scrollable ancestor, not just the one you
+     meant. The strip is `position: sticky`, so WebKit resolved "nearest" block
+     position against the sticky offset and moved the document as well —
+     mid-gesture, with `html { scroll-behavior: smooth }` making it a fight the
+     user could not win. The scroll-spy changes `activeCat` continuously while
+     you scroll, so this fired constantly.
+
+     Writing `scrollLeft` on one element cannot move an ancestor, so the
+     content scroll is now untouchable from here by construction. */
   useEffect(() => {
-    const el = navRef.current?.querySelector(`[data-chip=${JSON.stringify(activeCat)}]`);
-    if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    const nav = navRef.current;
+    const el = nav?.querySelector(`[data-chip=${JSON.stringify(activeCat)}]`);
+    if (!nav || !el) return;
+
+    // Centre the chip in the strip, clamped to the strip's own range.
+    const centred = el.offsetLeft - (nav.clientWidth - el.offsetWidth) / 2;
+    const left = Math.max(0, Math.min(centred, nav.scrollWidth - nav.clientWidth));
+    if (Math.abs(nav.scrollLeft - left) < 1) return;
+
+    try {
+      if (typeof nav.scrollTo === "function") nav.scrollTo({ left, behavior: "smooth" });
+      else nav.scrollLeft = left;
+    } catch {
+      // jsdom, and any engine without the options form, take the plain assignment.
+      nav.scrollLeft = left;
+    }
   }, [activeCat]);
 
   /* What a screen reader hears for a row. Mirrors what is printed: the two
