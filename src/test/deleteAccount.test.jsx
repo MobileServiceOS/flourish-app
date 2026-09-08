@@ -242,7 +242,9 @@ describe("one version number, stamped from one place", () => {
 
   it("keeps package.json as the source of truth", () => {
     expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(pkg.scripts["version:stamp"]).toBe("node scripts/stamp-version.mjs");
+    // The version and the display name are stamped by one script now, because
+    // they are the same bug: values living only in a regenerated directory.
+    expect(pkg.scripts["native:stamp"]).toBe("node scripts/stamp-native.mjs");
   });
 
   it("stamps the native project as part of sync, after cap sync regenerates it", () => {
@@ -250,12 +252,12 @@ describe("one version number, stamped from one place", () => {
        typed into Xcode is lost. Stamping has to run after cap sync, next to the
        icons, which are restored for exactly the same reason. */
     const sync = pkg.scripts.sync;
-    expect(sync).toContain("version:stamp");
-    expect(sync.indexOf("cap sync")).toBeLessThan(sync.indexOf("version:stamp"));
+    expect(sync).toContain("native:stamp");
+    expect(sync.indexOf("cap sync")).toBeLessThan(sync.indexOf("native:stamp"));
   });
 
   it("leaves the build number alone, since it moves per upload", () => {
-    const script = readFileSync(resolve(ROOT, "scripts/stamp-version.mjs"), "utf8");
+    const script = readFileSync(resolve(ROOT, "scripts/stamp-native.mjs"), "utf8");
     expect(script).toMatch(/MARKETING_VERSION/);
     expect(script).not.toMatch(/CURRENT_PROJECT_VERSION = /);
   });

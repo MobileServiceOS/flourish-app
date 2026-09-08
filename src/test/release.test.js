@@ -153,6 +153,72 @@ describe("the deploy configuration is committed, the secrets are not", () => {
   });
 });
 
+/* ============================================================================
+   THE APP'S NAME ON THE HOME SCREEN
+
+   `ios/` is gitignored and regenerated, so anything typed into Xcode by hand
+   survives until the next `cap add ios` and then vanishes silently. It has
+   already happened twice: the version drifted to 1.0 against package.json's
+   1.0.0, and the display name came back empty so the home screen read "App".
+
+   Both now come from a committed file and are stamped on after `cap sync`.
+   ============================================================================ */
+describe("the app is named on the home screen, and stays named", () => {
+  const capConfig = readFileSync(resolve(ROOT, "capacitor.config.ts"), "utf8");
+  const appName = (/appName:\s*["'`](.+?)["'`]/.exec(capConfig) ?? [])[1];
+  const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
+
+  it("has an authoritative name that is not Capacitor's placeholder", () => {
+    expect(appName).toBe("Flourish BX");
+    // "App" is the Capacitor target name and what an unstamped build shows.
+    expect(appName).not.toBe("App");
+    expect(appName?.trim()).toBeTruthy();
+  });
+
+  it("stamps it on after every sync, not before", () => {
+    /* Order matters: `cap sync` rewrites the generated project, so stamping
+       first would be undone by the very command it is meant to survive. */
+    const sync = pkg.scripts.sync;
+    expect(sync).toContain("cap sync");
+    expect(sync).toContain("native:stamp");
+    expect(sync.indexOf("native:stamp")).toBeGreaterThan(sync.indexOf("cap sync"));
+  });
+
+  it("refuses to stamp a name that would look broken on the home screen", () => {
+    /* Stamping nothing is recoverable. Stamping "" ships an app called nothing,
+       so the script exits rather than writing it. */
+    const script = readFileSync(resolve(ROOT, "scripts/stamp-native.mjs"), "utf8");
+    expect(script).toMatch(/appName === "App"/);
+    expect(script).toMatch(/!appName/);
+    // And it reads the value back rather than trusting the write.
+    expect(script).toContain("Print :CFBundleDisplayName");
+  });
+
+  it("matches the generated iOS project, when one has been added", () => {
+    /* ios/ is gitignored, so this is skipped on a machine that has not run
+       `npx cap add ios` — including CI. Where it does exist it is the real
+       check: the name in the project must equal the committed one. */
+    const plist = resolve(ROOT, "ios/App/App/Info.plist");
+    if (!existsSync(plist)) return;
+
+    const xml = readFileSync(plist, "utf8");
+    const m = /<key>CFBundleDisplayName<\/key>\s*<string>(.*?)<\/string>/s.exec(xml);
+    expect(m, "CFBundleDisplayName is missing from Info.plist").toBeTruthy();
+    expect(m[1].trim(), "the home screen would show the target name").not.toBe("");
+    expect(m[1].trim()).not.toBe("App");
+    expect(m[1].trim()).toBe(appName);
+  });
+
+  it("keeps the version in one place too", () => {
+    const pbx = resolve(ROOT, "ios/App/App.xcodeproj/project.pbxproj");
+    if (!existsSync(pbx)) return;
+    const versions = [...readFileSync(pbx, "utf8").matchAll(/MARKETING_VERSION = ([^;]+);/g)]
+      .map((x) => x[1].trim());
+    expect(versions.length).toBeGreaterThan(0);
+    for (const v of versions) expect(v).toBe(pkg.version);
+  });
+});
+
 /* ---------- the native app has to get past the front door ---------- */
 describe("a native app is allowed through the origin check", () => {
   /* ALLOWED_ORIGINS is still read from the environment, so these tests set it —
