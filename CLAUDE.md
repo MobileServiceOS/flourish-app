@@ -339,6 +339,59 @@ the print fails, with the status and resolved URL in the payload. It used to
 return an empty body on the no-order path, which gave `curl` nothing to parse and
 made the diagnostic tool need its own diagnosing.
 
+### Searching the menu
+
+Customers search for the dish, not for the row it lives in. "sweet chili
+salmon", "escovitch", "honey garlic" are all **modifiers**, and a name-only
+search returned nothing for every one of them.
+
+Every item carries a generated `search` string — its name plus every sellable
+modifier across every group — built by `searchIndex()` in
+`scripts/generate-menu.mjs`, so renaming a flavour in Clover renames it in
+search on the next regeneration. It is never hand-maintained, and a test rebuilds
+it from the committed data and fails on any drift.
+
+**Two things are left out of the index.**
+
+*oos modifiers*, because surfacing a plate through a flavour we refuse to sell is
+worse than not matching: the customer taps the row and the option is not on the
+sheet. Descriptions are searched too but rank below the index, and a description
+word that names an oos modifier is stripped — Salmon's copy still reads
+"...grilled, or steamed" while Steamed is off the menu, and matching that text
+would undo the rule.
+
+*The shared "Side With Meal" group*, because it is the same fourteen options on
+some twenty plates. Indexing it meant any query containing a side word matched
+nearly the whole menu — "mac and cheese" returned twenty rows. Options that
+appear everywhere carry no information about which plate you wanted. Sides are
+separately sellable, so the standalone Side item keeps its own group (named
+"Side", kind `variant`) and "mac and cheese" finds it there, alone.
+
+`src/lib/search.js` owns matching and ranking. Every query word must appear
+(AND, not OR) and word order never matters. Ranking is a score, not a tier,
+because the interesting cases are otherwise all ties:
+
+- an exact item name wins outright, so "shrimp" leads with the Shrimp plate
+- a query word the NAME accounted for is worth far more than the same word in an
+  options list
+- a description-only match is worth least, since the copy goes stale against the
+  data — Salmon's still lists flavours that are off the menu
+
+When an item matched on a modifier, the sheet **opens on that modifier** —
+finding "sweet chili salmon" and landing on a sheet defaulted to Grilled is worse
+than no match, because the dish was found and then hidden. Only dish-defining
+groups are preselected: a side is what comes *with* the plate, and swapping
+someone's rice because a search word brushed against it is not a search box's
+decision.
+
+One thing to know about the data: **"Fried" under Shrimp was wrongly flagged
+off-menu.** The shop sells fried shrimp — it is a real flavour inside the Shrimp
+item's own group — and the oos flag hid it from customers and from search, which
+is why "fried shrimp" once only reached Shrimp by accident, through the "Fried
+Chicken" side. There is no separate Fried Shrimp item in Clover and there should
+not be one: Clover has a single Shrimp item with its flavours inside it, and the
+fried shrimp *side* is the existing $5 Shrimp modifier.
+
 ### Grouping line items
 
 Orders are created with `groupLineItems: true`. Ten of the same plate was
@@ -458,7 +511,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 479 tests
+npm test            # 519 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
@@ -509,6 +562,8 @@ or lose a customer, rather than on markup:
 - prep being the maximum of a cart and not the sum, and an unknown item
   falling back to 30 minutes
 - no shipped file emitting the string "ASAP", checked by scanning the source
+- search matching modifier text, ignoring oos options, ranking exact names
+  first, and the generated index still matching what the generator would emit
 - points NOT awarded on order creation, awarded on confirmed payment, awarded
   exactly once across a relaunch, and never for a voided order
 - polling stopping the moment the answer is final

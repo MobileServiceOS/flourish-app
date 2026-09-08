@@ -113,11 +113,14 @@ describe("what the printed menu actually says", () => {
     }
   });
 
-  it("sells only the shrimp flavours the menu lists", () => {
+  it("sells every shrimp flavour, fried included", () => {
+    /* Fried was flagged off-menu on the grounds that the printed trifold does
+       not list it. The shop sells fried shrimp: it is a real flavour inside the
+       Shrimp item's own group, and hiding it lost a dish. There is no separate
+       Fried Shrimp item in Clover and there should not be one. */
     const o = opts("Shrimp");
-    expect(o["Fried"].oos).toBe(true);
-    for (const n of ["Sweet Chili", "Grilled", "Pepper", "Garlic", "Curried"]) {
-      expect(o[n].oos).toBeUndefined();
+    for (const n of ["Sweet Chili", "Grilled", "Pepper", "Garlic", "Curried", "Fried"]) {
+      expect(o[n].oos, n).toBeUndefined();
     }
   });
 
