@@ -201,3 +201,47 @@ describe("scrolling the menu never moves the content", () => {
     spy.mockRestore();
   });
 });
+
+/* ============================================================================
+   SEARCHING BY FLAVOUR, THROUGH THE ACTUAL UI
+
+   The unit tests cover the matching; these two cover the thing a customer
+   experiences — typing a dish name and getting the dish, already set to what
+   they asked for.
+   ============================================================================ */
+describe("searching for a flavour", () => {
+  it("finds Salmon from a flavour that is not in any item name", async () => {
+    const { user } = await renderApp();
+    await user.type(screen.getByLabelText("Search menu"), "sweet chili salmon");
+
+    const labels = [...document.querySelectorAll(".item")].map((e) => e.getAttribute("aria-label"));
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toMatch(/^Salmon,/);
+  });
+
+  it("opens the sheet already set to the flavour that was searched for", async () => {
+    /* Honey Garlic on purpose: it is NOT the default (Sweet Chili is), so this
+       fails if preselection is not happening rather than passing by accident.
+       Finding the dish and then landing on the wrong flavour would be worse
+       than not matching at all. */
+    const { user } = await renderApp();
+    await user.type(screen.getByLabelText("Search menu"), "honey garlic salmon");
+    await user.click(await screen.findByRole("button", { name: /^Choose options for Salmon$/ }));
+
+    // Option marks the chosen row with a `sel` class.
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByRole("button", { name: /Honey Garlic/ }).className).toContain("sel");
+    expect(within(sheet).getByRole("button", { name: /Sweet Chili/ }).className).not.toContain("sel");
+  });
+
+  it("still defaults to the cheapest option with no search behind it", async () => {
+    const { user } = await renderApp();
+    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
+    await user.click(within(lunch).getByRole("button", { name: /^Choose options for Salmon$/ }));
+
+    // Sweet Chili is also the first sellable option, so it is the default too.
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByRole("button", { name: /Sweet Chili/ }).className)
+      .toContain("sel");
+  });
+});

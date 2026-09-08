@@ -339,6 +339,50 @@ the print fails, with the status and resolved URL in the payload. It used to
 return an empty body on the no-order path, which gave `curl` nothing to parse and
 made the diagnostic tool need its own diagnosing.
 
+### Searching the menu
+
+Customers search for the dish, not for the row it lives in. "sweet chili
+salmon", "escovitch", "honey garlic" are all **modifiers**, and a name-only
+search returned nothing for every one of them.
+
+Every item carries a generated `search` string — its name plus every sellable
+modifier across every group — built by `searchIndex()` in
+`scripts/generate-menu.mjs`, so renaming a flavour in Clover renames it in
+search on the next regeneration. It is never hand-maintained, and a test rebuilds
+it from the committed data and fails on any drift.
+
+**oos modifiers are left out.** Surfacing a plate through a flavour we refuse to
+sell is worse than not matching: the customer taps the row and the option is not
+on the sheet. Descriptions are searched too but rank below the index, and a
+description word that names an oos modifier is stripped — Salmon's copy still
+reads "...grilled, or steamed" while Steamed is off the menu, and matching that
+text would undo the rule.
+
+`src/lib/search.js` owns matching and ranking. Every query word must appear
+(AND, not OR) and word order never matters. Ranking is a score, not a tier,
+because the interesting cases are otherwise all ties:
+
+- an exact item name wins outright, so "shrimp" leads with the Shrimp plate
+- a query word the NAME accounted for is worth far more than the same word in an
+  options list
+- a match through the fourteen included sides every plate shares is worth least,
+  because those options are identical menu-wide and say nothing about which
+  plate was wanted
+
+When an item matched on a modifier, the sheet **opens on that modifier** —
+finding "sweet chili salmon" and landing on a sheet defaulted to Grilled is worse
+than no match, because the dish was found and then hidden. Only dish-defining
+groups are preselected: a side is what comes *with* the plate, and swapping
+someone's rice because a search word brushed against it is not a search box's
+decision.
+
+**Known limitation.** The shared "Side With Meal" group is in the index, as
+specified, and it is identical on ~20 plates — so a query mentioning any side
+word matches nearly the whole menu. Ranking keeps the right item first
+("fried shrimp" leads with Shrimp) but the tail is long. Dropping that one group
+from the index would make such queries precise; it would also stop "mac and
+cheese" finding the plates that offer it as a side.
+
 ### Grouping line items
 
 Orders are created with `groupLineItems: true`. Ten of the same plate was
@@ -458,7 +502,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 479 tests
+npm test            # 513 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
@@ -509,6 +553,8 @@ or lose a customer, rather than on markup:
 - prep being the maximum of a cart and not the sum, and an unknown item
   falling back to 30 minutes
 - no shipped file emitting the string "ASAP", checked by scanning the source
+- search matching modifier text, ignoring oos options, ranking exact names
+  first, and the generated index still matching what the generator would emit
 - points NOT awarded on order creation, awarded on confirmed payment, awarded
   exactly once across a relaunch, and never for a voided order
 - polling stopping the moment the answer is final

@@ -224,6 +224,50 @@ const DESC = {
 };
 
 /* ============================================================================
+   SEARCH INDEX
+
+   Customers search for the dish, not for the row it happens to live in.
+   "fried shrimp", "sweet chili salmon", "escovitch" — every one of those is a
+   MODIFIER, and matching only on item names returned nothing for all of them.
+
+   So each item carries a flattened `search` string: its own name plus every
+   modifier name across every group. Generated here, from the Clover export, so
+   it cannot drift from the menu it describes — a hand-maintained keyword list
+   would be wrong the first time anybody renamed a flavour in Clover.
+
+   oos modifiers are LEFT OUT. Surfacing a plate through a flavour we refuse to
+   sell is worse than not matching at all: the customer searches "steamed
+   salmon", taps the row, and finds no steamed option on the sheet.
+   ============================================================================ */
+
+/* Case and punctuation are noise: "Mac & Cheese" and "mac and cheese" are the
+   same search — `&` is a separator, not the word "and". Kept in step with normalise() in src/lib/search.js, and a test
+   fails if the emitted index ever drifts from what that file computes. */
+const normaliseSearch = (s) =>
+  String(s ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+function searchIndex(item) {
+  const words = [];
+  const seen = new Set();
+  const add = (text) => {
+    for (const w of normaliseSearch(text).split(" ")) {
+      if (w && !seen.has(w)) { seen.add(w); words.push(w); }
+    }
+  };
+  add(item.name);
+  for (const g of item.groups) {
+    for (const mod of g.mods) {
+      if (mod.oos) continue;              // never surfaced through what we won't sell
+      add(mod.n);
+    }
+  }
+  return words.join(" ");
+}
+
+/* ============================================================================
    PREP TIME
 
    How long the kitchen needs before a plate can be promised, in minutes, keyed
@@ -447,7 +491,9 @@ for (const cat of CATEGORY_ORDER) {
        from the maximum instead of treating it as a fast plate. */
     const noPrep = NO_PREP_IDS.has(i.id) || NO_PREP_CATEGORIES.has(cat);
     const prep = `, prepMinutes: ${PREP_MINUTES[i.id] ?? DEFAULT_PREP}${noPrep ? ", noPrep: true" : ""}`;
-    js += `    { id: ${q(i.id)}, name: ${q(i.name)}, emoji: ${q(EMOJI[i.name] ?? "🍽️")}${desc}${days}, base: ${i.base}, lo: ${i.lo}, hi: ${i.hi}${prep}, groups: [${gs}\n      ] },\n`;
+    // Item name + every sellable modifier, flattened and normalised.
+    const search = `, search: ${q(searchIndex(i))}`;
+    js += `    { id: ${q(i.id)}, name: ${q(i.name)}, emoji: ${q(EMOJI[i.name] ?? "🍽️")}${desc}${days}, base: ${i.base}, lo: ${i.lo}, hi: ${i.hi}${prep}${search}, groups: [${gs}\n      ] },\n`;
   }
   js += `  ]},\n`;
 }

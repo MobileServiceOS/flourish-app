@@ -5,6 +5,7 @@ import "./styles.css";
 import { MENU, UE, CAT_OF, PLATE_IDS, hasChoices } from "./data/menu.data.js";
 import { cents, withTax } from "./lib/money.js";
 import { rewardOf, discountFor, pointsFor } from "./lib/loyalty.js";
+import { searchItems } from "./lib/search.js";
 import { loadAccount, saveAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
 import { createOrder, syncCustomer, setStock } from "./lib/clover.js";
@@ -181,35 +182,19 @@ export default function App() {
   const appliedVoucher = vouchers.find((v) => v.code === applied) || null;
   const discount = discountFor(appliedVoucher, cart);
 
-  const query = search.trim().toLowerCase();
+  const query = search.trim();
 
-  /* How well an item matches, lowest first. Searching "Side" used to return the
-     standalone Side item EIGHTH, below seven plates whose descriptions read
-     "with two sides" — so as far as anyone scanning the list was concerned, the
-     item was missing. A name match has to outrank a description match. */
-  const matchRank = (it, cat) => {
-    const name = it.name.toLowerCase();
-    if (name === query) return 0;
-    if (name.startsWith(query)) return 1;
-    if (name.includes(query)) return 2;
-    if ((it.desc || "").toLowerCase().includes(query)) return 3;
-    return 4;                                    // only the category or emoji matched
-  };
-
+  /* Search matches item names AND modifier text, because customers search for
+     the dish: "sweet chili salmon", "escovitch", "honey garlic" are all
+     modifiers, and a name-only search returned nothing for every one of them.
+     The index is generated from the Clover export — see src/lib/search.js. */
   const filteredMenu = useMemo(() => {
-    if (!query) return MENU;
-    return MENU.map((c) => ({
-      ...c,
-      items: c.items
-        .filter((it) => {
-          const hay = [it.name, it.desc || "", it.emoji || "", c.cat].join(" ").toLowerCase();
-          return hay.includes(query);
-        })
-        // Stable: Array#sort is stable in every engine we ship to, so items of
-        // equal rank keep the menu's own order.
-        .sort((a, b) => matchRank(a, c.cat) - matchRank(b, c.cat)),
-    })).filter((c) => c.items.length > 0);
+    if (!query.trim()) return MENU;
+    return MENU
+      .map((c) => ({ ...c, items: searchItems(c.items, query) }))
+      .filter((c) => c.items.length > 0);
   }, [query]);
+
   useEffect(() => {
     if (!query) return;
     if (!filteredMenu.some((c) => c.cat === activeCat) && filteredMenu.length) {
@@ -521,6 +506,10 @@ export default function App() {
 
       {detail && (
         <ItemSheet item={detail} onClose={() => setDetail(null)}
+          /* What the customer typed to find this. The sheet opens on the
+             flavour they searched for — finding "sweet chili salmon" and then
+             landing on a sheet defaulted to Grilled is worse than no match. */
+          query={query}
           onAdd={(line) => { addToCart(line); setDetail(null); }} />
       )}
 

@@ -204,6 +204,6 @@ describe("prep times survive a menu regeneration", () => {
     // The template that writes each item line has to carry the field, or the
     // next regeneration silently drops every prep time on the floor.
     expect(gen).toMatch(/prepMinutes: \$\{PREP_MINUTES\[i\.id\] \?\? DEFAULT_PREP\}/);
-    expect(gen).toMatch(/\$\{prep\}, groups:/);
+    expect(gen).toMatch(/\$\{prep\}\$\{search\}, groups:/);
   });
 });

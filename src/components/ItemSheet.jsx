@@ -3,6 +3,7 @@ import { Plus, Minus, X, Sparkles } from "lucide-react";
 import { UE, CAT_OF, PLATE_IDS } from "../data/menu.data.js";
 import { cents, money } from "../lib/money.js";
 import { isCookedToOrder, prepMinutesForItem } from "../lib/prep.js";
+import { preselectFor } from "../lib/search.js";
 import { Group, Option, useSheet } from "./shared.jsx";
 
 /* ---------- ITEM CUSTOMIZE SHEET ---------- */
@@ -10,19 +11,23 @@ import { Group, Option, useSheet } from "./shared.jsx";
    variant = priced single-select (sizes, flavors that set price)
    flavor  = free single-select
    side    = "Side With Meal", picked twice, some carry an upcharge */
-export default function ItemSheet({ item, onClose, onAdd }) {
+export default function ItemSheet({ item, onClose, onAdd, query = "" }) {
   const variants = item.groups.filter((g) => g.kind === "variant");
   const flavors  = item.groups.filter((g) => g.kind === "flavor");
   const sideG    = item.groups.find((g) => g.kind === "side");
 
-  // default each priced group to its cheapest real option
+  /* Default each priced group to its cheapest real option — unless the customer
+     searched their way here, in which case open on what they searched for.
+     Someone who typed "sweet chili salmon" and lands on a sheet defaulted to
+     Grilled has been shown the dish and then had it taken away again. */
   const [sel, setSel] = useState(() => {
     const init = {};
     [...variants, ...flavors].forEach((g) => {
       const i = g.mods.findIndex((m) => !m.oos);
       init[g.gid] = i < 0 ? 0 : i;
     });
-    return init;
+    // Never selects an oos option: preselectFor skips them.
+    return { ...init, ...preselectFor(item, query) };
   });
   const freeSide = sideG ? Math.max(0, sideG.mods.findIndex((m) => m.p === 0)) : 0;
   const [side1, setSide1] = useState(freeSide);
