@@ -404,21 +404,121 @@ curl -X POST localhost:3001/api/clover/print-test   # reprint the last app order
 like every other endpoint. The startup banner also prints the chosen printer,
 and says so loudly when Clover reports no printers at all.
 
-### Deploying
+### Deploying the proxy
 
-The proxy has to be hosted somewhere — Railway, Fly.io or a Firebase Cloud
-Function all work. It needs `CLOVER_PRIVATE_TOKEN` set as a secret, and the app's
-`/api` calls pointed at it.
+**The app does not work without this.** Shipped to the App Store with no hosted
+proxy, every customer opens it to *"ordering not available right now"* — the app
+never crashes, it just quietly decides the kitchen is unreachable, and it does
+that as convincingly in TestFlight as in the store.
 
-Set these before deploying, or the proxy refuses every remote caller:
+**Host: Railway.** Chosen over Fly because this is one small always-on Node
+process that needs environment variables managed by a non-engineer and nothing
+else: Railway auto-detects Node with no Dockerfile, takes env vars in a
+dashboard, redeploys on `git push`, and rolls back from a list of previous
+deployments in two clicks. Fly's advantages — regions, machine sizing, scale to
+zero — are things this workload does not want; scale-to-zero in particular would
+add a cold start to the first order of the day. Nothing is Railway-specific
+though: `Procfile` and `npm start` mean Fly, Render or Heroku work unchanged.
+
+#### One-time setup
+
+```bash
+npm i -g @railway/cli      # or use npx @railway/cli
+railway login              # opens a browser
+railway init               # creates the project, from this directory
+```
+
+#### The environment variables
+
+Set these in the Railway dashboard (**Variables**), or with
+`railway variables --set 'KEY=value'`. **Never commit them** — `.env.local` is
+gitignored and so are editor backups of it.
+
+| Variable | Value | Why |
+|---|---|---|
+| `CLOVER_API_BASE` | `https://api.clover.com` | Production Clover |
+| `VITE_CLOVER_MERCHANT_ID` | from `.env.local` | Which merchant |
+| `CLOVER_PRIVATE_TOKEN` | from `.env.local` | **The one real secret.** Creates orders. No `VITE_` prefix, ever |
+| `VITE_CLOVER_PUBLIC_TOKEN` | from `.env.local` | Tokenizes a card, cannot charge one |
+| `CLOVER_ALLOW_PRODUCTION` | `yes` | The server refuses to boot against a live Clover host without it |
+| `CLOVER_PRINTER_UUID` | `ZVZ9PRJ255V90` | The Station's roll |
+| `APP_KEY` | a long random string | Generate with `openssl rand -hex 32`. Must equal the app's `VITE_APP_KEY` |
+| `ALLOWED_ORIGINS` | `https://flourishbx.com` | The native app is allowed separately — see below |
+| `MAX_CHARGE_DOLLARS` | `500` | Ceiling on any single charge |
+| `TZ` | `America/New_York` | Hours are New York wall-clock; a UTC host would open the Bronx at 6am |
+
+`PORT` is set by Railway; the server reads it.
+
+The native app sends `capacitor://localhost` as its origin, which is not a
+website and would be refused by `ALLOWED_ORIGINS` alone. Those schemes are
+always allowed (`NATIVE_ORIGINS` in `server/guard.js`) — a browser will not let a
+real site forge them, which is what makes the allowlist worth anything.
+
+#### Deploy
+
+```bash
+railway up
+```
+
+Then check the boot log. **A correctly configured server prints no warnings:**
 
 ```
-APP_KEY=<any long random string>
-ALLOWED_ORIGINS=https://flourishbx.com
-MAX_CHARGE_DOLLARS=500
+  Flourish · Clover proxy on http://localhost:8080
+  API      https://api.clover.com
+  Mode     PRODUCTION — real money
+  Hours    Open daily 11AM–10PM · 11PM Fri & Sat  (America/New_York)
+  App key  set
+  Origins  https://flourishbx.com
+  Config   complete — no warnings
+  Printer  (unnamed) · ZVZ9PRJ255V90 · type MY_LOCAL
+  Print to POST https://api.clover.com/v3/merchants/{mId}/print_event
 ```
 
-`VITE_APP_KEY` must match `APP_KEY`. It ships in the browser bundle and is not a
-secret — it turns away scanners. The real protection is the rate limit, the
-origin allowlist and the charge ceiling, plus the fact that
-`CLOVER_PRIVATE_TOKEN` never leaves the server.
+Anything under `Config` is a variable you have not set yet.
+
+#### Verify it from outside
+
+```bash
+# configured:true, and the printer named
+curl https://<your-app>.up.railway.app/api/clover/health
+
+# must be refused: no app key
+curl -i https://<your-app>.up.railway.app/api/clover/inventory      # 401
+
+# must succeed
+curl -H "x-flourish-key: $APP_KEY" https://<your-app>.up.railway.app/api/clover/inventory
+```
+
+#### Rolling back
+
+Railway keeps every deployment. **Dashboard → Deployments → the last good one →
+⋯ → Redeploy.** It is live in about thirty seconds and needs no git operation,
+which matters when the thing you are rolling back is why the shop cannot take
+orders.
+
+From the CLI: `railway deployment list`, then `railway redeploy <id>`.
+
+If a bad *variable* is the problem, change it in the dashboard — that alone
+triggers a redeploy. Rolling back code will not undo a wrong `CLOVER_API_BASE`.
+
+The register is unaffected either way: orders that already reached Clover are in
+Clover, and the app takes no money, so a broken deploy costs orders but never
+money.
+
+### Pointing the app at it
+
+Nothing is hardcoded. `VITE_API_BASE` is empty in development, so calls stay
+relative and Vite proxies them; a release build bakes in the hosted URL.
+
+```bash
+VITE_API_BASE=https://<your-app>.up.railway.app \
+VITE_APP_KEY=<the same APP_KEY> \
+npm run release:ios
+```
+
+`npm run release:ios` refuses to build if either is missing, if the URL points
+at localhost, if it is not https (iOS blocks plain http), or if anything named
+`VITE_CLOVER_PRIVATE_TOKEN` exists. It then runs `npm run sync` — **not bare
+`npx cap sync`, which overwrites the app icons** — and opens Xcode.
+
+Put both values in `.env.production.local` (gitignored) to avoid retyping them.

@@ -78,11 +78,21 @@ sweep.unref?.();
 
 export const __resetRateLimit = () => hits.clear();
 
-/* ---------- origin ---------- */
+/* ---------- origin ----------
+
+   The iOS app is not a web page: its web view loads from `capacitor://localhost`
+   and sends that as its Origin. Those schemes are always allowed, because a page
+   on a real website cannot forge them — a browser will not let evil.com claim to
+   be `capacitor://localhost`, which is the whole reason the origin allowlist is
+   worth anything. Leaving them out would 403 every customer on the App Store
+   build while the web build carried on working. */
+export const NATIVE_ORIGINS = ["capacitor://localhost", "ionic://localhost"];
+
 export function checkOrigin(req, res, next) {
   const origin = req.get("origin");
-  // Same-origin browser requests and native app requests send no Origin at all.
+  // Same-origin browser requests and some native requests send no Origin at all.
   if (!origin) return next();
+  if (NATIVE_ORIGINS.includes(origin)) return next();
   if (!ALLOWED_ORIGINS.length) return next();           // not configured, dev
   if (ALLOWED_ORIGINS.includes(origin)) return next();
   return res.status(403).json({ error: "Origin not allowed", code: "BAD_ORIGIN" });

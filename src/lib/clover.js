@@ -22,6 +22,22 @@ export const CLOVER_SDK_URL = "https://checkout.clover.com/sdk.js";
    allowlist and the charge ceiling on the server. */
 const APP_KEY = import.meta.env?.VITE_APP_KEY ?? "";
 
+/* Where the proxy lives.
+
+   EMPTY in development: the fetch is relative, Vite proxies /api to
+   localhost:3001, and a phone on the same wifi works because Vite proxies
+   server-side.
+
+   SET for a shipped app, and it has to be. A Capacitor web view loads from
+   `capacitor://localhost`, so a relative "/api/clover/health" resolves to
+   `capacitor://localhost/api/clover/health` and reaches nothing at all — every
+   customer would open the app to "ordering not available". Nothing is
+   hardcoded either way: it comes from VITE_API_BASE at build time, so the same
+   source builds a dev app and a store app. */
+export const API_BASE = String(import.meta.env?.VITE_API_BASE ?? "")
+  .trim()
+  .replace(/\/+$/, "");
+
 export class ApiError extends Error {
   constructor(message, { status = 0, code = null, declineReason = null } = {}) {
     super(message);
@@ -40,7 +56,7 @@ const OFFLINE_MSG = "App is in preview mode — ordering is not connected yet";
 async function call(path, { method = "GET", body, signal } = {}) {
   let res;
   try {
-    res = await fetch(`/api/clover${path}`, {
+    res = await fetch(`${API_BASE}/api/clover${path}`, {
       method,
       signal,
       headers: {

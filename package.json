@@ -15,8 +15,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "server": "node server/index.js",
+    "start": "node server/index.js",
     "dev:all": "concurrently -n web,api -c magenta,cyan \"npm run dev\" \"npm run server\"",
-    "icons": "python3 scripts/make-icons.py"
+    "icons": "python3 scripts/make-icons.py",
+    "release:check": "node scripts/check-release-config.mjs",
+    "release:ios": "npm run release:check && npm run sync && npx cap open ios"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.0",
@@ -47,5 +50,8 @@
     "vite": "^5.3.1",
     "vitest": "^2.1.9",
     "xlsx": "^0.18.5"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -34,7 +34,7 @@ import { isValidName, isValidPhone, phoneDigits } from "../src/lib/phone.js";
 import { ADDRESS } from "../src/lib/restaurant.js";
 import {
   rateLimit, payRateLimit, checkOrigin, requireAppKey, capCharge,
-  describeGuard, ALLOWED_ORIGINS,
+  describeGuard, ALLOWED_ORIGINS, NATIVE_ORIGINS,
 } from "./guard.js";
 
 /* What the customer receives. Kept here rather than inline so the wording is in
@@ -71,10 +71,12 @@ export function createApp({
   // Behind a host that terminates TLS, req.ip must come from the forwarded
   // header or every caller looks like the proxy and the rate limit is useless.
   app.set("trust proxy", 1);
+  /* The native app's own origins are always allowed alongside whatever is
+     configured — see NATIVE_ORIGINS in guard.js. */
   app.use(cors({
     origin: ALLOWED_ORIGINS.length
-      ? ALLOWED_ORIGINS
-      : [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/],
+      ? [...ALLOWED_ORIGINS, ...NATIVE_ORIGINS]
+      : [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/, ...NATIVE_ORIGINS],
   }));
   app.use(express.json({ limit: "64kb" }));
   app.use("/api/clover", checkOrigin, rateLimit());
