@@ -155,30 +155,36 @@ describe("the deploy configuration is committed, the secrets are not", () => {
 
 /* ---------- the native app has to get past the front door ---------- */
 describe("a native app is allowed through the origin check", () => {
-  let createApp, __resetRateLimit, NATIVE_ORIGINS;
+  /* ALLOWED_ORIGINS is still read from the environment, so these tests set it —
+     but the app key is injected rather than exported into process.env, which
+     vitest shares between workers and which is how an unrelated suite started
+     failing one run in nine. */
+  let NATIVE_ORIGINS;
 
-  const app = async (env = {}) => {
+  const app = async ({ origins = "https://flourishbx.com", appKey } = {}) => {
     vi.resetModules();
-    for (const [k, v] of Object.entries(env)) process.env[k] = v;
-    ({ createApp } = await import("../../server/app.js"));
-    ({ __resetRateLimit, NATIVE_ORIGINS } = await import("../../server/guard.js"));
-    __resetRateLimit();
+    process.env.ALLOWED_ORIGINS = origins;
+    const { createApp } = await import("../../server/app.js");
+    const guard = await import("../../server/guard.js");
+    ({ NATIVE_ORIGINS } = guard);
+    guard.__resetRateLimit();
     const clover = {
       merchant: vi.fn().mockResolvedValue({ id: "M" }),
       items: vi.fn().mockResolvedValue({ elements: [] }),
       printers: vi.fn().mockResolvedValue({ elements: [] }),
       loyaltyProgram: vi.fn().mockRejectedValue(new Error("405")),
     };
-    return request(createApp({ clover, catalog: async () => ({}), now: () => new Date(2026, 6, 27, 12, 0) }));
+    return request(createApp({
+      clover, catalog: async () => ({}), appKey,
+      now: () => new Date(2026, 6, 27, 12, 0),
+    }));
   };
 
-  const KEYS = ["APP_KEY", "ALLOWED_ORIGINS"];
   let saved;
-  beforeEach(() => { saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]])); });
+  beforeEach(() => { saved = process.env.ALLOWED_ORIGINS; });
   afterEach(() => {
-    for (const k of KEYS) {
-      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
-    }
+    if (saved === undefined) delete process.env.ALLOWED_ORIGINS;
+    else process.env.ALLOWED_ORIGINS = saved;
   });
 
   it("lets the iOS app in even though its origin is not a website", async () => {
@@ -186,26 +192,26 @@ describe("a native app is allowed through the origin check", () => {
        ALLOWED_ORIGINS every App Store customer would be 403'd while the website
        carried on working. A browser will not let a real site forge that scheme,
        which is why allowing it costs nothing. */
-    const agent = await app({ ALLOWED_ORIGINS: "https://flourishbx.com" });
+    const agent = await app();
     const r = await agent.get("/api/clover/health").set("Origin", "capacitor://localhost");
     expect(r.status).toBe(200);
   });
 
   it("still turns away a random website", async () => {
-    const agent = await app({ ALLOWED_ORIGINS: "https://flourishbx.com" });
+    const agent = await app();
     const r = await agent.get("/api/clover/health").set("Origin", "https://evil.example.com");
     expect(r.status).toBe(403);
     expect(r.body.code).toBe("BAD_ORIGIN");
   });
 
   it("still lets the configured website in", async () => {
-    const agent = await app({ ALLOWED_ORIGINS: "https://flourishbx.com" });
+    const agent = await app();
     const r = await agent.get("/api/clover/health").set("Origin", "https://flourishbx.com");
     expect(r.status).toBe(200);
   });
 
   it("names both native schemes", async () => {
-    await app({ ALLOWED_ORIGINS: "https://flourishbx.com" });
+    await app();
     expect(NATIVE_ORIGINS).toContain("capacitor://localhost");
     expect(NATIVE_ORIGINS).toContain("ionic://localhost");
   });
@@ -213,10 +219,18 @@ describe("a native app is allowed through the origin check", () => {
   it("does not exempt a native origin from the app key", async () => {
     // Origin and authorisation are separate gates, and this must not become a
     // way around the second one.
-    const agent = await app({ APP_KEY: "s3cret", ALLOWED_ORIGINS: "https://flourishbx.com" });
+    const agent = await app({ appKey: "s3cret" });
     const r = await agent.get("/api/clover/inventory").set("Origin", "capacitor://localhost");
     expect(r.status).toBe(401);
     expect(r.body.code).toBe("BAD_APP_KEY");
+  });
+
+  it("lets the native app through once it presents the key", async () => {
+    const agent = await app({ appKey: "s3cret" });
+    const r = await agent.get("/api/clover/inventory")
+      .set("Origin", "capacitor://localhost")
+      .set("x-flourish-key", "s3cret");
+    expect(r.status).not.toBe(401);
   });
 });
 
@@ -266,7 +280,7 @@ describe("the App Store listing describes this app", () => {
   it("never claims the app sends a text message", () => {
     /* Order-ready alerts are local notifications; there is no SMS anywhere.
        Scoped to the copy a customer or reviewer reads — the notes elsewhere in
-       the file quote the forbidden wording in order to forbid it. */
+       the file discuss the rule in order to state it. */
     const customerFacing =
       listing.slice(listing.indexOf("## Description"), listing.indexOf("## Keywords")) +
       listing.slice(listing.indexOf("## Review notes"), listing.indexOf("## Screenshots"));
@@ -287,5 +301,13 @@ describe("the App Store listing describes this app", () => {
   it("carries the support and privacy URLs review will click", () => {
     expect(listing).toMatch(/Support URL.*https:\/\//);
     expect(listing).toMatch(/Privacy Policy URL.*https:\/\//);
+  });
+
+  it("describes account deletion as something the app does, not a phone call", () => {
+    /* Apple 5.1.1(v). Telling review that deletion is by calling the shop is
+       the rejection this whole change exists to avoid. */
+    expect(listing).toMatch(/Delete account/);
+    expect(listing).not.toMatch(/deletion is by calling the restaurant/i);
+    expect(privacy).toMatch(/Delete account/);
   });
 });

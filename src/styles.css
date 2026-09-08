@@ -285,3 +285,13 @@ select.field{appearance:none;cursor:pointer;
    event worth showing, not a running total. */
 .points-earned{display:flex;align-items:center;gap:10px;margin-top:10px;padding:11px 13px;
   border-radius:14px;background:rgba(47,182,168,.12);color:var(--teal-ink);font-size:13.5px;line-height:1.35;}
+
+/* Deleting an account is irreversible, so it does not look like the other
+   buttons: quiet until you reach for it, then unmistakable once you have. */
+.link-danger{display:block;width:100%;background:none;border:0;padding:8px;
+  font:inherit;font-size:13px;font-weight:600;color:var(--rose-ink);
+  text-decoration:underline;text-underline-offset:3px;cursor:pointer;}
+.delete-confirm{margin-top:14px;padding:16px;border-radius:16px;
+  background:rgba(232,154,199,.10);border:1px solid var(--rose-ink);color:var(--ink);}
+.delete-confirm ul{color:var(--ink);}
+.pill-btn.danger{background:var(--rose-ink);color:#fff;box-shadow:none;}

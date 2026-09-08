@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Gift, LogOut, Ticket, RotateCcw, Share2 } from "lucide-react";
+import { Gift, LogOut, Ticket, RotateCcw, Share2, AlertTriangle } from "lucide-react";
 import { money } from "../lib/money.js";
 import { REWARDS, tierFor, nextTier } from "../lib/loyalty.js";
 import { formatPhone } from "../lib/phone.js";
@@ -7,8 +7,13 @@ import { shareFlourish } from "../lib/share.js";
 import { SubHeader } from "./shared.jsx";
 
 /* ---------- REWARDS / ACCOUNT ---------- */
-export default function RewardsView({ account, points, vouchers, orders, redeem, signOut, onReorder }) {
+export default function RewardsView({
+  account, points, vouchers, orders, redeem, signOut, onReorder, onDeleteAccount,
+}) {
   const [shared, setShared] = useState(null);   // null | "shared" | "copied"
+  /* Two taps, never one. Deleting an account is irreversible and the second tap
+     is the only chance to say what that actually costs. */
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const tier = tierFor(points);
   const next = nextTier(points);
   const pct = next ? Math.min(100, ((points - tier.min) / (next.min - tier.min)) * 100) : 100;
@@ -124,6 +129,62 @@ export default function RewardsView({ account, points, vouchers, orders, redeem,
           <button className="pill-btn ghost" style={{ marginTop: 14 }} onClick={signOut}>
             <LogOut size={15} style={{ verticalAlign: -2, marginRight: 6 }} /> Sign out
           </button>
+
+          {/* Apple requires an in-app way to delete an account in any app that
+              lets you make one. It is also just the right thing to offer. */}
+          {!confirmingDelete ? (
+            <button className="link-danger" style={{ marginTop: 16 }}
+              onClick={() => setConfirmingDelete(true)}>
+              Delete account
+            </button>
+          ) : (
+            <div className="delete-confirm" role="alertdialog" aria-modal="false"
+              aria-labelledby="del-title" aria-describedby="del-body">
+              <div id="del-title" style={{ fontWeight: 700, fontSize: 15, display: "flex",
+                alignItems: "center", gap: 8 }}>
+                <AlertTriangle size={17} aria-hidden="true" />
+                Delete your account?
+              </div>
+
+              <div id="del-body" style={{ fontSize: 13.5, lineHeight: 1.5, marginTop: 10 }}>
+                <p style={{ margin: "0 0 8px" }}>This removes from this phone:</p>
+                <ul style={{ margin: "0 0 10px", paddingLeft: 18 }}>
+                  <li>your saved name and phone number</li>
+                  <li>your order history in the app{orders.length ? ` (${orders.length} order${orders.length > 1 ? "s" : ""})` : ""}</li>
+                  <li>
+                    your <strong>{points} point{points === 1 ? "" : "s"}</strong>
+                    {vouchers.length > 0 && <> and {vouchers.length} unused reward{vouchers.length > 1 ? "s" : ""}</>}
+                  </li>
+                </ul>
+
+                {/* Said plainly, before the tap that costs them. */}
+                <p style={{ margin: "0 0 8px" }}>
+                  <strong>Any points you have not spent are gone for good.</strong> They
+                  cannot be restored, and starting a new account starts you at zero.
+                </p>
+
+                {/* "Delete my account" reasonably sounds like it might reach the
+                    restaurant's books. It does not, and they should know. */}
+                <p style={{ margin: 0, color: "var(--muted)" }}>
+                  Orders you already placed stay in the restaurant&rsquo;s own records, as
+                  the receipts for food they cooked and sold. That is their bookkeeping,
+                  not your account, and this does not change it. To ask about those,
+                  call the shop.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", gap: 9, marginTop: 14 }}>
+                <button className="pill-btn ghost" style={{ flex: 1 }}
+                  onClick={() => setConfirmingDelete(false)}>
+                  Keep my account
+                </button>
+                <button className="pill-btn danger" style={{ flex: 1 }}
+                  onClick={() => { setConfirmingDelete(false); onDeleteAccount?.(); }}>
+                  Delete for good
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ color: "var(--muted)", fontSize: 11.5, textAlign: "center", padding: "16px 20px 0", lineHeight: 1.5 }}>

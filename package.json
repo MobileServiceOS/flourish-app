@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "menu": "node scripts/generate-menu.mjs",
-    "sync": "npm run icons && npm run build && npx cap sync && npm run icons",
+    "sync": "npm run icons && npm run build && npx cap sync && npm run icons && npm run version:stamp",
     "ios": "npm run sync && npx cap open ios",
     "android": "npm run sync && npx cap open android",
     "test": "vitest run",
@@ -19,7 +19,8 @@
     "dev:all": "concurrently -n web,api -c magenta,cyan \"npm run dev\" \"npm run server\"",
     "icons": "python3 scripts/make-icons.py",
     "release:check": "node scripts/check-release-config.mjs",
-    "release:ios": "npm run release:check && npm run sync && npx cap open ios"
+    "release:ios": "npm run release:check && npm run sync && npx cap open ios",
+    "version:stamp": "node scripts/stamp-version.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.0",

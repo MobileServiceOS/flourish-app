@@ -99,12 +99,23 @@ export function checkOrigin(req, res, next) {
 }
 
 /* ---------- app key ---------- */
+/* The middleware, parameterised by where the key comes from. The default reads
+   the environment on every request (see appKey above); tests inject a fixed one
+   so they never have to mutate process.env, which vitest shares across workers
+   and which made an unrelated suite fail one run in nine. */
+export function requireAppKeyWith(getKey) {
+  return (req, res, next) => appKeyGuard(getKey(), req, res, next);
+}
+
 export function requireAppKey(req, res, next) {
+  return appKeyGuard(appKey(), req, res, next);
+}
+
+function appKeyGuard(key, req, res, next) {
   // Unset means development. Localhost is let through so `npm run dev:all`
   // needs no ceremony; anything remote is refused outright rather than left
   // open, because an unauthenticated payment endpoint on the internet is the
   // failure mode this whole file exists to prevent.
-  const key = appKey();
   if (!key) {
     return isLocal(req)
       ? next()
