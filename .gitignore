@@ -10,6 +10,9 @@ android/
 # Never commit these
 .env
 .env.local
+# Vite reads these too, and they hold the app key and the proxy URL.
+.env.*.local
+.env.production
 clover-secrets.json
 # Editor backups of the above — nano/vim leave these behind holding live tokens
 *.save

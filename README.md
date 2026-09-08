@@ -516,13 +516,33 @@ money.
 ```bash
 VITE_API_BASE=https://flourish-api-production.up.railway.app \
 VITE_APP_KEY=<the APP_KEY from Railway> \
-npm run screenshots
+npm run screenshots              # both size sets
+npm run screenshots -- 6.5       # just one
 ```
 
-Writes `screenshots/01-menu.png` … `05-confirmation.png` at exactly
-**1290×2796** (iPhone 15 Pro Max, the 6.7" slot) and **fails if any file comes
-out a different size** — a mis-sized PNG is refused on upload and costs a review
-cycle. Re-run it whenever the UI changes.
+Writes five screens at **both** sizes App Store Connect asks for:
+
+| Slot | Pixels | Captured on | Output |
+|---|---|---|---|
+| 6.9" | 1290×2796 | iPhone 15 Pro Max | `screenshots/6.9/01-menu.png` … `05-confirmation.png` |
+| 6.5" | 1284×2778 | iPhone 13 Pro Max | `screenshots/6.5/01-menu.png` … `05-confirmation.png` |
+
+Both are generated so either upload slot can be filled. **A slot refuses any
+file that is not one of its exact sizes** — 1290×2796 is rejected by the 6.5"
+slot, which is a rejection that only shows up on the day you meant to submit.
+The 6.5" slot also accepts 1242×2688 (iPhone 11 Pro Max); 1284×2778 is the
+larger of the two.
+
+**Every size is captured natively**, on a device whose screen is that size, and
+the dimensions are read back out of each PNG header afterwards — the run exits
+non-zero on any mismatch. Nothing is ever rescaled to fit a slot: resampling a
+1290-wide capture down to 1284 is six pixels of difference and still leaves text
+visibly soft, which reviewers see.
+
+The device may not be installed — recent Xcodes ship a 6.9" Pro Max and nothing
+older — so the script creates whichever phone it needs. Which device produces
+which size was measured rather than read off a spec sheet: iPhone 12 Pro Max,
+13 Pro Max and 14 Plus all capture 1284×2778.
 
 Two things the script has to get right, and how it does.
 
@@ -542,18 +562,17 @@ nothing reaches Clover. The driver is injected **after** the build, is not in
 `src/`, and is absent from anything `npm run release:ios` produces.
 
 `simctl` cannot tap, so the driver also walks the UI from inside the web view,
-clicking real elements. One build per screen: slower than one build and five
-taps, but there is no timing handshake between two processes to get wrong.
+clicking real elements. The app is built once and its web payload swapped per
+screen, so both size sets show identical content rather than being two separate
+runs that drifted apart on a price or a clock.
 
 Other things it handles:
 
-- **The 6.7" device may not exist.** Recent Xcodes ship an iPhone 17 Pro Max,
-  which captures 1320×2868 — the wrong size for this slot, and wrong in a way
-  nothing tells you about. The script creates an iPhone 15 Pro Max if one is
-  not already there.
 - **No real customer.** Screenshots are published on a public product page, so
-  the details are a fake name and a 555 number.
+  the details are a fake name and a 555 number reserved for fiction.
 - **A clean status bar** — 9:41, full battery, full signal.
+- **No debug text.** The fixture order id is shaped like a Clover id, because it
+  is displayed on the confirmation screen as "Register #…".
 
 ### Version numbers
 

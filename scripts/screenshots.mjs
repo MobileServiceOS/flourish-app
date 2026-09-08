@@ -3,11 +3,20 @@
  * App Store screenshots, from the real app running in the iOS Simulator.
  *
  *   VITE_API_BASE=https://... VITE_APP_KEY=... node scripts/screenshots.mjs
+ *   ... node scripts/screenshots.mjs 6.5        # just one slot
  *
- * Produces screenshots/01-menu.png … 05-confirmation.png at exactly 1290×2796
- * (iPhone 15 Pro Max, the 6.7" slot in App Store Connect) and fails if any file
- * comes out a different size. A silently mis-sized PNG is rejected on upload
- * and costs a review cycle.
+ * Produces both sizes App Store Connect asks for, five screens each:
+ *
+ *   screenshots/6.9/01-menu.png … 05-confirmation.png   1290×2796
+ *   screenshots/6.5/01-menu.png … 05-confirmation.png   1284×2778
+ *
+ * Each is captured NATIVELY on a device whose screen is that size, and the
+ * dimensions are read back out of the PNG header afterwards — the run fails on
+ * any mismatch. A file six pixels off is refused on upload, and nothing tells
+ * you until the day you meant to submit.
+ *
+ * Nothing is ever rescaled to fit a slot. Resampling a 1290-wide capture down
+ * to 1284 leaves text visibly soft, and reviewers look at hundreds of these.
  *
  * ---------------------------------------------------------------------------
  * TWO THINGS THIS HAS TO GET RIGHT
@@ -43,16 +52,50 @@
  * two processes to get wrong, and a re-run lands on the same pixels.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = resolve(ROOT, "screenshots");
 const BUNDLE_ID = "com.flourishbx.order";
-const DEVICE_NAME = "Flourish Screenshots 6.7";
-const DEVICE_TYPE = "com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro-Max";
-const EXPECT = { width: 1290, height: 2796 };
+/* ---------------------------------------------------------------------------
+   THE SIZE SETS
+
+   App Store Connect has two iPhone slots and refuses a file that is not one of
+   the exact sizes its slot accepts. Filling only one is how an upload gets
+   rejected on the day you meant to submit, so both are generated.
+
+   Every size is captured NATIVELY on a device whose screen is that size.
+   Rescaling a 1290-wide PNG down to 1284 is six pixels of difference and it
+   still looks wrong: text renders soft, and reviewers see hundreds of these.
+
+   Which device produces which size was measured, not read off a spec sheet —
+   iPhone 12 Pro Max, 13 Pro Max and 14 Plus all capture 1284×2778. */
+const SIZE_SETS = [
+  {
+    slot: "6.9",
+    dir: "6.9",
+    width: 1290,
+    height: 2796,
+    deviceName: "Flourish Screenshots 6.9",
+    deviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro-Max",
+    // The slot App Store Connect labels "6.9-inch" accepts 1320×2868 or
+    // 1290×2796; the 15 Pro Max is the phone that captures the latter.
+    note: "iPhone 15 Pro Max",
+  },
+  {
+    slot: "6.5",
+    dir: "6.5",
+    width: 1284,
+    height: 2778,
+    deviceName: "Flourish Screenshots 6.5",
+    deviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-13-Pro-Max",
+    // 1242×2688 also fills this slot; 1284×2778 is the larger of the two and
+    // the one an iPhone 13 Pro Max produces.
+    note: "iPhone 13 Pro Max",
+  },
+];
 
 /* Outside ios/. `npx cap sync` runs an xcodebuild clean, and Xcode refuses to
    delete a directory it did not create itself — a build output left inside
@@ -332,21 +375,179 @@ function requireEnv() {
   return { base, key };
 }
 
-function simulator() {
-  const list = JSON.parse(sh("xcrun", ["simctl", "list", "devices", "--json"]));
-  for (const [runtime, devices] of Object.entries(list.devices)) {
-    const hit = devices.find((d) => d.name === DEVICE_NAME && d.isAvailable !== false);
-    if (hit) return { udid: hit.udid, runtime };
+/**
+ * Prove the credentials work before spending ten minutes on a build.
+ *
+ * The failure this exists to catch is quiet and expensive. `/health` needs no
+ * app key, so a run with a WRONG key still reports the app as online and the
+ * menu and item sheet still look perfect — while `/quote` 401s, the cart and
+ * checkout never get a pickup window, the disabled "Place order" button strands
+ * the driver, and the confirmation screen never happens. You find out at the
+ * end, from screenshots that are subtly wrong rather than obviously broken.
+ *
+ * A placeholder pasted in place of the real key does exactly this. So the key
+ * is used against a real authenticated endpoint here, first, and a bad one
+ * stops the run in seconds.
+ */
+async function preflight({ base, key }) {
+  const fail = (lines) => {
+    console.error("\n  Cannot take screenshots:\n");
+    for (const l of lines) console.error(`  ${l}`);
+    console.error("");
+    process.exit(1);
+  };
+
+  let health;
+  try {
+    const r = await fetch(`${base}/api/clover/health`, { signal: AbortSignal.timeout(20_000) });
+    health = await r.json();
+  } catch (e) {
+    fail([
+      `- The proxy at ${base} did not answer (${e.message}).`,
+      "  Screens would all read 'ordering not available'. Check the deploy is up.",
+    ]);
   }
-  // The stock device set may have no 6.7" phone at all — newer Xcodes ship a
-  // 6.9" Pro Max, which captures 1320×2868 and is the wrong size for this slot.
+  if (!health?.configured) {
+    fail([
+      `- ${base} is up but reports configured:false (${health?.reason ?? "no reason given"}).`,
+      "  Its Clover credentials are wrong, so no menu data would load.",
+    ]);
+  }
+
+  /* The real test: an endpoint that actually requires the key. */
+  const r = await fetch(`${base}/api/clover/quote`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-flourish-key": key },
+    body: JSON.stringify({ cart: [{ itemId: "60KCQ1V22Q98M", qty: 1 }] }),
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  if (r.status === 401) {
+    fail([
+      `- The app key is wrong: /quote answered 401. (${key.length} characters were sent.)`,
+      "",
+      "  Screens 1 and 2 would still look right, because /health needs no key —",
+      "  and screens 3 to 5 would be silently broken. That is why this stops here.",
+      "",
+      "  If your shell shows something like VITE_APP_KEY=abc123...yourkey, the",
+      "  placeholder was never replaced. Take the value from Railway:",
+      "    Railway -> the service -> Variables -> APP_KEY",
+      "",
+      "  Then, so it is never pasted by hand again:",
+      "    echo 'VITE_APP_KEY=<the key>' >> .env.production.local",
+      "    echo 'VITE_API_BASE=" + base + "' >> .env.production.local",
+    ]);
+  }
+  if (!r.ok) {
+    fail([`- /quote answered ${r.status}. Expected 200 with a pickup window.`]);
+  }
+
+  const quote = await r.json();
+  log(`preflight OK — proxy answered, key accepted, window "${quote.label}"`);
+}
+
+/* ---------------------------------------------------------------------------
+   IS THE APP ACTUALLY ON SCREEN?
+
+   `simctl launch` returns as soon as the app is asked to start, not when it has
+   painted. On a cold simulator a Release build can take fifteen seconds to get
+   from launch to first frame — and a capture taken before that is a perfectly
+   valid PNG, at exactly the right dimensions, of the iOS home screen.
+
+   That is the failure this guards: checking the size proves the file is
+   uploadable, not that it shows the app. Three of ten screenshots passed the
+   dimension check while showing a wallpaper.
+
+   The test is colour. The app is paper-white (#FBF7FC) with restrained accents
+   and reads at a mean HSV saturation under 20; the simulator's default
+   wallpaper is a saturated blue and teal and reads over 100. Measured, not
+   guessed — the gap is wide enough that the threshold does not have to be
+   delicate. */
+const APP_MAX_SATURATION = 60;
+
+/* And "the app is up" is not the same as "the screen is ready".
+
+   The launch screen is the app: paper-white, low saturation, and it sails
+   through a colour test while showing nothing but a logo. Waiting on
+   saturation alone captured the splash twice — two byte-identical files where
+   the menu and the item sheet should have been.
+
+   So readiness needs a second signal, and the one that separates them cleanly
+   is how much is on screen. Measured across a 64×139 downsample: the splash
+   has ~104 distinct colours, every real screen has over a thousand. A blank or
+   half-painted frame fails this for the same reason the splash does. */
+const APP_MIN_COLOURS = 400;
+
+/** Saturation and colour count in one pass, so a check costs one subprocess. */
+function imageStats(png) {
+  const out = sh("python3", ["-c", [
+    "import sys",
+    "from PIL import Image",
+    "im = Image.open(sys.argv[1]).convert('RGB').resize((64, 139))",
+    "hsv = im.convert('HSV')",
+    "px = list(hsv.getdata())",
+    "sat = sum(p[1] for p in px) / len(px)",
+    "print(f'{sat} {len(set(im.getdata()))}')",
+  ].join("\n"), png], { stdio: ["ignore", "pipe", "ignore"] });
+  const [sat, colours] = out.trim().split(/\s+/).map(Number);
+  return { sat, colours };
+}
+
+/** Why this frame is not usable, or null if it is. */
+function frameProblem(png) {
+  const { sat, colours } = imageStats(png);
+  if (sat >= APP_MAX_SATURATION) {
+    return `NOT THE APP — saturation ${sat.toFixed(0)}, this is the home screen`;
+  }
+  if (colours < APP_MIN_COLOURS) {
+    return `NOT READY — only ${colours} colours, this is the launch screen`;
+  }
+  return null;
+}
+
+/**
+ * Block until the screen is actually showing content.
+ *
+ * `simctl launch` returns when the app is asked to start, not when it has
+ * painted, and the splash then holds for about 2.5 seconds after that. A fixed
+ * sleep has to cover both on a cold device, and when it does not the result is
+ * a perfectly valid PNG, at exactly the right dimensions, of the wrong thing.
+ */
+async function waitForApp(udid, { timeoutMs = 60_000 } = {}) {
+  const probe = join(BUILD_DIR, `probe-${udid}.png`);
+  const deadline = Date.now() + timeoutMs;
+  let last = "no frame captured";
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      sh("xcrun", ["simctl", "io", udid, "screenshot", "--type", "png", probe],
+         { stdio: "ignore" });
+      last = frameProblem(probe);
+      if (!last) { rmSync(probe, { force: true }); return; }
+    } catch { /* the device can refuse a capture mid-launch; try again */ }
+  }
+  rmSync(probe, { force: true });
+  throw new Error(`the app never finished painting on ${udid} within ` +
+    `${timeoutMs / 1000}s (last frame: ${last})`);
+}
+
+function simulator(set) {
+  const list = JSON.parse(sh("xcrun", ["simctl", "list", "devices", "--json"]));
+  for (const devices of Object.values(list.devices)) {
+    const hit = devices.find((d) => d.name === set.deviceName && d.isAvailable !== false);
+    if (hit) return hit.udid;
+  }
+  /* The device may simply not be installed. Recent Xcodes ship a 6.9" Pro Max
+     and nothing older, so the phone that captures this size has to be created —
+     which is cheap, and better than silently capturing the wrong dimensions on
+     whatever happens to be there. */
   const runtimes = JSON.parse(sh("xcrun", ["simctl", "list", "runtimes", "--json"]))
     .runtimes.filter((r) => r.isAvailable && r.identifier.includes("iOS"));
   if (!runtimes.length) throw new Error("no iOS simulator runtime installed");
   const runtime = runtimes[runtimes.length - 1].identifier;
-  const udid = sh("xcrun", ["simctl", "create", DEVICE_NAME, DEVICE_TYPE, runtime]).trim();
-  log(`created simulator ${DEVICE_NAME}`);
-  return { udid, runtime };
+  const udid = sh("xcrun", ["simctl", "create", set.deviceName, set.deviceType, runtime]).trim();
+  log(`created ${set.deviceName} (${set.note})`);
+  return udid;
 }
 
 const booted = (udid) => {
@@ -380,33 +581,63 @@ function appPath() {
 /* --------------------------------------------------------------------------- */
 async function main() {
   const { base, key } = requireEnv();
-  mkdirSync(OUT, { recursive: true });
+  await preflight({ base, key });
+
+  /* `node scripts/screenshots.mjs 6.5` does one set; no argument does both. */
+  const wanted = process.argv.slice(2).filter((a) => !a.startsWith("-"));
+  const sets = wanted.length
+    ? SIZE_SETS.filter((s) => wanted.includes(s.slot))
+    : SIZE_SETS;
+  if (!sets.length) {
+    console.error(`\n  Unknown size set. Available: ${SIZE_SETS.map((s) => s.slot).join(", ")}\n`);
+    process.exit(1);
+  }
 
   log(`proxy   ${base}`);
   log(`app key set (${key.length} chars)`);
+  log(`sets    ${sets.map((s) => `${s.slot}" ${s.width}×${s.height}`).join("   ")}`);
 
-  const { udid } = simulator();
-  log(`device  ${udid}`);
-  if (!booted(udid)) {
-    sh("xcrun", ["simctl", "boot", udid]);
-    log("booting…");
-    await new Promise((r) => setTimeout(r, 25_000));
+  /* Boot every device up front. The web payload is what changes per screen, so
+     a screen is built once and captured on each device — which also guarantees
+     the two sets show identical content rather than two separate runs that
+     drifted apart on a price or a clock. */
+  const devices = [];
+  for (const set of sets) {
+    const udid = simulator(set);
+    if (!booted(udid)) {
+      sh("xcrun", ["simctl", "boot", udid]);
+      log(`booting ${set.deviceName}…`);
+      await new Promise((r) => setTimeout(r, 25_000));
+    }
+    // A real clock and a half-full battery date a screenshot.
+    try {
+      sh("xcrun", ["simctl", "status_bar", udid, "override",
+        "--time", "9:41", "--batteryState", "charged", "--batteryLevel", "100",
+        "--cellularMode", "active", "--cellularBars", "4", "--wifiBars", "3"]);
+    } catch { /* older simulators lack some flags */ }
+    mkdirSync(join(OUT, set.dir), { recursive: true });
+    devices.push({ set, udid });
+    log(`device  ${set.slot}"  ${udid}  (${set.note})`);
   }
-  // A status bar with a real clock and a half-full battery dates a screenshot.
-  try {
-    sh("xcrun", ["simctl", "status_bar", udid, "override",
-      "--time", "9:41", "--batteryState", "charged", "--batteryLevel", "100",
-      "--cellularMode", "active", "--cellularBars", "4", "--wifiBars", "3"]);
-  } catch { /* older simulators do not support every flag */ }
 
-  /* Build the .app ONCE. Only the web payload differs between screens, and a
-     full xcodebuild per screen is both slow and a way to trip over Xcode's
-     build database lock when a run is interrupted. After this, each screen is
-     a vite build copied straight into the bundle. */
+  /* One native build. Only the web payload differs between screens, and a full
+     xcodebuild per screen is slow and trips over Xcode's build database lock
+     when a run is interrupted. */
   log("");
   log("building the app once…");
   buildApp({ VITE_API_BASE: base, VITE_APP_KEY: key });
   sh("npx", ["cap", "sync", "ios"], { stdio: "ignore" });
+
+  /* Start from a clean derived-data directory.
+
+     An interrupted run leaves Xcode's build database locked, and every later
+     build then dies with "unable to attach DB: database is locked. Possibly
+     there are two concurrent builds running in the same filesystem location."
+     — which reads like a concurrency bug and is really just a stale lock file.
+     Throwing the directory away costs one cold build and removes the whole
+     class of failure. */
+  rmSync(join(BUILD_DIR, "dd"), { recursive: true, force: true });
+
   sh("xcodebuild", [
     "-workspace", "ios/App/App.xcworkspace",
     "-scheme", "App",
@@ -430,42 +661,67 @@ async function main() {
     buildApp({ VITE_API_BASE: base, VITE_APP_KEY: key });
     injectDriver(screen);
 
-    /* Swap the web payload inside the built bundle. The native binary has not
-       changed, so there is nothing to compile. */
+    // Swap the web payload inside the built bundle; the binary is unchanged.
     const web = join(app, "public");
     sh("rm", ["-rf", web]);
     sh("cp", ["-R", resolve(ROOT, "dist"), web]);
 
-    shOk("xcrun", ["simctl", "terminate", udid, BUNDLE_ID]);
-    shOk("xcrun", ["simctl", "uninstall", udid, BUNDLE_ID]);
-    sh("xcrun", ["simctl", "install", udid, app]);
-    sh("xcrun", ["simctl", "launch", udid, BUNDLE_ID], { stdio: "ignore" });
+    for (const { set, udid } of devices) {
+      shOk("xcrun", ["simctl", "terminate", udid, BUNDLE_ID]);
+      shOk("xcrun", ["simctl", "uninstall", udid, BUNDLE_ID]);
+      sh("xcrun", ["simctl", "install", udid, app]);
+      sh("xcrun", ["simctl", "launch", udid, BUNDLE_ID], { stdio: "ignore" });
 
-    // The driver waits out the splash, then walks the UI.
-    const settle = 7000 + screen.steps.reduce((t, s) => t + (s.wait || 1000), 0);
-    await new Promise((r) => setTimeout(r, settle));
+      /* Two separate waits, because they are two separate things and rolling
+         them into one fixed sleep is what produced screenshots of the home
+         screen. First: the app has to be on screen at all, which on a cold
+         device takes as long as it takes. Only then does the driver's own work
+         start, and only that part is predictable. */
+      await waitForApp(udid);
+      const settle = 1500 + screen.steps.reduce((t, st) => t + (st.wait || 1000), 0);
+      await new Promise((r) => setTimeout(r, settle));
 
-    const out = join(OUT, screen.file);
-    sh("xcrun", ["simctl", "io", udid, "screenshot", "--type", "png", out]);
+      const rel = join(set.dir, screen.file);
+      const out = join(OUT, rel);
+      sh("xcrun", ["simctl", "io", udid, "screenshot", "--type", "png", out]);
 
-    const size = pngSize(out);
-    const ok = size.width === EXPECT.width && size.height === EXPECT.height;
-    results.push({ file: screen.file, ...size, ok });
-    log(`  ${size.width}×${size.height} ${ok ? "OK" : "WRONG SIZE"}`);
+      /* Read the size back out of the PNG header. Trusting the device to have
+         produced its own native size is what cost a submission round: the
+         wrong simulator captures a plausible-looking file at the wrong
+         dimensions and nothing says so until App Store Connect refuses it. */
+      /* Both checks, because either alone lets a bad file through: the wrong
+         size is refused on upload, and the right size showing a wallpaper is
+         accepted and then seen by everyone. */
+      const size = pngSize(out);
+      const sizeOk = size.width === set.width && size.height === set.height;
+      const problem = frameProblem(out);
+      const ok = sizeOk && !problem;
+
+      const why = !sizeOk ? `WRONG SIZE — wanted ${set.width}×${set.height}`
+        : problem ?? "OK";
+      results.push({ rel, ...size, want: `${set.width}×${set.height}`, ok, why });
+      log(`  ${set.slot}"  ${size.width}×${size.height}  ${why}`);
+    }
   }
 
   console.log("");
-  const bad = results.filter((r) => !r.ok);
   for (const r of results) {
-    console.log(`  screenshots/${r.file}  ${r.width}×${r.height}  ${r.ok ? "OK" : "REJECTED SIZE"}`);
+    console.log(`  screenshots/${r.rel}  ${r.width}×${r.height}  ${r.why}`);
   }
   console.log("");
+
+  const bad = results.filter((r) => !r.ok);
   if (bad.length) {
-    console.error(`  ${bad.length} screenshot(s) are not ${EXPECT.width}×${EXPECT.height}. ` +
-      "App Store Connect refuses these on upload.\n");
+    console.error(`  ${bad.length} of ${results.length} screenshot(s) are unusable.\n`);
+    for (const r of bad) console.error(`    screenshots/${r.rel}: ${r.why}`);
+    console.error("");
     process.exit(1);
   }
-  log(`all ${results.length} at ${EXPECT.width}×${EXPECT.height}`);
+
+  for (const set of sets) {
+    log(`${set.slot}" slot: ${SCREENS.length} files at ${set.width}×${set.height}  (${set.note})`);
+  }
+  log("captured natively at each size — nothing was rescaled.");
   log("no order was created in Clover: POST /orders is fixtured in the driver.");
   console.log("");
 }
