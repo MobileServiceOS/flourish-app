@@ -5,10 +5,16 @@
    MODIFIER, and matching only item names returned nothing for all of them.
 
    Each item carries a flattened `search` string built by the generator from its
-   name plus every sellable modifier across every group. Sold-out and
-   off-menu modifiers are left out of it: surfacing a plate through a flavour we
-   refuse to sell is worse than not matching, because the customer taps the row
-   and finds the thing they searched for is not on the sheet.
+   name plus every sellable modifier in its DISH-DEFINING groups — flavours,
+   sizes, preparations. Two things are deliberately left out:
+
+   - sold-out and off-menu modifiers, because surfacing a plate through a
+     flavour we refuse to sell is worse than not matching: the customer taps the
+     row and the thing they searched for is not on the sheet
+   - the shared "Side With Meal" group, which is the same fourteen options on
+     some twenty plates. Indexing it made any query containing a side word match
+     nearly the whole menu. Sides are separately sellable, so the standalone Side
+     item keeps its own options and "mac and cheese" still finds it there.
 
    Nothing here is hand-maintained. The index comes out of the Clover export, so
    renaming a flavour in Clover renames it in search on the next regeneration. */
@@ -127,16 +133,13 @@ export function rankFor(item, q) {
   const unmatchedByName = tokens.length - matchedByName.length;
 
   const dishWords = dishWordsOf(item);
-  const index = indexOf(item);
 
-  /* Where the words the name could not account for actually turned up, weakest
-     last: the item's own flavour list, then the two included sides every plate
-     shares, then the description. */
+  /* Where the words the name could not account for turned up: the item's own
+     flavour list, or — weaker, and last — its description. The shared sides are
+     not in the index at all any more, so there is no third case. */
   const leftovers = tokens.filter((t) => !nameWords.some((w) => w.includes(t)));
   const viaDish = leftovers.some((t) => dishWords.includes(t));
-  const viaIndex = leftovers.some((t) => index.includes(t));
-  const sideOnly = leftovers.length > 0 && !viaDish && viaIndex;
-  const descOnly = leftovers.length > 0 && !viaIndex;
+  const descOnly = leftovers.length > 0 && !viaDish;
 
   const extraNameWords = nameWords.filter(
     (w) => !tokens.some((t) => w.includes(t))
@@ -145,11 +148,9 @@ export function rankFor(item, q) {
   /* The name dominates. A word the name accounted for is far stronger evidence
      than the same word turning up in an options list, so an unmatched query
      word costs more than any other penalty — otherwise "fried shrimp" leads
-     with the standalone Side item, which offers a fried chicken side and a
-     shrimp side and is not remotely what was asked for. */
+     with an item that merely lists both words among its options. */
   return RANK.SPREAD
     + unmatchedByName * 6
-    + (sideOnly ? 2 : 0)
     + (descOnly ? 4 : 0)
     + extraNameWords;
 }

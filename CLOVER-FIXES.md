@@ -1,9 +1,12 @@
 # Clover inventory issues found
 
 Found while mapping the app to your live Clover export (`inventory-export-v2.xlsx`).
-The app already works around all five. **Clover itself still needs correcting** — these
+The app works around the first five. **Clover itself still needs correcting** — these
 affect what rings up at the register, on Ordering Tools, and on every delivery platform
 that syncs from your inventory.
+
+Number 6 is deliberately NOT worked around: it is a live price, and overriding a price in
+the app would make it disagree with the till. Only Clover can fix that one.
 
 Ordered by what they cost you.
 
@@ -104,6 +107,29 @@ Sold from inside this size group it:
 **App behavior meanwhile:** hidden. Stew Peas shows $15–$18 with Medium and Large only.
 Seafood Stew Peas is sold as its own item, one size, and is greyed out with
 **FRI & SAT ONLY** from Sunday to Thursday.
+
+---
+
+## 6. The "Fried Chicken" side is priced for Uber Eats, and walk-ins pay it
+
+**Where:** Modifier Groups → Side With Meal → `Fried Chicken` (`0VK0R5TDR2FRC`), **$6**
+**Problem:** $6 is a delivery-platform price. It is sitting in the in-store register, so it
+is what the counter charges someone standing in the shop — and what this app charges,
+because Clover prices its own orders. Every other side in that group is $0 with the plate;
+the seafood upcharges are $3.50 and $5.
+
+This one is not a display bug or a rounding difference. It is money, taken from walk-in
+customers, on every plate that picks that side.
+
+**Fix:** correct it in the Clover dashboard to the in-store price. If the $6 exists to
+cover a platform's commission, it belongs in that platform's own menu, not in the register
+every other channel reads from.
+
+**App behavior meanwhile:** the app charges what Clover charges — it deliberately sends no
+line prices — so it shows and rings up $6 like the counter does. **This must not be
+"fixed" in the app.** Overriding it here would make the app disagree with the register and
+put the till out; see the two rules at the top of CLAUDE.md. The only correct place to
+change it is Clover.
 
 ---
 

@@ -7,28 +7,28 @@
 // Line price = base + selected variant modifier + side upcharges.
 // Defaults to the first available option in each group (Clover's own ordering).
 // oos:true marks a modifier Clover has mispriced; hidden rather than sold wrong.
-// See CLOVER-FIXES.md for the five issues found and what to correct in Clover.
+// See CLOVER-FIXES.md for the six issues found and what to correct in Clover.
 export const MENU = [
   { cat: "Lunch & Dinner", sub: "Plates come with two sides", items: [
     { id: "598S0BJH4J7DE", name: "Crab Legs Platter", emoji: "🦀",
-        desc: "Crab legs and shrimp with two sides", base: 50.0, lo: 50.0, hi: 50.0, prepMinutes: 30, search: "crab legs platter white rice mac and cheese peas fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Crab legs and shrimp with two sides", base: 50.0, lo: 50.0, hi: 50.0, prepMinutes: 30, search: "crab legs platter", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "VGZYVZCB2NCRY", name: "Lobster", emoji: "🦞",
-        desc: "Whole lobster with two sides", base: 45.0, lo: 45.0, hi: 45.0, prepMinutes: 30, search: "lobster white rice mac and cheese peas fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Whole lobster with two sides", base: 45.0, lo: 45.0, hi: 45.0, prepMinutes: 30, search: "lobster", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "7916EWVQFPGH8", name: "Lamb", emoji: "🥩",
-        desc: "Slow-braised lamb with two sides", base: 30.0, lo: 30.0, hi: 30.0, prepMinutes: 30, search: "lamb white rice mac and cheese peas fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Slow-braised lamb with two sides", base: 30.0, lo: 30.0, hi: 30.0, prepMinutes: 30, search: "lamb", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "VQZ0T4XK707EC", name: "Snapper Fish", emoji: "🐠",
-        desc: "Brown stew, escovitch, or steamed", base: 0.0, lo: 30.0, hi: 30.0, prepMinutes: 30, search: "snapper fish white rice mac and cheese peas fried chicken festival pasta shrimp whiting x1 mashed potatoes waffles seafood candied yams steam veg plaintain brown stew escovitch", groups: [
+        desc: "Brown stew, escovitch, or steamed", base: 0.0, lo: 30.0, hi: 30.0, prepMinutes: 30, search: "snapper fish brown stew escovitch steam", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
         { gid: "AJY3FTT4BRPHP", name: "Fish", kind: "variant", mods: [{ n: "Brown Stew Fish", p: 30.0 }, { n: "Escovitch", p: 30.0 }, { n: "Steam Fish", p: 30.0 }, { n: "Whiting Fish", p: 14.0, oos: true }, { n: "Snapper Fish (Add On. No Sides)", p: 20.0, oos: true }] }
       ] },
     { id: "ZTAQ37M4E9S4C", name: "Stew Peas", emoji: "🫘",
-        desc: "Red peas simmered in coconut milk", base: 0.0, lo: 15.0, hi: 18.0, prepMinutes: 15, search: "stew peas medium large white rice mac and cheese fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Red peas simmered in coconut milk", base: 0.0, lo: 15.0, hi: 18.0, prepMinutes: 15, search: "stew peas medium large", groups: [
         { gid: "KR1HHY64E4QPJ", name: "Stew Peas", kind: "variant", mods: [{ n: "Medium", p: 15.0 }, { n: "Large", p: 18.0 }, { n: "Seafood", p: 30.0, oos: true }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
@@ -36,7 +36,7 @@ export const MENU = [
         desc: "Stew peas loaded with seafood. One size, large.", days: [5, 6], base: 30.0, lo: 30.0, hi: 30.0, prepMinutes: 30, search: "seafood stew peas", groups: [
       ] },
     { id: "60KCQ1V22Q98M", name: "Oxtail", emoji: "🍖",
-        desc: "Slow-cooked, fall-off-the-bone tender", base: 0.0, lo: 20.0, hi: 25.0, prepMinutes: 15, search: "oxtail medium large white rice mac and cheese peas fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Slow-cooked, fall-off-the-bone tender", base: 0.0, lo: 20.0, hi: 25.0, prepMinutes: 15, search: "oxtail medium large", groups: [
         { gid: "45KGD3ZDMT2ZY", name: "Oxtail Size", kind: "variant", mods: [{ n: "Medium", p: 20.0 }, { n: "Large", p: 25.0 }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
@@ -45,65 +45,65 @@ export const MENU = [
         { gid: "D0F1SFXHWSQWT", name: "Pasta", kind: "variant", mods: [{ n: "Plain Pasta", p: 15.0 }, { n: "Chicken", p: 18.0 }, { n: "Shrimp", p: 20.0 }, { n: "Garlic", p: 15.0 }, { n: "Penne Alla Vodka", p: 18 }, { n: "Steak", p: 25.0 }, { n: "Oxtail", p: 24 }] }
       ] },
     { id: "H9520PFNBT2NY", name: "Salmon", emoji: "🐟",
-        desc: "Honey garlic, jerk, sweet chili, grilled, or steamed", base: 0.0, lo: 22.0, hi: 22.0, prepMinutes: 30, search: "salmon sweet chili grilled honey garlic white rice mac and cheese peas fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Honey garlic, jerk, sweet chili, grilled, or steamed", base: 0.0, lo: 22.0, hi: 22.0, prepMinutes: 30, search: "salmon sweet chili grilled honey garlic", groups: [
         { gid: "ZR29AF0E4JPXA", name: "Salmon", kind: "variant", mods: [{ n: "Sweet Chili", p: 22.0 }, { n: "Grilled", p: 22.0 }, { n: "Steamed", p: 22.0, oos: true }, { n: "Honey Garlic", p: 22.0 }, { n: "Jerk", p: 22.0, oos: true }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "AYBW9QMTC6154", name: "Ackee & Shrimp", emoji: "🍤",
-        desc: "Ackee and shrimp with two sides", base: 20.0, lo: 20.0, hi: 20.0, prepMinutes: 30, search: "ackee shrimp white rice mac and cheese peas fried chicken festival pasta whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Ackee and shrimp with two sides", base: 20.0, lo: 20.0, hi: 20.0, prepMinutes: 30, search: "ackee shrimp", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "VHHCS7EDV70HC", name: "Shrimp", emoji: "🍤",
-        desc: "Sweet chili, garlic, curried, pepper, grilled, or fried", base: 0.0, lo: 20.0, hi: 20.0, prepMinutes: 30, search: "shrimp white rice mac and cheese peas fried chicken festival pasta whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain garlic curried pepper sweet chili grilled", groups: [
+        desc: "Sweet chili, garlic, curried, pepper, grilled, or fried", base: 0.0, lo: 20.0, hi: 20.0, prepMinutes: 30, search: "shrimp garlic curried pepper sweet chili grilled fried", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
-        { gid: "4BY3GKC2SVJ90", name: "Shrimp", kind: "variant", mods: [{ n: "Garlic", p: 20.0 }, { n: "Curried", p: 20.0 }, { n: "Pepper", p: 20.0 }, { n: "Sweet Chili", p: 20.0 }, { n: "Grilled", p: 20.0 }, { n: "Fried", p: 20.0, oos: true }] }
+        { gid: "4BY3GKC2SVJ90", name: "Shrimp", kind: "variant", mods: [{ n: "Garlic", p: 20.0 }, { n: "Curried", p: 20.0 }, { n: "Pepper", p: 20.0 }, { n: "Sweet Chili", p: 20.0 }, { n: "Grilled", p: 20.0 }, { n: "Fried", p: 20.0 }] }
       ] },
     { id: "8FW3GVMJKCGZG", name: "Pork", emoji: "🥓",
-        desc: "Stew or jerk, medium or large", base: 0.0, lo: 20.0, hi: 25.0, prepMinutes: 15, search: "pork white rice mac and cheese peas fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain medium stew large jerk", groups: [
+        desc: "Stew or jerk, medium or large", base: 0.0, lo: 20.0, hi: 25.0, prepMinutes: 15, search: "pork medium stew large jerk", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
         { gid: "907Z8BF726CQ4", name: "Pork", kind: "variant", mods: [{ n: "Medium Stew", p: 20 }, { n: "Large Stew", p: 25 }, { n: "Medium Jerk", p: 20 }, { n: "Large Jerk", p: 25 }] }
       ] },
     { id: "PSGB77QNZR2WM", name: "Blue Crab", emoji: "🦀",
-        desc: "Blue crab with two sides", base: 20.0, lo: 20.0, hi: 20.0, prepMinutes: 30, search: "blue crab white rice mac and cheese peas fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Blue crab with two sides", base: 20.0, lo: 20.0, hi: 20.0, prepMinutes: 30, search: "blue crab", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "QB9EKT4QGVWDA", name: "Shrimp & Waffles", emoji: "🧇",
-        desc: "Shrimp over waffles, six flavors to pick from", base: 20.0, lo: 20.0, hi: 20.0, prepMinutes: 30, search: "shrimp waffles white rice mac and cheese peas fried chicken festival pasta whiting fish x1 mashed potatoes seafood candied yams steam veg plaintain red velvet strawberry easter bun cinnamin buttermilk coconut toto", groups: [
+        desc: "Shrimp over waffles, six flavors to pick from", base: 20.0, lo: 20.0, hi: 20.0, prepMinutes: 30, search: "shrimp waffles red velvet strawberry easter bun cinnamin buttermilk coconut toto", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
         { gid: "3VQCJ6J8Q465P", name: "Waffles Flavors", kind: "flavor", mods: [{ n: "Red Velvet", p: 0.0 }, { n: "Strawberry", p: 0.0 }, { n: "Easter Bun", p: 0.0 }, { n: "Cinnamin", p: 0.0 }, { n: "Buttermilk", p: 0.0 }, { n: "Coconut Toto", p: 0.0 }] }
       ] },
     { id: "C2RD25C1VXNN0", name: "Wings", emoji: "🔥",
-        desc: "Made to order. Pick your sauce.", base: 0.0, lo: 15.0, hi: 18.0, prepMinutes: 15, search: "wings medium large white rice mac and cheese peas fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain chili honey bbq garlic mango habanero jerk henny", groups: [
+        desc: "Made to order. Pick your sauce.", base: 0.0, lo: 15.0, hi: 18.0, prepMinutes: 15, search: "wings medium large chili honey bbq garlic mango habanero jerk henny", groups: [
         { gid: "4BWH51GY6DSEY", name: "Wings", kind: "variant", mods: [{ n: "Medium", p: 15.0 }, { n: "Large", p: 18.0 }, { n: "Wings", p: 1.5, oos: true }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
         { gid: "4MT0W7554719J", name: "Flavors", kind: "flavor", mods: [{ n: "Chili", p: 0.0 }, { n: "Honey Bbq", p: 0.0 }, { n: "Honey Garlic", p: 0.0 }, { n: "Mango Habanero", p: 0.0 }, { n: "Jerk", p: 0.0 }, { n: "Henny", p: 0.0 }] }
       ] },
     { id: "NEAR47KAE44HC", name: "Curried Goat", emoji: "🍛",
-        desc: "Tender island-style curry goat", base: 0.0, lo: 15.0, hi: 18.0, prepMinutes: 15, search: "curried goat white rice mac and cheese peas fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain medium large", groups: [
+        desc: "Tender island-style curry goat", base: 0.0, lo: 15.0, hi: 18.0, prepMinutes: 15, search: "curried goat medium large", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
         { gid: "ZQKXN5HY71ERM", name: "Curried Goat", kind: "variant", mods: [{ n: "Medium", p: 15.0 }, { n: "Large", p: 18.0 }] }
       ] },
     { id: "433FBT50JEVY8", name: "Pork Ribs", emoji: "🍖",
-        desc: "Pork ribs with two sides", base: 18.0, lo: 18.0, hi: 18.0, prepMinutes: 15, search: "pork ribs white rice mac and cheese peas fried chicken festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Pork ribs with two sides", base: 18.0, lo: 18.0, hi: 18.0, prepMinutes: 15, search: "pork ribs", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "QFNQ2XQB8SPN6", name: "Fried chicken", emoji: "🍗",
-        desc: "Fried to order, medium or large", base: 0.0, lo: 13.0, hi: 16.0, prepMinutes: 15, search: "fried chicken medium large white rice mac and cheese peas festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Fried to order, medium or large", base: 0.0, lo: 13.0, hi: 16.0, prepMinutes: 15, search: "fried chicken medium large", groups: [
         { gid: "BKRVMPSXZR0G0", name: "Fried Chicken", kind: "variant", mods: [{ n: "Medium", p: 13.0 }, { n: "Large", p: 16.0 }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "SJGN0N254K8KE", name: "Jerk Chicken", emoji: "🍗",
-        desc: "Jerk chicken with two sides", base: 0.0, lo: 14.0, hi: 16.0, prepMinutes: 15, search: "jerk chicken medium large white rice mac and cheese peas fried festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Jerk chicken with two sides", base: 0.0, lo: 14.0, hi: 16.0, prepMinutes: 15, search: "jerk chicken medium large", groups: [
         { gid: "NMMJZB5VVMGNJ", name: "Jerk Chicken", kind: "variant", mods: [{ n: "Medium", p: 14.0 }, { n: "Large", p: 16.0 }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "1PBGJ1BWC3Z52", name: "Chicken & Waffles", emoji: "🧇",
-        desc: "Fried chicken over waffles, six flavors", base: 15.0, lo: 15.0, hi: 15.0, prepMinutes: 15, search: "chicken waffles white rice mac and cheese peas fried festival pasta shrimp whiting fish x1 mashed potatoes seafood candied yams steam veg plaintain red velvet strawberry easter bun cinnamin buttermilk coconut toto", groups: [
+        desc: "Fried chicken over waffles, six flavors", base: 15.0, lo: 15.0, hi: 15.0, prepMinutes: 15, search: "chicken waffles red velvet strawberry easter bun cinnamin buttermilk coconut toto", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
         { gid: "3VQCJ6J8Q465P", name: "Waffles Flavors", kind: "flavor", mods: [{ n: "Red Velvet", p: 0.0 }, { n: "Strawberry", p: 0.0 }, { n: "Easter Bun", p: 0.0 }, { n: "Cinnamin", p: 0.0 }, { n: "Buttermilk", p: 0.0 }, { n: "Coconut Toto", p: 0.0 }] }
       ] },
     { id: "VTKZ1S1K3GPK8", name: "Brown Stew Chicken", emoji: "🍛",
-        desc: "Chicken braised down in brown stew gravy", base: 0.0, lo: 13.0, hi: 15.0, prepMinutes: 15, search: "brown stew chicken medium large white rice mac and cheese peas fried festival pasta shrimp whiting fish x1 mashed potatoes waffles seafood candied yams steam veg plaintain", groups: [
+        desc: "Chicken braised down in brown stew gravy", base: 0.0, lo: 13.0, hi: 15.0, prepMinutes: 15, search: "brown stew chicken medium large", groups: [
         { gid: "0EJWT5G5T0HNG", name: "Brown Stew Chicken", kind: "variant", mods: [{ n: "Medium", p: 13.0 }, { n: "Large", p: 15.0 }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 0.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 0.0 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },

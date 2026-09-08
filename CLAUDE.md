@@ -351,12 +351,21 @@ modifier across every group — built by `searchIndex()` in
 search on the next regeneration. It is never hand-maintained, and a test rebuilds
 it from the committed data and fails on any drift.
 
-**oos modifiers are left out.** Surfacing a plate through a flavour we refuse to
-sell is worse than not matching: the customer taps the row and the option is not
-on the sheet. Descriptions are searched too but rank below the index, and a
-description word that names an oos modifier is stripped — Salmon's copy still
-reads "...grilled, or steamed" while Steamed is off the menu, and matching that
-text would undo the rule.
+**Two things are left out of the index.**
+
+*oos modifiers*, because surfacing a plate through a flavour we refuse to sell is
+worse than not matching: the customer taps the row and the option is not on the
+sheet. Descriptions are searched too but rank below the index, and a description
+word that names an oos modifier is stripped — Salmon's copy still reads
+"...grilled, or steamed" while Steamed is off the menu, and matching that text
+would undo the rule.
+
+*The shared "Side With Meal" group*, because it is the same fourteen options on
+some twenty plates. Indexing it meant any query containing a side word matched
+nearly the whole menu — "mac and cheese" returned twenty rows. Options that
+appear everywhere carry no information about which plate you wanted. Sides are
+separately sellable, so the standalone Side item keeps its own group (named
+"Side", kind `variant`) and "mac and cheese" finds it there, alone.
 
 `src/lib/search.js` owns matching and ranking. Every query word must appear
 (AND, not OR) and word order never matters. Ranking is a score, not a tier,
@@ -365,9 +374,8 @@ because the interesting cases are otherwise all ties:
 - an exact item name wins outright, so "shrimp" leads with the Shrimp plate
 - a query word the NAME accounted for is worth far more than the same word in an
   options list
-- a match through the fourteen included sides every plate shares is worth least,
-  because those options are identical menu-wide and say nothing about which
-  plate was wanted
+- a description-only match is worth least, since the copy goes stale against the
+  data — Salmon's still lists flavours that are off the menu
 
 When an item matched on a modifier, the sheet **opens on that modifier** —
 finding "sweet chili salmon" and landing on a sheet defaulted to Grilled is worse
@@ -376,12 +384,13 @@ groups are preselected: a side is what comes *with* the plate, and swapping
 someone's rice because a search word brushed against it is not a search box's
 decision.
 
-**Known limitation.** The shared "Side With Meal" group is in the index, as
-specified, and it is identical on ~20 plates — so a query mentioning any side
-word matches nearly the whole menu. Ranking keeps the right item first
-("fried shrimp" leads with Shrimp) but the tail is long. Dropping that one group
-from the index would make such queries precise; it would also stop "mac and
-cheese" finding the plates that offer it as a side.
+One thing to know about the data: **"Fried" under Shrimp was wrongly flagged
+off-menu.** The shop sells fried shrimp — it is a real flavour inside the Shrimp
+item's own group — and the oos flag hid it from customers and from search, which
+is why "fried shrimp" once only reached Shrimp by accident, through the "Fried
+Chicken" side. There is no separate Fried Shrimp item in Clover and there should
+not be one: Clover has a single Shrimp item with its flavours inside it, and the
+fried shrimp *side* is the existing $5 Shrimp modifier.
 
 ### Grouping line items
 
@@ -502,7 +511,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 513 tests
+npm test            # 519 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

@@ -160,7 +160,11 @@ const NOT_ON_PRINTED_MENU = new Set([
   "AJY3FTT4BRPHP::Snapper Fish (Add On. No Sides)",   // menu lists fish at $30 only
   "ZR29AF0E4JPXA::Steamed",          // salmon flavours the menu does not list
   "ZR29AF0E4JPXA::Jerk",
-  "4BY3GKC2SVJ90::Fried",            // shrimp flavour the menu does not list
+  /* NOT here: "4BY3GKC2SVJ90::Fried". The shop sells fried shrimp — it is a
+     real flavour inside the Shrimp item's own group, and flagging it off-menu
+     hid it from customers and from search. There is no separate Fried Shrimp
+     item in Clover and there should not be one: Clover has a single Shrimp
+     item with its flavours inside it. */
   "F0Q8615QD5HMM::Curry Goat",       // lunch specials the menu does not list
   "F0Q8615QD5HMM::Oxtail",
   "F0Q8615QD5HMM::Wings",
@@ -238,6 +242,14 @@ const DESC = {
    oos modifiers are LEFT OUT. Surfacing a plate through a flavour we refuse to
    sell is worse than not matching at all: the customer searches "steamed
    salmon", taps the row, and finds no steamed option on the sheet.
+
+   The shared "Side With Meal" group is LEFT OUT TOO. It is the same fourteen
+   options on some twenty plates, so indexing it made any query containing a
+   side word match nearly the whole menu — "mac and cheese" returned twenty
+   rows. Options that appear everywhere carry no information about which plate
+   you wanted. Sides are separately sellable, so the standalone Side item keeps
+   its own group (named "Side", kind "variant") and "mac and cheese" still finds
+   it there.
    ============================================================================ */
 
 /* Case and punctuation are noise: "Mac & Cheese" and "mac and cheese" are the
@@ -259,6 +271,8 @@ function searchIndex(item) {
   };
   add(item.name);
   for (const g of item.groups) {
+    // Dish-defining groups only: flavours, sizes, preparations.
+    if (g.kind === "side") continue;
     for (const mod of g.mods) {
       if (mod.oos) continue;              // never surfaced through what we won't sell
       add(mod.n);

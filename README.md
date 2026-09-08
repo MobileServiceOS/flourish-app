@@ -133,7 +133,7 @@ npm test          # once
 npm run test:watch
 ```
 
-513 tests. They cover the things that cost money if they break: pickup-slot
+519 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the
@@ -265,7 +265,9 @@ You'll need Xcode and an Apple Developer account to put it on the App Store.
 - **Search matches flavours, not just item names** — "sweet chili salmon",
   "escovitch" and "honey garlic" all find their dish, word order doesn't matter,
   and the options sheet opens on the flavour that was searched for. Sold-out
-  options never match
+  options never match, and the two included sides every plate shares are not
+  indexed — they are the same everywhere, so "mac and cheese" finds the side you
+  can actually buy rather than twenty plates that come with one
 - Cart, checkout, tip, tax, order confirmation and live status
 - **Ready windows worked out per order.** Fish, seafood and lamb are cooked to
   order and take 30 minutes; everything else takes 15. A cart is quoted the

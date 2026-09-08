@@ -30,8 +30,23 @@ describe("modifier text is searchable", () => {
     expect(find("escovitch")).toEqual(["Snapper Fish"]);
   });
 
-  it("finds the Shrimp plate from a flavour word plus its name", () => {
+  it("finds the Shrimp plate through Fried, which is a real flavour of it", () => {
+    /* Fried was wrongly flagged off-menu, so this query used to reach Shrimp
+       only by accident, through the "Fried Chicken" side every plate carries.
+       That path is gone now — the shared sides are not indexed — so this
+       passing means the flavour itself matched. */
+    const shrimp = item("Shrimp");
+    const flavours = shrimp.groups.find((g) => g.gid === "4BY3GKC2SVJ90");
+    expect(flavours.mods.find((m) => m.n === "Fried").oos).toBeUndefined();
+    expect(shrimp.search).toContain("fried");
     expect(find("fried shrimp")[0]).toBe("Shrimp");
+  });
+
+  it("opens the Shrimp sheet on Fried when that is what was searched", () => {
+    const shrimp = item("Shrimp");
+    const flavours = shrimp.groups.find((g) => g.gid === "4BY3GKC2SVJ90");
+    const sel = preselectFor(shrimp, "fried shrimp");
+    expect(flavours.mods[sel[flavours.gid]].n).toBe("Fried");
   });
 
   it("does not care what order the words come in", () => {
@@ -92,12 +107,32 @@ describe("an exact item name outranks a modifier match", () => {
     expect(find("Side")[0]).toBe("Side");
   });
 
-  it("ranks a match through the shared sides below a real one", () => {
-    /* Every plate carries the same fourteen included sides, so matching one
-       says nothing about which plate was wanted. */
-    const viaOwnFlavour = rankFor(item("Salmon"), "sweet chili salmon");
-    const viaSharedSide = rankFor(item("Lobster"), "mac cheese");
-    expect(viaSharedSide).toBeGreaterThan(viaOwnFlavour);
+  it("ranks a description-only match below a real modifier match", () => {
+    // Same query, two items: Drink sells coconut water, Stew Peas merely
+    // mentions coconut milk in its copy.
+    expect(rankFor(item("Stew Peas"), "coconut"))
+      .toBeGreaterThan(rankFor(item("Drink"), "coconut"));
+    expect(find("coconut")[0]).toBe("Drink");
+  });
+});
+
+describe("the shared sides are not searchable", () => {
+  /* The same fourteen options sit on some twenty plates, so matching one said
+     nothing about which plate was wanted: "mac and cheese" returned twenty
+     rows. Sides are sold separately, so the standalone Side item is where they
+     are found now. */
+  it("does not surface a plate through the sides it comes with", () => {
+    expect(find("white rice")).toEqual(["Side"]);
+    expect(find("mac and cheese")).toEqual(["Side"]);
+  });
+
+  it("does not surface a plate through a side upcharge either", () => {
+    expect(find("candied yams")).toEqual(["Side"]);
+  });
+
+  it("keeps a side word matching the item that actually sells it", () => {
+    expect(item("Side").search).toContain("mac");
+    expect(item("Side").search).toContain("rice");
   });
 });
 
@@ -211,6 +246,7 @@ describe("the search index regenerates from the Clover export", () => {
     };
     add(it.name);
     for (const g of it.groups) {
+      if (g.kind === "side") continue;          // the shared sides are not indexed
       for (const m of g.mods) {
         if (m.oos) continue;
         add(m.n);
@@ -232,10 +268,11 @@ describe("the search index regenerates from the Clover export", () => {
     }
   });
 
-  it("indexes the item name and every sellable modifier", () => {
+  it("indexes the item name and every sellable dish-defining modifier", () => {
     const salmon = item("Salmon");
     expect(salmon.search).toContain("salmon");
     for (const g of salmon.groups) {
+      if (g.kind === "side") continue;
       for (const m of g.mods) {
         if (m.oos) continue;
         for (const w of normalise(m.n).split(" ")) {
@@ -243,6 +280,26 @@ describe("the search index regenerates from the Clover export", () => {
         }
       }
     }
+  });
+
+  it("leaves the shared sides group out", () => {
+    /* The same fourteen options sit on some twenty plates. Indexing them made
+       any query with a side word in it match nearly the whole menu. */
+    const salmon = item("Salmon");
+    const sideGroup = salmon.groups.find((g) => g.kind === "side");
+    expect(sideGroup).toBeTruthy();
+    expect(sideGroup.mods.some((m) => m.n === "White Rice")).toBe(true);
+    expect(salmon.search).not.toContain("white rice");
+    expect(salmon.search).not.toContain("candied");
+
+    // ...but the standalone Side item keeps its own, because sides are sold
+    // separately and "mac and cheese" has to find them somewhere.
+    expect(item("Side").search).toContain("mac");
+    expect(item("Side").search).toContain("cheese");
+  });
+
+  it("skips the shared sides in the generator, not just in the data", () => {
+    expect(gen).toMatch(/if \(g\.kind === "side"\) continue;/);
   });
 
   it("is emitted by the generator, not written in by hand", () => {
