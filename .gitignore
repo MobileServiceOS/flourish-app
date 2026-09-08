@@ -21,3 +21,7 @@ brand/screenshots/
 
 # gstack skill reports and screenshots
 .gstack/
+screenshots/
+
+# iOS build output for the screenshot script
+.screenshot-build/

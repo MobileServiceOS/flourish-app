@@ -20,7 +20,8 @@
     "icons": "python3 scripts/make-icons.py",
     "release:check": "node scripts/check-release-config.mjs",
     "release:ios": "npm run release:check && npm run sync && npx cap open ios",
-    "version:stamp": "node scripts/stamp-version.mjs"
+    "version:stamp": "node scripts/stamp-version.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.0",
