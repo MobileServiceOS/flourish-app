@@ -15,18 +15,25 @@
  * `cap sync` has finished with it.
  *
  * SOURCES OF TRUTH
- *   version       package.json "version"
- *   display name  capacitor.config.ts "appName"
+ *   version        package.json "version"
+ *   build number   package.json "flourish.ios.buildNumber"
+ *   display name   capacitor.config.ts "appName"
+ *   device family  package.json "flourish.ios.deviceFamily"
+ *   visionOS       package.json "flourish.ios.supportsVision"
  *
  * The display name comes from `appName` rather than package.json because that
  * is already the canonical app name — Capacitor itself scaffolds the native
  * projects from it — whereas package.json "name" is an npm package identifier
  * ("flourish-bx-app") and would put that on the home screen.
  *
- * The BUILD number is deliberately not touched. It has to increase on every
- * upload to App Store Connect even when the version does not, so it belongs to
- * whoever is uploading:
- *   agvtool next-version -all
+ * The BUILD number IS stamped, which reverses an earlier decision. The argument
+ * for leaving it to whoever uploads was that it moves per upload and does not
+ * belong in the repo — true, but it left the number in the one directory that
+ * gets regenerated, and it drifted exactly like the others: App Store Connect
+ * had build 2 while the project on disk said 1. A duplicate build number is
+ * rejected on upload, so the drift is not cosmetic.
+ *
+ * It lives in package.json now and is bumped there before an upload.
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -42,7 +49,22 @@ const INFO_PLIST = resolve(ROOT, "ios/App/App/Info.plist");
    nothing is recoverable; stamping "" onto the home screen looks like a broken
    app and ships. */
 
-const { version } = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
+const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
+const { version } = pkg;
+const ios = pkg.flourish?.ios ?? {};
+const deviceFamily = String(ios.deviceFamily ?? "").trim();
+const buildNumber = ios.buildNumber;
+const supportsVision = Boolean(ios.supportsVision);
+
+if (!/^[12](,[12])*$/.test(deviceFamily)) {
+  console.error(`\n  flourish.ios.deviceFamily "${deviceFamily}" is not a device family list — not stamping.\n`);
+  process.exit(1);
+}
+if (!Number.isInteger(buildNumber) || buildNumber < 1) {
+  console.error(`\n  flourish.ios.buildNumber "${buildNumber}" is not a positive integer — not stamping.\n`);
+  process.exit(1);
+}
+
 if (!/^\d+\.\d+\.\d+$/.test(version)) {
   console.error(`\n  package.json version "${version}" is not X.Y.Z — not stamping.\n`);
   process.exit(1);
@@ -69,17 +91,32 @@ if (!existsSync(PBXPROJ)) {
 }
 
 /* ---------------------------------------------------------------------------
+   Set a build setting in every configuration.
+
+   Two branches, and the second is the one that matters: a project regenerated
+   by `npx cap add ios` may not contain the setting at all, and a plain
+   search-and-replace over an absent key silently does nothing. So a missing
+   setting is ADDED, anchored to the INFOPLIST_FILE line that Capacitor's
+   template does always write. */
+function setBuildSetting(name, value) {
+  const before = readFileSync(PBXPROJ, "utf8");
+  const has = new RegExp(`${name} = [^;]*;`).test(before);
+  const after = has
+    ? before.replace(new RegExp(`${name} = [^;]*;`, "g"), `${name} = ${value};`)
+    : before.replace(/(INFOPLIST_FILE = App\/Info\.plist;)/g,
+        `$1\n\t\t\t\t${name} = ${value};`);
+  if (after !== before) writeFileSync(PBXPROJ, after);
+  return (after.match(new RegExp(`${name} = ${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")};`, "g")) ?? []).length;
+}
+
+/* ---------------------------------------------------------------------------
    Version -> MARKETING_VERSION in every build configuration. */
 {
-  const before = readFileSync(PBXPROJ, "utf8");
-  const found = (before.match(/MARKETING_VERSION = [^;]+;/g) ?? []).length;
-  if (!found) {
-    console.warn("  version  MARKETING_VERSION not found in the Xcode project — nothing stamped");
-  } else {
-    const after = before.replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${version};`);
-    if (after !== before) writeFileSync(PBXPROJ, after);
-    console.log(`  version  ${version} stamped onto ${found} build configuration(s)`);
-  }
+  /* Through the same add-if-missing path as everything else. This used to only
+     replace, and warned "not found — nothing stamped" when the key was absent —
+     which is precisely the regenerated-project case the stamping exists for. */
+  const n = setBuildSetting("MARKETING_VERSION", version);
+  console.log(`  version  ${version} stamped onto ${n} build configuration(s)`);
 }
 
 /* ---------------------------------------------------------------------------
@@ -139,3 +176,34 @@ if (readBack !== appName) {
 }
 
 console.log(`  name     "${appName}" stamped onto Info.plist and the Xcode display-name setting`);
+
+/* ---------------------------------------------------------------------------
+   iPhone only.
+
+   TARGETED_DEVICE_FAMILY "1,2" means iPhone AND iPad, and App Store Connect
+   then refuses the submission until 13-inch iPad screenshots are supplied. This
+   is a pickup ordering app for one restaurant in the Bronx; there is no iPad
+   design and no reason to claim one.
+
+   "1" is iPhone. "2" is iPad. */
+{
+  const n = setBuildSetting("TARGETED_DEVICE_FAMILY", `"${deviceFamily}"`);
+  const label = deviceFamily === "1" ? "iPhone only" : `families ${deviceFamily}`;
+  console.log(`  devices  ${label} stamped onto ${n} build configuration(s)`);
+}
+
+/* An iPhone-only app is still offered on Vision Pro as a "compatible" app
+   unless it opts out. Opting out is a build setting; the App Store Connect
+   availability checkbox is a separate, owner-side toggle. */
+{
+  const n = setBuildSetting("SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD", supportsVision ? "YES" : "NO");
+  console.log(`  vision   ${supportsVision ? "allowed" : "opted out"} on ${n} build configuration(s)`);
+}
+
+/* The build number has to increase on every upload; a duplicate is rejected.
+   It is stamped rather than left in Xcode for the same reason as everything
+   else here — the directory it lived in gets regenerated. */
+{
+  const n = setBuildSetting("CURRENT_PROJECT_VERSION", String(buildNumber));
+  console.log(`  build    ${buildNumber} stamped onto ${n} build configuration(s)`);
+}

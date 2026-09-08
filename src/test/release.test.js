@@ -219,6 +219,57 @@ describe("the app is named on the home screen, and stays named", () => {
   });
 });
 
+/* ============================================================================
+   IPHONE ONLY
+
+   TARGETED_DEVICE_FAMILY "1,2" claims iPhone AND iPad, and App Store Connect
+   then blocks submission until 13-inch iPad screenshots are supplied. There is
+   no iPad design — this is a pickup ordering app for one restaurant — so the
+   claim was never true, and the block was Apple correctly noticing.
+   ============================================================================ */
+describe("the app claims iPhone and nothing else", () => {
+  const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
+
+  it("says iPhone only in the one authoritative place", () => {
+    expect(pkg.flourish.ios.deviceFamily).toBe("1");   // 1 = iPhone, 2 = iPad
+    expect(pkg.flourish.ios.deviceFamily).not.toContain("2");
+    expect(pkg.flourish.ios.supportsVision).toBe(false);
+  });
+
+  it("does not drift back to iPad in the generated project", () => {
+    const pbx = resolve(ROOT, "ios/App/App.xcodeproj/project.pbxproj");
+    if (!existsSync(pbx)) return;          // no ios/ on this machine, including CI
+    const found = [...readFileSync(pbx, "utf8")
+      .matchAll(/TARGETED_DEVICE_FAMILY = "?([^";]+)"?;/g)].map((m) => m[1].trim());
+
+    expect(found.length).toBeGreaterThan(0);
+    for (const f of found) {
+      expect(f, "iPad support is back — App Store Connect will demand iPad screenshots").toBe("1");
+    }
+  });
+
+  it("stays opted out of Vision Pro in the generated project", () => {
+    const pbx = resolve(ROOT, "ios/App/App.xcodeproj/project.pbxproj");
+    if (!existsSync(pbx)) return;
+    const found = [...readFileSync(pbx, "utf8")
+      .matchAll(/SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = ([^;]+);/g)].map((m) => m[1].trim());
+    expect(found.length).toBeGreaterThan(0);
+    for (const f of found) expect(f).toBe("NO");
+  });
+
+  it("keeps the build number ahead of what App Store Connect already has", () => {
+    /* Build 2 is uploaded. Apple rejects a duplicate, so this only ever goes
+       up — and it is stamped, so a regeneration cannot quietly reset it to 1. */
+    expect(pkg.flourish.ios.buildNumber).toBeGreaterThanOrEqual(3);
+
+    const pbx = resolve(ROOT, "ios/App/App.xcodeproj/project.pbxproj");
+    if (!existsSync(pbx)) return;
+    const found = [...readFileSync(pbx, "utf8")
+      .matchAll(/CURRENT_PROJECT_VERSION = ([^;]+);/g)].map((m) => Number(m[1].trim()));
+    for (const b of found) expect(b).toBe(pkg.flourish.ios.buildNumber);
+  });
+});
+
 /* ---------- the native app has to get past the front door ---------- */
 describe("a native app is allowed through the origin check", () => {
   /* ALLOWED_ORIGINS is still read from the environment, so these tests set it —

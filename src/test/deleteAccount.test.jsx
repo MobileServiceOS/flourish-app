@@ -256,9 +256,15 @@ describe("one version number, stamped from one place", () => {
     expect(sync.indexOf("cap sync")).toBeLessThan(sync.indexOf("native:stamp"));
   });
 
-  it("leaves the build number alone, since it moves per upload", () => {
+  it("stamps the build number too, which it did not used to", () => {
+    /* Reversed deliberately. Leaving the build number to whoever uploaded was
+       defensible — it moves per upload — but it left the value in the one
+       directory that gets regenerated, and it drifted like everything else:
+       App Store Connect had build 2 while the project on disk said 1. A
+       duplicate build number is rejected on upload, so that is not cosmetic. */
     const script = readFileSync(resolve(ROOT, "scripts/stamp-native.mjs"), "utf8");
     expect(script).toMatch(/MARKETING_VERSION/);
-    expect(script).not.toMatch(/CURRENT_PROJECT_VERSION = /);
+    expect(script).toMatch(/CURRENT_PROJECT_VERSION/);
+    expect(pkg.flourish.ios.buildNumber).toBeGreaterThanOrEqual(3);
   });
 });

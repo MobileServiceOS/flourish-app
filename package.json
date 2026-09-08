@@ -2,6 +2,13 @@
   "name": "flourish-bx-app",
   "private": true,
   "version": "1.0.0",
+  "flourish": {
+    "ios": {
+      "deviceFamily": "1",
+      "buildNumber": 3,
+      "supportsVision": false
+    }
+  },
   "type": "module",
   "description": "Commission-free pickup ordering app for Flourish bx inc, Bronx NY",
   "scripts": {

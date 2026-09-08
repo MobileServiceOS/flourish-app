@@ -589,8 +589,16 @@ finished rewriting it.
 
 | What | Source of truth | Stamped onto |
 |---|---|---|
-| Version | `package.json` → `version` | `MARKETING_VERSION`, every build configuration |
+| Version | `package.json` → `version` | `MARKETING_VERSION` |
+| Build number | `package.json` → `flourish.ios.buildNumber` | `CURRENT_PROJECT_VERSION` |
 | Display name | `capacitor.config.ts` → `appName` | `CFBundleDisplayName` in `Info.plist`, and `INFOPLIST_KEY_CFBundleDisplayName` |
+| Device family | `package.json` → `flourish.ios.deviceFamily` | `TARGETED_DEVICE_FAMILY` |
+| visionOS | `package.json` → `flourish.ios.supportsVision` | `SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD` |
+
+All of them go onto every build configuration, and a setting the regenerated
+project does not contain is **added** rather than skipped — a search-and-replace
+over an absent key silently does nothing, which is exactly the case the stamping
+exists for.
 
 ```bash
 npm run sync           # build -> cap sync -> icons -> native:stamp
@@ -630,9 +638,35 @@ including CI.
 bundle name, iOS only falls back to it when there is no display name, and
 changing it means renaming the target that Capacitor's tooling expects to find.
 
-The **build number** is not stamped: it has to increase on every upload to App
-Store Connect even when the version does not, so it belongs to whoever is
-uploading. Bump it in Xcode, or `agvtool next-version -all`.
+### iPhone only
+
+`TARGETED_DEVICE_FAMILY` is `"1"` — iPhone. It was `"1,2"`, which claims iPad
+too, and App Store Connect blocks submission on *"You must upload a screenshot
+for 13-inch iPad displays"* until you supply them. There is no iPad design; this
+is a pickup ordering app for one restaurant. The claim was never true and Apple
+was right to stop it.
+
+`SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD` is `NO`. An iPhone-only app is still
+offered on Vision Pro as a *compatible* app unless it opts out.
+
+> **The build setting is only half of the visionOS opt-out.** Availability is
+> also an App Store Connect toggle, under **Pricing and Availability**. Nothing
+> in this repo can set that; untick it there if it is on.
+
+To change either, edit `package.json` and run `npm run sync`. A test fails if
+the device family drifts back to include iPad.
+
+### The build number
+
+`flourish.ios.buildNumber` in `package.json`, stamped onto
+`CURRENT_PROJECT_VERSION`. **Bump it before every upload** — App Store Connect
+rejects a duplicate build number even when the version is unchanged.
+
+This used to be left to whoever was uploading, on the reasoning that it moves
+per upload and does not belong in the repo. That was wrong in practice: it left
+the number in the one directory that gets regenerated, and it drifted like
+everything else — App Store Connect had build 2 while the project on disk said
+`1`. Stamping it costs one edit per upload and removes a rejection.
 
 ### Pointing the app at it
 
