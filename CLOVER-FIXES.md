@@ -188,6 +188,70 @@ and regenerate; if $1 is right, `PRINTED-MENU-PRICES.md` needs updating instead.
 
 ---
 
+## 7. The eight Seafood Fridays items have never been sold
+
+**Answer to "how have these been selling?": they haven't.**
+
+Across **600 recent orders / 630 line items**, all eight have **zero sales**:
+
+```
+0x  Fish Platter (Shrimp & 2 Sides)      0x  Seafood Stew Peas
+0x  Crab Legs Platter (Shrimp & 2 Sides) 0x  Blue Crab $15
+0x  Lobster Platter (Shrimp & 2 Sides)   0x  Pepper Shrimp & Mussels
+0x  Shrimp $21.99                        0x  Salmon (Shrimp & 2 Sides)
+```
+
+They are dead SKUs. What staff actually ring is the **Lunch & Dinner twin**, and
+those record the flavour properly — so it is not being taken verbally:
+
+| Sold | Item | Flavours recorded |
+|---|---|---|
+| 46x | Salmon (`H9520PFNBT2NY`) | Honey Garlic, Sweet Chili, Jerk — every sale |
+| 14x | Shrimp (`VHHCS7EDV70HC`) | Fried, Sweet Chili — every sale |
+| 5x | Snapper Fish (`VQZ0T4XK707EC`) | via the Fish group |
+| 1x | Crab Legs Platter $50 (`598S0BJH4J7DE`) | sides only |
+| 1x | Blue Crab $20 (`PSGB77QNZR2WM`) | — |
+
+So every Friday flavour on the flyer **already exists in Clover**, on the
+everyday item. The Friday platters are unused duplicates with no groups.
+
+**The money consequence.** The Friday prices are cheaper than the everyday ones
+— Crab Legs $39.99 against $50, Salmon $21.99 against $22 — and the Friday SKUs
+are never rung. So either customers are not getting the Friday price, or staff
+are discounting by hand. Worth checking at the counter.
+
+### Two ways to fix this, and the second is probably right
+
+**Option A — make the Friday SKUs work.** Attach groups to each, then the app
+sells them as the flyer describes:
+
+| Item | Attach | Flyer wants | Clover group has | Missing |
+|---|---|---|---|---|
+| `06Z80836S0GZR` Fish Platter | `Fish` (`AJY3FTT4BRPHP`) + `Side With Meal` | fry, steam, escovitch, grill | Brown Stew, Escovitch, Steam Fish, Whiting, Snapper add-on | **fry, grill** |
+| `BRMP82TR0Z45C` Crab Legs Platter | `Side With Meal` only | 2 clusters, shrimp + 2 sides | — | — |
+| `A1YZ2ZD5CA1SW` Lobster Platter | a new flavour group + `Side With Meal` | grill, escovitch, fry, curry, thai | **no flavour group exists** | all five |
+| `CAFAH5FKPTRW8` Shrimp | `Shrimp` (`4BY3GKC2SVJ90`) | pepper, steam, curry, grill, garlic | Garlic, Curried, Pepper, Sweet Chili, Grilled, Fried | **steam** |
+| `0NQ5E11VABFDY` Salmon | `Salmon` (`ZR29AF0E4JPXA`) + `Side With Meal` | grill, jerk, honey garlic, thai | Sweet Chili, Grilled, Steamed, Honey Garlic, Jerk | **thai** |
+| `32VDQ4G5J131P` Seafood Stew Peas | `Side With Meal` | lobster tail, shrimp, conch | — | — |
+| `DH0P3NGRN9RNE` Blue Crab | nothing | — | — | — |
+| `PH221AJ7W66EA` Pepper Shrimp & Mussels | nothing | — | — | — |
+
+Also needed for A: **Thai** on lobster and salmon, **Fry** and **Grill** on fish,
+and **Steam** on shrimp do not exist as modifiers anywhere and would have to be
+created.
+
+**Option B — delete the Friday duplicates.** The everyday items already carry
+the flavours and the sides, and they are what staff use. Sell those, and make
+Friday a *price* difference rather than a separate SKU. Fewer items, no
+duplicate to keep in step, and nothing for staff to learn.
+
+B is simpler and matches what is actually happening at the register. A is
+faithful to the flyer's separate pricing. **This is a business decision, not a
+technical one** — say which and the app follows. Until then the app lists all
+eight as flat-priced items with no options, which is what Clover contains.
+
+---
+
 ## Other mismatches worth a look
 
 Clover is authoritative in the app for all of these. Listed so you can decide which source
