@@ -108,8 +108,8 @@ export const MENU = [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 6.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 2.5 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "9WV3BMMSC8G5E", name: "Soup", emoji: "🥣",
-        desc: "Chicken, goat, or seafood", base: 0.0, lo: 5.0, hi: 15.0, prepMinutes: 15, search: "soup medium chicken large goat seafood", groups: [
-        { gid: "H2749PVKFN4EY", name: "Soup", kind: "variant", mods: [{ n: "Medium Chicken", p: 5.0, days: [0,1,2,3,4] }, { n: "Large Chicken", p: 10.0, days: [0,1,2,3,4] }, { n: "Medium Goat", p: 5.0 }, { n: "Large Goat", p: 10.0 }, { n: "Medium Seafood", p: 10.0, days: [5,6] }, { n: "Large Seafood", p: 15.0, days: [5,6] }] }
+        desc: "Chicken, goat, or seafood", base: 0.0, lo: 5.0, hi: 15.0, prepMinutes: 15, search: "soup medium chicken large seafood", groups: [
+        { gid: "H2749PVKFN4EY", name: "Soup", kind: "variant", mods: [{ n: "Medium Chicken", p: 5.0, days: [0,1,2,3,4] }, { n: "Large Chicken", p: 10.0, days: [0,1,2,3,4] }, { n: "Medium Goat", p: 0.0, oos: true }, { n: "Large Goat", p: 0.0, oos: true }, { n: "Medium Seafood", p: 10.0, days: [5,6] }, { n: "Large Seafood", p: 15.0, days: [5,6] }] }
       ] },
     { id: "6NX7XK602V0ZM", name: "Side", emoji: "🍚",
         desc: "One side on its own", base: 0.0, lo: 1.0, hi: 15.0, prepMinutes: 15, noPrep: true, search: "side mac cheese seafood rice peas white fried chicken mashed potatoes steam veggies festival pasta shrimp x1 breast whiting fish waffles candied yams corn bread jerk plantain 1 piece pepper", groups: [

@@ -439,6 +439,27 @@ hours.
 `daysLabel` collapses runs: `[0,1,2,3,4]` reads "Sun–Thu only", not
 "Sun & Mon & Tue & Wed & Thu only".
 
+**Goat soup is hidden, not repriced.** Sold at the counter, not orderable in
+the app: `HIDDEN_IN_APP` in the generator marks `VXX7556SJGA38` /
+`BA4HKW7B2FDY4` oos, so they never render and never reach the search index.
+Three distinct reasons an option gets hidden, kept separate so the reason
+survives — `NOT_ON_PRINTED_MENU` (on the register, not on the menu),
+`MISFILED_AS_SIZE` (a dish in another item's size group), `HIDDEN_IN_APP`
+(deliberate app-only exclusion).
+
+The old `MENU_PRICE` override that put $5/$10 on those sizes is **gone**. It
+existed so the app could sell a dish Clover prices at $0; with the dish hidden
+there is nothing for a customer to see, so the override was the app papering
+over a dashboard problem for no benefit. The $0 at the register is real and
+still wrong, and stays CLOVER-FIXES #2.
+
+That leaves Soup as chicken (Sun–Thu) and seafood (Fri–Sat), which between them
+cover all seven days — **two selectable sizes every day, no dead row.** Both the
+generator and a test check that property across the whole menu rather than
+trusting it: hiding options and locking others by day could otherwise leave a
+row a customer can tap with nothing behind it. If it ever happens the item wants
+an `ITEM_DAYS` lock so the whole row greys out with a reason.
+
 **Seafood Stew Peas is large only.** A flat $30 item with no size group in
 Clover, and nothing in the app implies otherwise: no variant or flavour group,
 `lo === hi` so it renders one price rather than a range, `sizePrices` returns

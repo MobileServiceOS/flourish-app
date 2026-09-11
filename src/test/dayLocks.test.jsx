@@ -248,14 +248,11 @@ describe("the item sheet shows a locked option rather than hiding it", () => {
     expect(rows["Large Chicken"].textContent).toContain("Sun–Thu only");
   });
 
-  it("never greys goat", () => {
-    for (const day of [MON, FRI, SAT, SUN]) {
-      vi.setSystemTime(day);
-      const { rows } = openSoup();
-      expect(rows["Large Goat"], `day ${dayOfWeek(day)}`).not.toHaveAttribute("aria-disabled");
-      cleanup();   // four renders in one test; unmount between them
-    }
-  });
+  /* There was a "never greys goat" test here. Goat is not rendered at all now —
+     it is hidden from the app entirely — so the assertion moved to
+     "goat soup is hidden from the app", which checks it is absent rather than
+     present-and-ungreyed. That goat carries no DAY lock is still covered by
+     "leaves goat unlocked, every day": it is hidden for a different reason. */
 
   it("refuses to be selected by tap or keyboard", async () => {
     vi.setSystemTime(MON);
@@ -393,6 +390,88 @@ describe("the proxy refuses what the kitchen is not making today", () => {
   });
 });
 
+/* ============================================================================
+   HIDDEN IN THE APP, STILL SOLD AT THE COUNTER
+
+   Goat soup is sold in person but not orderable here. It also rings $0 at the
+   register — which is the owner's to fix in the Clover dashboard, and the app
+   deliberately does NOT paper over it with a price override any more. Hiding it
+   is the whole of the app's involvement.
+   ============================================================================ */
+describe("goat soup is hidden from the app", () => {
+  const soupMods = soup.groups.find((g) => g.gid === SOUP_GROUP).mods;
+  const goat = soupMods.filter((m) => /goat/i.test(m.n));
+
+  it("marks both sizes unsellable", () => {
+    expect(goat).toHaveLength(2);
+    for (const m of goat) expect(m.oos, m.n).toBe(true);
+  });
+
+  it("keeps Clover's own $0 rather than overriding it", () => {
+    /* An override would make the app show a price the register does not take —
+       the app working around a dashboard problem. The $0 stays visible as a
+       CLOVER-FIXES item instead. */
+    for (const m of goat) expect(m.p, m.n).toBe(0);
+  });
+
+  it("never reaches the sheet at all", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(MON);
+    render(<ItemSheet item={soup} onClose={() => {}} onAdd={() => {}} />);
+    const sheet = screen.getByRole("dialog");
+    expect(sheet.textContent).not.toMatch(/goat/i);
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it("is not findable by searching for it", () => {
+    // Surfacing a plate through something we will not sell is the oos rule.
+    expect(soup.search).not.toMatch(/goat/);
+    expect(soup.search).toBe("soup medium chicken large seafood");
+  });
+
+  it("still leaves Curried Goat findable — a different item", () => {
+    const curried = items.find((i) => /curried goat/i.test(i.name));
+    expect(curried).toBeTruthy();
+    expect(curried.search).toMatch(/goat/);
+  });
+
+  it("does not change the price range the row advertises", () => {
+    // $5 chicken to $15 seafood, unaffected by hiding the $0 sizes.
+    expect([soup.lo, soup.hi]).toEqual([5, 15]);
+  });
+});
+
+describe("no item can become a dead row", () => {
+  /* Hiding options and locking others by day could between them leave an item
+     that renders a tappable row with nothing selectable behind it. Chicken
+     (Sun–Thu) and seafood (Fri–Sat) happen to cover all seven days, and this is
+     what keeps it that way. */
+  it("leaves something selectable in every single-select group, every day", () => {
+    for (const cat of MENU) {
+      for (const item of cat.items) {
+        for (const g of item.groups ?? []) {
+          if (g.kind === "side") continue;
+          const sellable = g.mods.filter((m) => !m.oos);
+          if (!sellable.length) continue;
+          for (let day = 0; day <= 6; day++) {
+            const open = sellable.filter((m) => !m.days || m.days.includes(day));
+            expect(open.length,
+              `${item.name} / ${g.name} has nothing selectable on day ${day}`)
+              .toBeGreaterThan(0);
+          }
+        }
+      }
+    }
+  });
+
+  it("is guarded in the generator too, so a regeneration reports it", () => {
+    const gen = readFileSync(resolve(ROOT, "scripts/generate-menu.mjs"), "utf8");
+    expect(gen).toContain("the row would be a dead end");
+    expect(gen).toContain("Give the item an ITEM_DAYS lock");
+  });
+});
+
 /* ---------- the declaration and the data cannot drift ---------- */
 describe("the locks in the data match the generator", () => {
   const gen = readFileSync(resolve(ROOT, "scripts/generate-menu.mjs"), "utf8");
@@ -434,6 +513,28 @@ describe("the locks in the data match the generator", () => {
     // Otherwise the next regeneration drops every modifier lock on the floor.
     expect(gen).toMatch(/m\.days \? `, days: \$\{JSON\.stringify\(m\.days\)\}`/);
     expect(gen).toMatch(/if \(MODIFIER_DAYS\[key\]\) m\.days = MODIFIER_DAYS\[key\]/);
+  });
+
+  it("hides exactly what HIDDEN_IN_APP declares, and nothing more", () => {
+    const declared = new Set(
+      [...slice("const HIDDEN_IN_APP = {", "};").matchAll(/"([^"]+)":/g)].map((m) => m[1])
+    );
+    expect(declared.size).toBeGreaterThan(0);
+    for (const key of declared) {
+      const [gid, name] = key.split("::");
+      const mod = MENU.flatMap((c) => c.items)
+        .flatMap((i) => i.groups ?? [])
+        .filter((g) => g.gid === gid)
+        .flatMap((g) => g.mods)
+        .find((m) => m.n === name);
+      expect(mod, key).toBeTruthy();
+      expect(mod.oos, key).toBe(true);
+    }
+  });
+
+  it("no longer overrides the goat prices it used to paper over", () => {
+    const gen2 = readFileSync(resolve(ROOT, "scripts/generate-menu.mjs"), "utf8");
+    expect(gen2).not.toMatch(/"H2749PVKFN4EY::(Medium|Large) Goat":\s*[\d.]+/);
   });
 
   it("warns about a lock on a modifier that no longer exists", () => {
