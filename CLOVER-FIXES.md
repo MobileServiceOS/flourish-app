@@ -174,9 +174,14 @@ code change is needed — it appears on its own.
 **Problem:** live Clover says $1.00. The shop has described it as **$2 each**. One
 of the two is wrong and I did not guess which, so nothing was changed.
 
-Also stale: `PRINTED-MENU-PRICES.md` records the standalone Fried Chicken side as
-Clover $7.99; live Clover says $6.00. The xlsx export that document was written
-from is older than the current register.
+**Correction to an earlier version of this entry.** It claimed
+`PRINTED-MENU-PRICES.md` recorded the standalone Fried Chicken *side* at $7.99
+against a live $6.00. That was wrong, and wrong the same way the soup mistake
+was: I grepped for "Fried Chicken", found $7.99, and attributed it to the Side
+group without checking which section it sat under. It is under **Lunch
+Specials** (`F0Q8615QD5HMM`) — a different modifier in a different group, and
+correct as written. The standalone Fried Chicken side does not appear in that
+document at all, so there was no staleness to report.
 
 **Fix:** confirm the intended Festival price. If it is $2, correct it in Clover
 and regenerate; if $1 is right, `PRINTED-MENU-PRICES.md` needs updating instead.

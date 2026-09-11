@@ -146,7 +146,50 @@ const CATEGORY_DAYS = { "Seafood Fridays": [5] };
 // precedence over CATEGORY_DAYS. Clover has no concept of a day-limited item,
 // so this map is the only place that knowledge lives.
 const ITEM_DAYS = {
-  "32VDQ4G5J131P": [5, 6],   // Seafood Stew Peas — Fri & Sat only
+  "32VDQ4G5J131P": [5],      // Seafood Stew Peas — Fridays only
+};
+
+/* Modifiers only sold on certain days, keyed "<modifier group id>::<name>".
+
+   Soup is one Clover item with six sizes in one group, and the kitchen makes
+   the three soups on different days. Clover has no concept of a day-limited
+   modifier any more than a day-limited item, so this map is the only place
+   that knowledge lives — and it has to be a MODIFIER lock, because the thing
+   with the window is an option inside a group, not a dish of its own.
+
+   Hiding them instead (the `oos` route) would be wrong here: an option that is
+   genuinely on the menu four days a week should say so, not vanish and leave a
+   customer wondering whether the shop stopped making it. */
+/* ============================================================================
+   HIDDEN IN THE APP, STILL SOLD AT THE COUNTER
+
+   A modifier the shop sells in person but does not want orderable through the
+   app. Distinct from the other two reasons an option gets hidden, and kept
+   separate so the reason survives:
+
+     NOT_ON_PRINTED_MENU  on the register, not on the printed menu
+     MISFILED_AS_SIZE     a separate dish sitting in another item's size group
+     HIDDEN_IN_APP        deliberately app-only exclusion, this map
+
+   The modifier stays in Clover untouched, so the register can still ring it.
+   ============================================================================ */
+const HIDDEN_IN_APP = {
+  /* Goat soup is sold at the counter but not through the app. It also rings
+     $0 at the register (CLOVER-FIXES #2) — that is the owner's to fix in the
+     dashboard, and the app deliberately does NOT paper over it with a price
+     override any more. Hiding it is the whole of the app's involvement. */
+  "H2749PVKFN4EY::Medium Goat": "sold at the counter, not through the app",
+  "H2749PVKFN4EY::Large Goat": "sold at the counter, not through the app",
+};
+
+const MODIFIER_DAYS = {
+  // Seafood soup — Friday and Saturday
+  "H2749PVKFN4EY::Medium Seafood": [5, 6],
+  "H2749PVKFN4EY::Large Seafood": [5, 6],
+  // Chicken soup — Sunday through Thursday
+  "H2749PVKFN4EY::Medium Chicken": [0, 1, 2, 3, 4],
+  "H2749PVKFN4EY::Large Chicken": [0, 1, 2, 3, 4],
+  // Goat soup carries no lock: it is made every day.
 };
 
 /* Modifiers that are really a separate dish sitting in another item's size
@@ -188,9 +231,10 @@ const MENU_PRICE = {
   "D0F1SFXHWSQWT::Oxtail": 24,
   // Sides
   "S032100JQ3P4T::Chicken Mac & Cheese": 7.0,
-  // Goat head soup — Clover has both sizes at $0, the menu prices them
-  "H2749PVKFN4EY::Medium Goat": 5.0,
-  "H2749PVKFN4EY::Large Goat": 10.0,
+  /* Goat head soup's $0 sizes are NOT overridden here. They are hidden in the
+     app instead (HIDDEN_IN_APP), so there is no price for a customer to see and
+     nothing for the app to work around. The $0 at the register stays a
+     CLOVER-FIXES #2 item for the dashboard. */
   // Lunch specials — the chicken plates are $8 on the menu
   "F0Q8615QD5HMM::Curried Chicken": 8.0,
   "F0Q8615QD5HMM::Fried Chicken": 8.0,
@@ -449,6 +493,7 @@ const items = new Map();
 const issues = [];
 const priceEdits = [];   // where the printed menu overrode Clover
 const offMenu = [];      // sold on the register, not on the printed menu
+const appHidden = [];    // sold at the counter, deliberately not in the app
 const out = [];
 
 for (const it of items.values()) {
@@ -503,6 +548,16 @@ for (const it of items.values()) {
         offMenu.push(`${it.name}: "${m.n}" (${m.p}) is on the register but not the printed menu`);
         continue;
       }
+      /* Deliberately app-only exclusion. Reported as a note rather than an
+         issue: nothing is wrong in Clover, the shop just does not sell it here. */
+      if (HIDDEN_IN_APP[key]) {
+        m.oos = true;
+        appHidden.push(`${it.name}: "${m.n}" ($${m.p}) — ${HIDDEN_IN_APP[key]}`);
+        continue;
+      }
+      /* A day-locked modifier keeps its price and its place on the sheet; the
+         lock only decides whether it can be picked today. */
+      if (MODIFIER_DAYS[key]) m.days = MODIFIER_DAYS[key];
       if (MENU_PRICE[key] !== undefined && MENU_PRICE[key] !== m.p) {
         priceEdits.push({ item: it.name, group: g.name, option: m.n, clover: m.p, menu: MENU_PRICE[key] });
         m.p = MENU_PRICE[key];
@@ -534,6 +589,27 @@ for (const it of items.values()) {
     }
   }
 
+  /* A single-select group must have something pickable on every day of the
+     week. Hiding options and locking others by day can between them leave an
+     item that renders a row a customer can tap and then cannot order — the
+     dead row. If that ever happens the item wants an ITEM_DAYS lock so the menu
+     greys the whole row with a reason, rather than a sheet with no choices. */
+  for (const g of gs) {
+    if (g.kind === "side") continue;
+    const sellable = g.mods.filter((m) => !m.oos);
+    if (!sellable.length) continue;          // wholly hidden group, handled above
+    for (let day = 0; day <= 6; day++) {
+      const open = sellable.filter((m) => !m.days || m.days.includes(day));
+      if (!open.length) {
+        issues.push(
+          `${it.name}: group "${g.name}" has nothing selectable on ` +
+          `${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][day]} — the row would be a dead end. ` +
+          "Give the item an ITEM_DAYS lock so the whole row greys out instead."
+        );
+      }
+    }
+  }
+
   let lo, hi;
   if (variants.length) {
     const ps = variants[0].mods.filter((m) => m.p > 0 && !m.oos).map((m) => m.p);
@@ -554,7 +630,8 @@ for (const list of byCat.values()) list.sort((a, b) => b.hi - a.hi);
 
 const q = (s) => JSON.stringify(String(s));
 const modStr = (m) =>
-  `{ n: ${q(m.n)}, p: ${m.p}${m.mid ? `, mid: ${q(m.mid)}` : ""}${m.oos ? ", oos: true" : ""} }`;
+  `{ n: ${q(m.n)}, p: ${m.p}${m.mid ? `, mid: ${q(m.mid)}` : ""}` +
+  `${m.days ? `, days: ${JSON.stringify(m.days)}` : ""}${m.oos ? ", oos: true" : ""} }`;
 
 let js = `// GENERATED FROM THE CLOVER INVENTORY EXPORT — do not hand-edit prices.
 // Regenerate with:  npm run menu -- <clover-export.xlsx>
@@ -628,6 +705,24 @@ for (const id of POPULAR_IDS) {
 }
 for (const id of Object.keys(PREP_MINUTES)) {
   if (!ids.has(id)) console.warn(`  ! Prep time set for ${id}, which is not on the menu anymore`);
+}
+
+/* A day lock on a modifier that no longer exists is a silent no-op, and the
+   option it was meant to restrict would be orderable every day. */
+{
+  const seen = new Set();
+  for (const i of out) for (const g of i.groups) for (const m of g.mods) seen.add(`${g.gid}::${m.n}`);
+  for (const key of Object.keys(MODIFIER_DAYS)) {
+    if (!seen.has(key)) console.warn(`  ! Day lock set for "${key}", which is not a modifier on the menu`);
+  }
+  for (const key of Object.keys(HIDDEN_IN_APP)) {
+    if (!seen.has(key)) console.warn(`  ! HIDDEN_IN_APP names "${key}", which is not a modifier on the menu`);
+  }
+}
+
+if (appHidden.length) {
+  console.log(`\n${appHidden.length} modifier(s) hidden from the app on purpose — still sellable at the counter:`);
+  for (const a of appHidden) console.log(`  - ${a}`);
 }
 const undescribed = out.filter((i) => !DESC[i.id]);
 if (undescribed.length) {

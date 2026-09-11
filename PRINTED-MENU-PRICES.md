@@ -6,8 +6,10 @@ The app now shows the **printed menu price**. Clover has not been changed, and
 Until the list below is entered in the Clover dashboard, the app and the counter
 disagree on these items. Two consequences, in opposite directions:
 
-- On the seven items where Clover is **cheaper**, a customer sees the menu price
-  in the app and is charged the lower Clover price. You lose the difference.
+- On the items where Clover is **cheaper**, a customer sees the menu price in the
+  app and is charged the lower Clover price. You lose the difference. The two
+  Side With Meal upcharges below are the worst of these: they are $0.00 in the
+  register and ride on 19 different plates.
 - On the two items where Clover is **dearer**, a customer sees the lower menu
   price and is charged more. **That one generates complaints** — it is the
   reason to do this sooner rather than later.
@@ -44,6 +46,28 @@ Modifier Groups → **Side** (`S032100JQ3P4T`)
 | Option | Clover now | Set to |
 |---|---|---|
 | Chicken Mac & Cheese | $6.99 | **$7.00** |
+
+### Sides that come with a plate  ← the one that matters most
+
+Modifier Groups → **Side With Meal** (`YQWN3PKBKV9NG`)
+
+| Option | Clover now | Set to |
+|---|---|---|
+| Fried Chicken (`W63ZR0Q92XER4`) | **$0.00** | **$6.00** |
+| Whiting Fish X1 (`WHGNBP3G67PJP`) | **$0.00** | **$2.50** |
+
+`Shrimp` ($5.00) and `Seafood Mac` ($3.50) in this group are already correct and
+need no change.
+
+**This is the largest leak on the page.** Those two are $0.00 in the register, so
+the counter charges nothing for them on any of the **19 plates** that share this
+group. The app shows the upcharge; Clover does not take it.
+
+Direction of the divergence, which is the opposite of everything else here: the
+customer sees a total **higher** than they pay. Nobody complains, and the shop
+absorbs it silently on every order — which is exactly why it went unnoticed long
+enough to be reported as "the app says Included but it costs $6". The app was
+telling the truth about the till.
 
 ### Lunch specials
 Modifier Groups → **Lunch Specials** (`F0Q8615QD5HMM`)

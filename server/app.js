@@ -30,6 +30,7 @@ import {
   readyFitsBeforeClose,
 } from "../src/lib/hours.js";
 import { cartPrepMinutes, readyWindow } from "../src/lib/prep.js";
+import { unavailableInCart, unavailableMessage, dayOfWeek } from "../src/lib/availability.js";
 import { isValidName, isValidPhone, phoneDigits } from "../src/lib/phone.js";
 import { ADDRESS } from "../src/lib/restaurant.js";
 import {
@@ -281,6 +282,27 @@ export function createApp({
     }
 
     const at = now();
+
+    /* Day locks, both kinds, checked in one pass.
+
+       Some dishes are only cooked on certain days, and some OPTIONS inside a
+       group are — soup is chicken Sunday to Thursday and seafood Friday and
+       Saturday. The menu greys both out, but that is a courtesy to an honest
+       client: a tab left open overnight, or a request replayed by hand, would
+       otherwise put Friday's seafood soup on a Tuesday ticket.
+
+       Same reasoning as the hours guard, and the day is New York's day no
+       matter what timezone the caller is in — see lib/availability.js. */
+    const unavailable = unavailableInCart(cart, at);
+    if (unavailable.length) {
+      return res.status(409).json({
+        error: unavailableMessage(unavailable),
+        code: "NOT_AVAILABLE_TODAY",
+        today: dayOfWeek(at),
+        unavailable: unavailable.map(({ kind, name, days, label }) => ({ kind, name, days, label })),
+      });
+    }
+
     const quote = quoteFor(cart, at);
     if (!quote.fitsBeforeClose) {
       return res.status(409).json(tooLateBody(quote, at));

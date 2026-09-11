@@ -295,3 +295,8 @@ select.field{appearance:none;cursor:pointer;
   background:rgba(232,154,199,.10);border:1px solid var(--rose-ink);color:var(--ink);}
 .delete-confirm ul{color:var(--ink);}
 .pill-btn.danger{background:var(--rose-ink);color:#fff;box-shadow:none;}
+
+/* A real menu option that today is not sold — seafood soup on a Tuesday. Still
+   shown, because vanishing would read as "discontinued", but not pickable. */
+.opt.opt-off{opacity:.5;cursor:not-allowed;}
+.opt.opt-off .radio{border-color:var(--line);background:transparent;}

@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Plus, Minus, X, Sparkles } from "lucide-react";
 import { UE, CAT_OF, PLATE_IDS } from "../data/menu.data.js";
 import { cents, money } from "../lib/money.js";
 import { isCookedToOrder, prepMinutesForItem } from "../lib/prep.js";
+import { isModifierAvailable, daysLabel } from "../lib/availability.js";
 import { preselectFor } from "../lib/search.js";
 import { Group, Option, useSheet } from "./shared.jsx";
 
@@ -20,14 +21,38 @@ export default function ItemSheet({ item, onClose, onAdd, query = "" }) {
      searched their way here, in which case open on what they searched for.
      Someone who typed "sweet chili salmon" and lands on a sheet defaulted to
      Grilled has been shown the dish and then had it taken away again. */
+  /* Today, for the day locks. Read once per sheet: nobody holds one open across
+     midnight, and re-deriving it every render would be noise. */
+  const today = useMemo(() => new Date(), []);
+  const pickable = [...variants, ...flavors];
+  /* The reason an option cannot be picked today, or null when it can be. */
+  const blockedLabel = (g, m) =>
+    (isModifierAvailable(g.gid, m.n, today) ? null : daysLabel(m.days ?? []));
+
   const [sel, setSel] = useState(() => {
     const init = {};
-    [...variants, ...flavors].forEach((g) => {
-      const i = g.mods.findIndex((m) => !m.oos);
+    pickable.forEach((g) => {
+      /* Default to the first option orderable TODAY. Skipping only `oos` would
+         open the soup sheet on seafood on a Tuesday, priced for something the
+         proxy then refuses. Falling back to any non-oos option keeps a group
+         whose every option is off today from defaulting to nothing. */
+      let i = g.mods.findIndex((m) => !m.oos && isModifierAvailable(g.gid, m.n, today));
+      if (i < 0) i = g.mods.findIndex((m) => !m.oos);
       init[g.gid] = i < 0 ? 0 : i;
     });
-    // Never selects an oos option: preselectFor skips them.
-    return { ...init, ...preselectFor(item, query) };
+
+    /* A search can land on a flavour that is off today — "seafood soup" on a
+       Tuesday. preselectFor skips oos options but knows nothing about days, so
+       an unavailable preselection is dropped here and the day-aware default
+       stands. Opening on an option the customer cannot choose is worse than
+       opening on the default. */
+    const usable = {};
+    for (const [gid, idx] of Object.entries(preselectFor(item, query))) {
+      const g = pickable.find((x) => x.gid === gid);
+      const m = g?.mods?.[idx];
+      if (m && isModifierAvailable(gid, m.n, today)) usable[gid] = idx;
+    }
+    return { ...init, ...usable };
   });
   const freeSide = sideG ? Math.max(0, sideG.mods.findIndex((m) => m.p === 0)) : 0;
   const [side1, setSide1] = useState(freeSide);
@@ -89,7 +114,7 @@ export default function ItemSheet({ item, onClose, onAdd, query = "" }) {
                 return (
                   <Option key={m.n + i} sel={sel[g.gid] === i}
                     onClick={() => setSel((v) => ({ ...v, [g.gid]: i }))}
-                    label={m.n} right={money(m.p)} />
+                    label={m.n} right={money(m.p)} unavailable={blockedLabel(g, m)} />
                 );
               })}
             </Group>
@@ -99,7 +124,8 @@ export default function ItemSheet({ item, onClose, onAdd, query = "" }) {
             <Group key={g.gid} label={g.name}>
               {g.mods.map((m, i) => (
                 <Option key={m.n + i} sel={sel[g.gid] === i}
-                  onClick={() => setSel((v) => ({ ...v, [g.gid]: i }))} label={m.n} />
+                  onClick={() => setSel((v) => ({ ...v, [g.gid]: i }))} label={m.n}
+                  unavailable={blockedLabel(g, m)} />
               ))}
             </Group>
           ))}

@@ -392,6 +392,95 @@ Chicken" side. There is no separate Fried Shrimp item in Clover and there should
 not be one: Clover has a single Shrimp item with its flavours inside it, and the
 fried shrimp *side* is the existing $5 Shrimp modifier.
 
+### Day locks: items and modifiers, one mechanism
+
+Some dishes are only cooked on certain days. So are some **options inside a
+group**: Soup is one Clover item (`9WV3BMMSC8G5E`) whose six sizes are three
+different soups, and the kitchen makes them on different days.
+
+| | Window |
+|---|---|
+| Soup — Medium/Large **Seafood** | Fri, Sat |
+| Soup — Medium/Large **Chicken** | Sun–Thu |
+| Soup — Medium/Large **Goat** | every day, no lock |
+| Seafood Stew Peas (item) | **Fri only** — was Fri+Sat, corrected |
+| Seafood Fridays (category) | Fri |
+
+Three declarations in `scripts/generate-menu.mjs`, all keyed the way the rest of
+the maps are: `CATEGORY_DAYS` by name, `ITEM_DAYS` by Clover item id,
+`MODIFIER_DAYS` by `"<group id>::<modifier name>"`. Clover has no concept of a
+day-limited anything, so these maps are the only place that knowledge lives, and
+`modStr` emits `days` onto the modifier so a regeneration carries it.
+
+`src/lib/availability.js` is the **single** evaluation. The proxy and the sheet
+both call it, so they cannot disagree about whether today is Friday.
+
+**The day is always New York's day.** `new Date().getDay()` is the *device's*
+idea of the day: a customer in London at 1am Saturday is still in Friday evening
+as far as the kitchen is concerned, and a container in UTC crosses midnight five
+hours early. Both would offer or refuse the wrong food, so `dayOfWeek()` names
+the zone through `Intl` rather than inheriting it. That makes it independent of
+the `TZ` pin in `server/index.js`, which stays for the hours logic.
+
+**A locked option is shown, greyed, with the reason** — "Fri & Sat only" in
+place of its price — not hidden. An option that vanishes four days a week reads
+as "they stopped making it". It cannot be picked by pointer or keyboard, and the
+sheet's default selection skips it: defaulting to `!m.oos` alone would open the
+soup sheet on seafood on a Tuesday, priced for something the proxy then refuses.
+Search preselection is filtered the same way.
+
+**Enforced server-side, in the same pass as the item locks.** `POST /orders`
+refuses with `409 NOT_AVAILABLE_TODAY`, listing everything unavailable rather
+than only the first, because a customer fixing one problem at a time is a
+customer giving up. Greying the sheet is a courtesy to an honest client; a tab
+left open overnight or a replayed request is stopped by the proxy, same as
+hours.
+
+`daysLabel` collapses runs: `[0,1,2,3,4]` reads "Sun–Thu only", not
+"Sun & Mon & Tue & Wed & Thu only".
+
+**Goat soup is hidden, not repriced.** Sold at the counter, not orderable in
+the app: `HIDDEN_IN_APP` in the generator marks `VXX7556SJGA38` /
+`BA4HKW7B2FDY4` oos, so they never render and never reach the search index.
+Three distinct reasons an option gets hidden, kept separate so the reason
+survives — `NOT_ON_PRINTED_MENU` (on the register, not on the menu),
+`MISFILED_AS_SIZE` (a dish in another item's size group), `HIDDEN_IN_APP`
+(deliberate app-only exclusion).
+
+The old `MENU_PRICE` override that put $5/$10 on those sizes is **gone**. It
+existed so the app could sell a dish Clover prices at $0; with the dish hidden
+there is nothing for a customer to see, so the override was the app papering
+over a dashboard problem for no benefit. The $0 at the register is real and
+still wrong, and stays CLOVER-FIXES #2.
+
+That leaves Soup as chicken (Sun–Thu) and seafood (Fri–Sat), which between them
+cover all seven days — **two selectable sizes every day, no dead row.** Both the
+generator and a test check that property across the whole menu rather than
+trusting it: hiding options and locking others by day could otherwise leave a
+row a customer can tap with nothing behind it. If it ever happens the item wants
+an `ITEM_DAYS` lock so the whole row greys out with a reason.
+
+**Seafood Stew Peas is large only.** A flat $30 item with no size group in
+Clover, and nothing in the app implies otherwise: no variant or flavour group,
+`lo === hi` so it renders one price rather than a range, `sizePrices` returns
+null so there is no "Med · Lg" row, `hasChoices` is false so it adds in one tap
+instead of opening a chooser, and its own copy says "One size, large." The
+search index is just its name, so "medium stew peas" cannot reach it. Tests
+assert the absence of a SIZE choice specifically, not the absence of groups —
+`Side With Meal` is queued to be attached at the register, and when it is this
+item gains a sides picker and should still have no sizes.
+
+**Why the Seafood stew-peas `oos` flag is NOT a day lock.** Now that modifier
+locks exist, `KR1HHY64E4QPJ::Seafood` ($30, `QT4GSARF6ZHV8`) could have become
+`[5]` instead of a hide — and it should not. That modifier is a $30 "size" of
+ordinary Stew Peas, and the dish exists as its own item (`32VDQ4G5J131P`). A day
+lock would make it *selectable on Fridays through the wrong item*, ringing up as
+Stew Peas with a size modifier rather than as Seafood Stew Peas — a different
+Clover line, a different ticket, and the item's own Friday lock bypassed. The
+flag is not standing in for a missing day mechanism; it is hiding a structural
+mistake in Clover. The fix is to delete that modifier from the Stew Peas group
+at the register. See CLOVER-FIXES.md §5.
+
 ### Sides, and why "Included" was wrong
 
 A side costs a different amount depending on what it is attached to, and **Clover
@@ -420,7 +509,10 @@ Three sets, declared outright in `scripts/generate-menu.mjs`:
 - everything else — included, and asserted to be $0. A price appearing on one is
   reported as an issue rather than silently charged.
 
-**The two overridden sides make the app quote more than the till takes.** Clover
+**THE TWO OVERRIDDEN SIDES MAKE THE APP QUOTE MORE THAN THE TILL TAKES, TODAY.**
+Queued at the Clover dashboard: `W63ZR0Q92XER4` → $6.00 and `WHGNBP3G67PJP` →
+$2.50 in Side With Meal. Until those land this is live on all 19 plates sharing
+the group. See PRINTED-MENU-PRICES.md, where it is the largest entry. Clover
 prices its own orders and has them at $0, so until the dashboard is corrected the
 customer pays *less* at the counter than the app said. That is the rule-1 /
 rule-2 divergence again, but in the opposite direction from the nine items in

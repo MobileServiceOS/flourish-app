@@ -250,10 +250,10 @@ describe("items cooked only on certain days", () => {
     const row = within(lunch).getByRole("button", { name: /^Seafood Stew Peas/ });
 
     expect(row).toHaveAttribute("aria-disabled", "true");
-    expect(within(row).getByText("FRI & SAT ONLY")).toBeInTheDocument();
+    expect(within(row).getByText("FRI ONLY")).toBeInTheDocument();
 
     await user.click(row);
-    expect(await screen.findByText(/available fri & sat only/i)).toBeInTheDocument();
+    expect(await screen.findByText(/available fri only/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /cart, empty/i })).toBeInTheDocument();
   });
 
@@ -265,11 +265,14 @@ describe("items cooked only on certain days", () => {
     expect(within(row).queryByText(/ONLY/)).not.toBeInTheDocument();
   });
 
-  it("sells it on a Saturday too", async () => {
+  it("no longer sells it on a Saturday", async () => {
+    /* It was Friday AND Saturday. The shop corrected that to Fridays only, so
+       Saturday is now a closed day for this dish like any other. */
     await renderApp(SAT_NOON);
     const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
     const row = within(lunch).getByRole("button", { name: /^Seafood Stew Peas/ });
-    expect(row).not.toHaveAttribute("aria-disabled");
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    expect(within(row).getByText("FRI ONLY")).toBeInTheDocument();
   });
 
   it("leaves it out of a reorder placed on a day it isn't cooked", async () => {
@@ -277,7 +280,7 @@ describe("items cooked only on certain days", () => {
     // reappear in the cart for a day the kitchen doesn't make it.
     const { MENU } = await import("../data/menu.data.js");
     const item = MENU.flatMap((c) => c.items).find((i) => i.id === "32VDQ4G5J131P");
-    expect(item.days).toEqual([5, 6]);
+    expect(item.days).toEqual([5]);
   });
 });
 
