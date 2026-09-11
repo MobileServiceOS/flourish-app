@@ -141,7 +141,13 @@ describe("sold-out and off-menu modifiers never match", () => {
     // Surfacing a plate through a flavour we refuse to sell is worse than not
     // matching: the customer taps the row and the option is not on the sheet.
     expect(find("steamed salmon")).toEqual([]);
-    expect(find("jerk salmon")).toEqual([]);
+  });
+
+  it("DOES surface Salmon through Jerk, which sells 25 times in 600 orders", () => {
+    /* Jerk was hidden as "a flavour the printed menu does not list". The
+       register disagreed loudly, so it is sellable now and search must find it.
+       See docs/HIDE-REASONS-AUDIT.md. */
+    expect(find("jerk salmon")).toContain("Salmon");
   });
 
   it("still matches the same word where it IS sellable", () => {
@@ -153,14 +159,18 @@ describe("sold-out and off-menu modifiers never match", () => {
     const salmon = item("Salmon");
     expect(salmon.search).toContain("sweet");
     expect(salmon.search).toContain("honey");
-    expect(salmon.search).not.toContain("steamed");
-    expect(salmon.search).not.toContain("jerk");
+    expect(salmon.search).not.toContain("steamed");   // still off the menu
+    expect(salmon.search).toContain("jerk");          // un-hidden after the audit
   });
 
   it("does not let a stale description put an oos flavour back", () => {
-    /* Salmon's description still reads "...grilled, or steamed" while Steamed
-       is off the menu. Matching that text would undo the rule. */
-    expect(item("Salmon").desc.toLowerCase()).toContain("steamed");
+    /* Snapper Fish's copy reads "Brown stew, escovitch, or steamed" and its
+       group's Steam Fish IS sellable, so that one is fine. The rule is tested
+       on Salmon instead, whose copy used to promise steamed while the option
+       was hidden — the copy has since been corrected, so this asserts BOTH
+       halves: the description no longer over-promises, and the matcher would
+       not honour it even if it did. */
+    expect(item("Salmon").desc.toLowerCase()).not.toContain("steamed");
     expect(matchesQuery(item("Salmon"), "steamed")).toBe(false);
   });
 });
@@ -204,8 +214,16 @@ describe("the sheet opens on what was searched for", () => {
   });
 
   it("never preselects an oos option", () => {
+    // Steamed is still off the menu, so it must not be preselected.
     expect(preselectFor(item("Salmon"), "steamed salmon")).toEqual({});
-    expect(preselectFor(item("Salmon"), "jerk")).toEqual({});
+  });
+
+  it("does preselect Jerk, now that it is sellable again", () => {
+    const salmon = item("Salmon");
+    const sel = preselectFor(salmon, "jerk");
+    const group = salmon.groups.find((g) => g.kind === "variant");
+    expect(sel[group.gid]).toBeGreaterThanOrEqual(0);
+    expect(group.mods[sel[group.gid]].n).toBe("Jerk");
   });
 
   it("leaves the sides alone", () => {

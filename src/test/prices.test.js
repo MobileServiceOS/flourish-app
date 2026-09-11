@@ -47,9 +47,22 @@ describe("printed menu prices", () => {
 
 describe("only what the printed menu sells", () => {
   it("hides the options that are on the register but not the menu", () => {
+    /* Whiting Fish ($14 full meal) and the $20 snapper add-on stay hidden: the
+       price claims check out against live Clover and each sold once in 600
+       orders. */
     expect(opts("Snapper Fish")["Whiting Fish"].oos).toBe(true);
+    expect(opts("Snapper Fish")["Snapper Fish (Add On. No Sides)"].oos).toBe(true);
+  });
+
+  it("sells the lunch specials the register says people order", () => {
+    /* Curry Goat, Oxtail and Wings were hidden as "the menu does not list
+       them". Wings alone sold 185 times in 600 orders — the most-ordered item
+       in the sample — so the exclusion was costing real orders and the printed
+       menu is the stale document. They also sell 10:00-21:00, so this is a
+       price tier and not a lunchtime window the app would have to model.
+       See docs/HIDE-REASONS-AUDIT.md. */
     for (const n of ["Curry Goat", "Oxtail", "Wings"]) {
-      expect(opts("Lunch Specials")[n].oos).toBe(true);
+      expect(opts("Lunch Specials")[n].oos, n).toBeUndefined();
     }
   });
 
@@ -57,8 +70,9 @@ describe("only what the printed menu sells", () => {
     // Whiting Fish $14 and the $20 "add on, no sides" both came off the menu,
     // so fish is the flat $30 the menu prints
     expect([item("Snapper Fish").lo, item("Snapper Fish").hi]).toEqual([30, 30]);
-    // Curry Goat $12 / Oxtail $13.50 / Wings $10.50 used to set the top
-    expect([item("Lunch Specials").lo, item("Lunch Specials").hi]).toEqual([2, 8]);
+    /* Lunch Specials runs to $13.50 now that Oxtail is sellable again — the
+       range follows what can be bought, so un-hiding an option raises it. */
+    expect([item("Lunch Specials").lo, item("Lunch Specials").hi]).toEqual([2, 13.5]);
   });
 });
 
@@ -111,12 +125,23 @@ describe("what the printed menu actually says", () => {
     expect(o["Large Goat"].p).toBe(0);
   });
 
-  it("sells only the salmon flavours the menu lists", () => {
+  it("sells the salmon flavours people actually order", () => {
     const o = opts("Salmon");
+    // Steamed: 0 sales in 600 orders, and not on the printed menu. Stays hidden.
     expect(o["Steamed"].oos).toBe(true);
-    expect(o["Jerk"].oos).toBe(true);
+    // Jerk: 25 sales. Un-hidden after the audit.
+    expect(o["Jerk"].oos).toBeUndefined();
     for (const n of ["Sweet Chili", "Grilled", "Honey Garlic"]) {
       expect(o[n].oos).toBeUndefined();
+    }
+  });
+
+  it("does not advertise a flavour it will not sell", () => {
+    /* The copy read "...grilled, or steamed" while Steamed was hidden, so the
+       row promised something the sheet would not offer. */
+    expect(item("Salmon").desc.toLowerCase()).not.toContain("steamed");
+    for (const n of ["honey garlic", "jerk", "sweet chili", "grilled"]) {
+      expect(item("Salmon").desc.toLowerCase(), n).toContain(n);
     }
   });
 

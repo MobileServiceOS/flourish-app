@@ -32,8 +32,12 @@ const DELISTED = new Set([
   "NH99VMKKGJ572",   // Baked Chicken — no longer offered
   // Not on the printed menu. Seafood Fridays, both drinks, Ackee & Shrimp and
   // Seafood Stew Peas are deliberately kept even though the trifold omits them.
-  "YQH6NFFB34SVM",   // BBQ Chicken
-  "49BD3KVSBHXRR",   // Curry Chicken — sold only as the $8 lunch special
+  /* These two stay hidden for a PRICING reason, not a menu one — both are
+     $0.00 in Clover, so selling them through the app would give the plate away.
+     Curry Chicken's old reason ("sold only as the $8 lunch special") was simply
+     wrong: the item sold 15 times in its own right. See CLOVER-FIXES #8. */
+  "YQH6NFFB34SVM",   // BBQ Chicken — $0.00 in Clover, would ring free
+  "49BD3KVSBHXRR",   // Curry Chicken — $0.00 in Clover, would ring free (sells 15x at the counter)
   "21RNMJ880YCMC",   // Crab Legs & Shrimp
   "PEB98GZ1MBF6P",   // Lobster Tail (No Meal)
   "K7EX5APPAXPEJ",   // Lobster Roll & Fries
@@ -218,7 +222,7 @@ const MISFILED_AS_SIZE = {
   // Seafood stew peas is its own $30 dish, one size, Friday and Saturday only.
   // Sold from this group it would ring up any day of the week and read as a
   // third "size" of ordinary stew peas.
-  "KR1HHY64E4QPJ::Seafood": "sold as its own item, Fri & Sat only",
+  "KR1HHY64E4QPJ::Seafood": "sold as its own item, Fridays only",
 };
 
 /* ============================================================================
@@ -265,18 +269,31 @@ const ITEM_MENU_PRICE = {
 /* On the register but not on the printed menu, so not sold in the app.
    Keyed "<group id>::<modifier name>". */
 const NOT_ON_PRINTED_MENU = new Set([
-  "AJY3FTT4BRPHP::Whiting Fish",     // $14 full meal, not a listed dish
+  "AJY3FTT4BRPHP::Whiting Fish",     // $14 full meal, not a listed dish — price claim verified live
   "AJY3FTT4BRPHP::Snapper Fish (Add On. No Sides)",   // menu lists fish at $30 only
-  "ZR29AF0E4JPXA::Steamed",          // salmon flavours the menu does not list
-  "ZR29AF0E4JPXA::Jerk",
+  "ZR29AF0E4JPXA::Steamed",          // salmon flavour the menu does not list; 0 sales in 600 orders
+
+  /* UN-HIDDEN after the sales audit — see docs/HIDE-REASONS-AUDIT.md.
+     These four were excluded as "the printed menu does not list them", which may
+     well be true, but the register says they are among the best sellers there
+     are: Wings 185, Jerk salmon 25, Curry Goat 12, Oxtail 8 in 600 orders. A
+     menu that omits the most-ordered lunch special is the stale document.
+
+     The one reason that could still have justified hiding them was a time
+     window — "Lunch Specials" sounds like one, and the app has day locks but no
+     time-of-day locks. Checked: they sell 10:00 to 21:00, weighted to 11-13 but
+     with real evening sales. It is a price tier, not a time window, so nothing
+     is needed.
+
+       NOT here: "F0Q8615QD5HMM::Wings"
+       NOT here: "F0Q8615QD5HMM::Curry Goat"
+       NOT here: "F0Q8615QD5HMM::Oxtail"
+       NOT here: "ZR29AF0E4JPXA::Jerk" */
   /* NOT here: "4BY3GKC2SVJ90::Fried". The shop sells fried shrimp — it is a
      real flavour inside the Shrimp item's own group, and flagging it off-menu
      hid it from customers and from search. There is no separate Fried Shrimp
      item in Clover and there should not be one: Clover has a single Shrimp
      item with its flavours inside it. */
-  "F0Q8615QD5HMM::Curry Goat",       // lunch specials the menu does not list
-  "F0Q8615QD5HMM::Oxtail",
-  "F0Q8615QD5HMM::Wings",
 ]);
 
 /* Salmon is $22 in Clover and $22 on the menu — left exactly as it is.
@@ -302,7 +319,10 @@ const DESC = {
   "60KCQ1V22Q98M": "Slow-cooked, fall-off-the-bone tender",
   "JAD3BJK9BSTW8": "Plain, chicken, shrimp, steak, or oxtail",
   "PEB98GZ1MBF6P": "Lobster tail on its own, no sides",
-  "H9520PFNBT2NY": "Honey garlic, jerk, sweet chili, grilled, or steamed",
+  /* "steamed" was in here while ZR29AF0E4JPXA::Steamed is hidden, so the copy
+     promised a flavour the sheet would not offer. Jerk is back (25 sales), and
+     steamed is out of the copy as well as out of the group. */
+  "H9520PFNBT2NY": "Honey garlic, jerk, sweet chili, or grilled",
   "AYBW9QMTC6154": "Ackee and shrimp with two sides",
   "VHHCS7EDV70HC": "Sweet chili, garlic, curried, pepper, grilled, or fried",
   "8FW3GVMJKCGZG": "Stew or jerk, medium or large",
@@ -431,9 +451,20 @@ const PREP_MINUTES = {
 };
 
 /* Handed over from the counter, so they never decide a cart's ready time. */
+/* Handed over from the counter, so they never decide a cart's ready time.
+
+   Listed by CLOVER ITEM ID, not by category. Live Clover has no "Drinks"
+   category at all — both drink items are filed under Lunch & Dinner — so a
+   category rule silently stopped applying and a Coke became a 15-minute item
+   that pushed out the whole order's window. Ids do not depend on a register
+   change. See docs/EXPORT-VS-CLOVER.md. */
 const NO_PREP_IDS = new Set([
   "6NX7XK602V0ZM",   // Side, on its own
+  "D7MBX5PWRCGCE",   // Drink
+  "EWT1J5Q9K7KX0",   // Pina Colada
 ]);
+/* Kept as a belt-and-braces layer: if a Drinks category is ever created in
+   Clover, anything filed under it is no-prep without needing an id here. */
 const NO_PREP_CATEGORIES = new Set(["Drinks"]);
 
 // The six on the website's "What We're Known For", in that order.

@@ -42,8 +42,8 @@ export const MENU = [
         { gid: "D0F1SFXHWSQWT", name: "Pasta", kind: "variant", mods: [{ n: "Plain Pasta", p: 15.0 }, { n: "Chicken", p: 18.0 }, { n: "Shrimp", p: 20.0 }, { n: "Garlic", p: 15.0 }, { n: "Penne Alla Vodka", p: 18 }, { n: "Steak", p: 25.0 }, { n: "Oxtail", p: 24 }] }
       ] },
     { id: "H9520PFNBT2NY", name: "Salmon", emoji: "🐟",
-        desc: "Honey garlic, jerk, sweet chili, grilled, or steamed", base: 0.0, lo: 22.0, hi: 22.0, prepMinutes: 30, search: "salmon sweet chili grilled honey garlic", groups: [
-        { gid: "ZR29AF0E4JPXA", name: "Salmon", kind: "variant", mods: [{ n: "Sweet Chili", p: 22.0 }, { n: "Grilled", p: 22.0 }, { n: "Steamed", p: 22.0, oos: true }, { n: "Honey Garlic", p: 22.0 }, { n: "Jerk", p: 22.0, oos: true }] },
+        desc: "Honey garlic, jerk, sweet chili, or grilled", base: 0.0, lo: 22.0, hi: 22.0, prepMinutes: 30, search: "salmon sweet chili grilled honey garlic jerk", groups: [
+        { gid: "ZR29AF0E4JPXA", name: "Salmon", kind: "variant", mods: [{ n: "Sweet Chili", p: 22.0 }, { n: "Grilled", p: 22.0 }, { n: "Steamed", p: 22.0, oos: true }, { n: "Honey Garlic", p: 22.0 }, { n: "Jerk", p: 22.0 }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 6.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 2.5 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "AYBW9QMTC6154", name: "Ackee & Shrimp", emoji: "🍤",
@@ -109,8 +109,8 @@ export const MENU = [
         { gid: "S032100JQ3P4T", name: "Side", kind: "variant", mods: [{ n: "Mac & Cheese", p: 6.0 }, { n: "Seafood Mac & Cheese", p: 8.0 }, { n: "Rice & Peas", p: 5.0 }, { n: "White Rice", p: 5.0 }, { n: "Fried Chicken", p: 6.0 }, { n: "Mashed Potatoes", p: 5.0 }, { n: "Steam Veggies", p: 3.0 }, { n: "Festival", p: 1.0 }, { n: "Pasta", p: 10.0 }, { n: "Shrimp X1", p: 2.0 }, { n: "Chicken Breast", p: 5.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish  X1", p: 2.5 }, { n: "Chicken Mac & Cheese", p: 7 }, { n: "Waffles", p: 8.0 }, { n: "Candied Yams", p: 5.0 }, { n: "Corn Bread", p: 1.5 }, { n: "Jerk Chicken", p: 6.0 }, { n: "Plantain", p: 3.0 }, { n: "Fried Chicken (1 Piece)", p: 2.0 }, { n: "Pepper Shrimp", p: 15.0 }] }
       ] },
     { id: "KW21XBQ6XVTGA", name: "Lunch Specials", emoji: "☀️",
-        desc: "Smaller plates at lunch prices", base: 0.0, lo: 2.0, hi: 8.0, prepMinutes: 15, search: "lunch specials curried chicken fried jerk stew extra side", groups: [
-        { gid: "F0Q8615QD5HMM", name: "Lunch Specials", kind: "variant", mods: [{ n: "Curry Goat", p: 12.0, oos: true }, { n: "Curried Chicken", p: 8 }, { n: "Fried Chicken", p: 8 }, { n: "Jerk Chicken", p: 8 }, { n: "Oxtail", p: 13.5, oos: true }, { n: "Stew Chicken", p: 8 }, { n: "Wings", p: 10.5, oos: true }, { n: "Extra Side", p: 2.0 }] }
+        desc: "Smaller plates at lunch prices", base: 0.0, lo: 2, hi: 13.5, prepMinutes: 15, search: "lunch specials curry goat curried chicken fried jerk oxtail stew wings extra side", groups: [
+        { gid: "F0Q8615QD5HMM", name: "Lunch Specials", kind: "variant", mods: [{ n: "Curry Goat", p: 12.0 }, { n: "Curried Chicken", p: 8 }, { n: "Fried Chicken", p: 8 }, { n: "Jerk Chicken", p: 8 }, { n: "Oxtail", p: 13.5 }, { n: "Stew Chicken", p: 8 }, { n: "Wings", p: 10.5 }, { n: "Extra Side", p: 2.0 }] }
       ] },
   ]},
   { cat: "Seafood Fridays", sub: "Fridays only", items: [

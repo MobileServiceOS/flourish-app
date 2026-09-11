@@ -249,6 +249,38 @@ B is simpler and matches what is actually happening at the register. A is
 faithful to the flyer's separate pricing. **This is a business decision, not a
 technical one** — say which and the app follows. Until then the app lists all
 eight as flat-priced items with no options, which is what Clover contains.
+## 8. Two chicken plates are $0.00 and would ring free
+
+**Where:** `YQH6NFFB34SVM` BBQ Chicken and `49BD3KVSBHXRR` Curry Chicken, both
+**$0.00** live
+**Problem:** the plate rings free. Both are hidden in the app *for this reason*
+— not because they are off the menu.
+
+Curry Chicken's exclusion used to say "sold only as the $8 lunch special". That
+was wrong: **the item sold 15 times in its own right** in 600 orders. It is a
+real dish with no price. The reason in the generator now says so.
+
+**Fix:** price both in the Clover dashboard. Then say the word and the app sells
+them — Curry Chicken clearly has demand.
+
+Until then they stay hidden, because un-hiding a $0.00 plate gives food away.
+
+---
+
+## 9. Breakfast is blocked at the register, not in the app
+
+Fifteen Breakfast items are live in Clover and none is in the app. That is not
+an app decision: **twelve of the fifteen are $0.00**, and the porridges have no
+priced size group at all, so they would ring free.
+
+Priced and sellable today: Fry Dumpling $1.10, Festival $1.50, Fritter $2.00.
+
+**Fix:** price the twelve in Clover. The generator already keeps `Breakfast` in
+`KEEP_CATEGORIES` and already has menu copy for all fifteen, so they appear on
+the next regeneration with no code change.
+
+Leaving them out is deliberate and safe until then. See
+`docs/EXPORT-VS-CLOVER.md`.
 
 ---
 
