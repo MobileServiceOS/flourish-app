@@ -733,6 +733,20 @@ all**, and **6 that are still actively selling** — `F0Q8615QD5HMM::Wings` alon
 sold 185 times in the sample and the app will not sell it. Read it before
 adding another exclusion, and give the next one a reason.
 
+Acted on since: **Wings, Jerk salmon, Curry Goat and the Oxtail lunch special
+are un-hidden** — the one reason that could have justified keeping them was a
+lunchtime window, and they sell 10:00 to 21:00, so "Lunch Specials" is a price
+tier and not a time restriction the app would have to model. BBQ Chicken and
+Curry Chicken stay hidden for a *pricing* reason instead of a menu one: both are
+$0.00 in Clover and would ring free.
+
+**`docs/FRIDAY-SKU-DELETION.md`** — what to delete at the register, and the
+thing to settle first: **there is no mechanism for a Friday price**, in the app
+or in Clover. The app sends no line prices, Clover has no day-dependent
+pricing, and the day locks govern availability rather than cost. The Friday SKUs
+*were* the mechanism. Three of the eight are not duplicates at all, and only
+crab legs and lobster carry a real discount — shrimp is dearer on Friday.
+
 **`docs/EXPORT-VS-CLOVER.md`** — the curated xlsx export is now a *subset* of
 the register. Live Clover has **no Drinks category** (both drink items sit in
 Lunch & Dinner, which would also cost them their `noPrep` flag) and **15
