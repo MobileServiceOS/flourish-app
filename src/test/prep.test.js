@@ -193,9 +193,26 @@ describe("prep times survive a menu regeneration", () => {
     }
   });
 
+  /* Items hidden from the app but still in Clover keep their prep time. Removing
+     it would be worse than leaving it: the generator falls back to DEFAULT_PREP
+     (15) for an unknown id, so an un-hidden seafood platter would quietly be
+     promised in fifteen minutes. */
+  const hiddenInApp = [...between("const HIDDEN_ITEMS_IN_APP = {", "\n};")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .matchAll(/"([A-Z0-9]{10,})":/g)].map((m) => m[1]);
+
+  it("keeps a prep time for every item hidden from the app", () => {
+    expect(hiddenInApp.length, "the exemption list should not be empty here").toBeGreaterThan(0);
+    for (const id of hiddenInApp) {
+      expect(map[id], `${id} is hidden but has no prep time to come back to`).toBeDefined();
+    }
+  });
+
   it("has no prep time set for an item that is no longer on the menu", () => {
     const ids = new Set(items.map((i) => i.id));
+    const exempt = new Set(hiddenInApp);
     for (const id of Object.keys(map)) {
+      if (exempt.has(id)) continue;
       expect(ids.has(id), `${id} has a prep time but is not on the menu`).toBe(true);
     }
   });

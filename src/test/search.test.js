@@ -59,7 +59,10 @@ describe("modifier text is searchable", () => {
     // AND, not OR: "sweet chili salmon" must not return everything with chili
     // plus everything with salmon.
     expect(find("sweet chili salmon").length).toBe(1);
-    expect(find("salmon").length).toBeGreaterThan(1);
+    /* A broad word has to match several for the narrowing to mean anything.
+       "salmon" matched two until the Friday duplicate was hidden from the app,
+       leaving one — so this uses a word that still spans the menu. */
+    expect(find("shrimp").length).toBeGreaterThan(1);
   });
 });
 
