@@ -104,7 +104,10 @@ describe("adding to the cart", () => {
     // Since the printed-menu cull the only one-tap items are the Friday
     // platters — everything sold on a weekday has sides to choose.
     const { user } = await renderApp(new Date(2026, 6, 31, 12, 0)); // Friday
-    const add = screen.getByRole("button", { name: "Add Fish Platter (Shrimp & 2 Sides) to cart" });
+    /* Blue Crab rather than a platter: the platters promise "2 Sides" and gain a
+         side picker once that group is attached in Clover, at which point they
+         stop being one-tap. Blue Crab is a flat $15 dish with nothing to pick. */
+      const add = screen.getByRole("button", { name: "Add Blue Crab to cart" });
     await user.click(add);
     await vi.waitFor(() => expect(add.className).toContain("pop"));
     expect(await screen.findByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();

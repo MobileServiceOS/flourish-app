@@ -192,6 +192,31 @@ const ITEM_DAYS = {
 
    The modifier stays in Clover untouched, so the register can still ring it.
    ============================================================================ */
+/* ITEMS kept in Clover but not offered in the app. Parallel to HIDDEN_IN_APP
+   below, which does the same for modifiers, and deliberately NOT `DELISTED` —
+   that set means "the kitchen stopped making it", and blurring the two is how
+   the Blue Crab entry ended up with a reason that was really a guess.
+
+   Nothing here is deleted at the register. Staff can still ring all of it. */
+const HIDDEN_ITEMS_IN_APP = {
+  /* The three Friday platters with no modifier groups. Their NAME and their
+     copy both promise "Shrimp & 2 Sides" and the SKU cannot record a side, so
+     ordering one tells the kitchen nothing about what comes with it. Each is
+     also within a cent of an everyday item that CAN take a flavour and sides —
+     and Friday Shrimp is $1.99 dearer than the everyday one.
+
+     Zero sales across 600 orders, so nobody is relying on them.
+
+     The two Friday platters NOT here — Crab Legs and Lobster — are kept because
+     their everyday twins have no flavour group either, so sides are the whole
+     of the dish's identity and `Side With Meal` alone makes them correct. Fish,
+     salmon and shrimp are flavour-defined, and a Friday SKU with no flavour is
+     a worse version of a dish already on the menu. See docs/FRIDAY-PRICING.md. */
+  "06Z80836S0GZR": "no sides group; Snapper Fish is the same price and takes a flavour",
+  "0NQ5E11VABFDY": "no sides group; everyday Salmon is a cent more and takes a flavour",
+  "CAFAH5FKPTRW8": "no sides group; everyday Shrimp is $1.99 CHEAPER and takes a flavour",
+};
+
 const HIDDEN_IN_APP = {
   /* Goat soup is sold at the counter but not through the app. It also rings
      $0 at the register (CLOVER-FIXES #2) — that is the owner's to fix in the
@@ -551,6 +576,10 @@ const out = [];
 for (const it of items.values()) {
   const cats = [...it.cats].filter((c) => KEEP_CATEGORIES.has(c));
   if (!cats.length || SKIP_ITEMS.has(it.name) || DELISTED.has(it.id) || it.name.includes("(Catering")) continue;
+  if (HIDDEN_ITEMS_IN_APP[it.id]) {
+    appHidden.push(`${it.name} ($${it.base}) — ${HIDDEN_ITEMS_IN_APP[it.id]}`);
+    continue;
+  }
 
   const gs = it.groups
     .filter((g) => groups.has(g))
@@ -777,6 +806,10 @@ for (const id of Object.keys(PREP_MINUTES)) {
   }
   for (const key of Object.keys(HIDDEN_IN_APP)) {
     if (!seen.has(key)) console.warn(`  ! HIDDEN_IN_APP names "${key}", which is not a modifier on the menu`);
+  }
+  for (const id of Object.keys(HIDDEN_ITEMS_IN_APP)) {
+    // `items` is the Map of everything the export carried, before any filtering.
+    if (!items.has(id)) console.warn(`  ! HIDDEN_ITEMS_IN_APP names ${id}, which is not an item in the export`);
   }
 }
 

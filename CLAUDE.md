@@ -720,6 +720,33 @@ Preview mode is a real, tested state: if the proxy isn't running the app still
 browses, searches and builds a cart, and the checkout says *"App is in preview
 mode — ordering is not connected yet"* rather than throwing.
 
+### Copy cannot claim what the data contradicts
+
+Salmon's description read "…grilled, or steamed" while Steamed was hidden, so
+the row advertised a flavour the sheet would not offer. It was found by
+accident, which is the problem: menu copy lives in a hand-maintained map and the
+data it describes is generated from Clover, so the two drift silently and only
+in one direction — the copy stays stale and keeps promising.
+
+`src/test/copyClaims.test.js` checks every claim a name or description can make
+against the data that would have to honour it: sides promised without a side
+group, "one size" against a size picker, a named flavour that is hidden, a day
+named without a day lock, "cooked to order" against the prep time. A human
+re-reading 32 descriptions after every regeneration is not a control.
+
+It found the same bug class five more times: five Friday platters named
+"(Shrimp & 2 Sides)" with no side group at all. Three are hidden from the app
+now; the other two are in `PENDING_AT_REGISTER` — an allowlist that **cannot
+rot**, because a test fails the moment either item actually has the group,
+forcing the entry out.
+
+Two things it deliberately does not flag. "Made to order" is marketing copy and
+says nothing about minutes, so only the app's own term — "cooked to order",
+which the item sheet prints on a chip — is treated as a timing claim; Wings
+reads "Made to order" at 15 minutes and that is accurate. And the day-word
+pattern matches whole words only, after `\b(fri)\w*\b` matched **"fried"** in
+Shrimp's flavour list and reported a day claim that was not there.
+
 ## Audits worth reading before you trust a map
 
 Two documents record things measured against the live register rather than
@@ -740,12 +767,15 @@ tier and not a time restriction the app would have to model. BBQ Chicken and
 Curry Chicken stay hidden for a *pricing* reason instead of a menu one: both are
 $0.00 in Clover and would ring free.
 
-**`docs/FRIDAY-SKU-DELETION.md`** — what to delete at the register, and the
-thing to settle first: **there is no mechanism for a Friday price**, in the app
-or in Clover. The app sends no line prices, Clover has no day-dependent
-pricing, and the day locks govern availability rather than cost. The Friday SKUs
-*were* the mechanism. Three of the eight are not duplicates at all, and only
-crab legs and lobster carry a real discount — shrimp is dearer on Friday.
+**`docs/FRIDAY-PRICING.md`** — nothing is deleted from Clover. Three Friday
+SKUs are hidden from the app (`HIDDEN_ITEMS_IN_APP`) because fish, salmon and
+shrimp are *flavour-defined* and a Friday SKU with no flavour group is a worse
+version of a dish already on the menu; crab legs and lobster have no flavour
+group even on the everyday item, so sides are the whole identity and they are
+kept. Also carries the number worth a decision: **crab legs with shrimp is
+$55.00 midweek against $39.99 on the flyer**, and **there is no mechanism for a
+Friday price** — the app sends no line prices, Clover has no day-dependent
+pricing, and the day locks govern availability rather than cost.
 
 **`docs/EXPORT-VS-CLOVER.md`** — the curated xlsx export is now a *subset* of
 the register. Live Clover has **no Drinks category** (both drink items sit in
