@@ -439,6 +439,16 @@ hours.
 `daysLabel` collapses runs: `[0,1,2,3,4]` reads "Sun–Thu only", not
 "Sun & Mon & Tue & Wed & Thu only".
 
+**Seafood Stew Peas is large only.** A flat $30 item with no size group in
+Clover, and nothing in the app implies otherwise: no variant or flavour group,
+`lo === hi` so it renders one price rather than a range, `sizePrices` returns
+null so there is no "Med · Lg" row, `hasChoices` is false so it adds in one tap
+instead of opening a chooser, and its own copy says "One size, large." The
+search index is just its name, so "medium stew peas" cannot reach it. Tests
+assert the absence of a SIZE choice specifically, not the absence of groups —
+`Side With Meal` is queued to be attached at the register, and when it is this
+item gains a sides picker and should still have no sizes.
+
 **Why the Seafood stew-peas `oos` flag is NOT a day lock.** Now that modifier
 locks exist, `KR1HHY64E4QPJ::Seafood` ($30, `QT4GSARF6ZHV8`) could have become
 `[5]` instead of a hide — and it should not. That modifier is a $30 "size" of
@@ -478,7 +488,10 @@ Three sets, declared outright in `scripts/generate-menu.mjs`:
 - everything else — included, and asserted to be $0. A price appearing on one is
   reported as an issue rather than silently charged.
 
-**The two overridden sides make the app quote more than the till takes.** Clover
+**THE TWO OVERRIDDEN SIDES MAKE THE APP QUOTE MORE THAN THE TILL TAKES, TODAY.**
+Queued at the Clover dashboard: `W63ZR0Q92XER4` → $6.00 and `WHGNBP3G67PJP` →
+$2.50 in Side With Meal. Until those land this is live on all 19 plates sharing
+the group. See PRINTED-MENU-PRICES.md, where it is the largest entry. Clover
 prices its own orders and has them at $0, so until the dashboard is corrected the
 customer pays *less* at the counter than the app said. That is the rule-1 /
 rule-2 divergence again, but in the opposite direction from the nine items in

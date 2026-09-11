@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import { createApp } from "../../server/app.js";
 import { __resetRateLimit } from "../../server/guard.js";
 import { __resetPrinters, __resetLoyalty, CloverError } from "../../server/clover.js";
-import { MENU } from "../data/menu.data.js";
+import { MENU, PLATE_IDS, hasChoices } from "../data/menu.data.js";
+import { sizePrices } from "../lib/restaurant.js";
 import {
   dayOfWeek, daysLabel, itemDays, modifierDays,
   isItemAvailable, isModifierAvailable,
@@ -138,6 +139,46 @@ describe("Seafood Stew Peas is Fridays only now", () => {
     for (const d of [MON, FRI, SAT, SUN]) {
       expect(isItemAvailable("60KCQ1V22Q98M", d)).toBe(true);
     }
+  });
+});
+
+describe("Seafood Stew Peas is large only, and says so", () => {
+  /* A flat $30 dish with no size group in Clover. These assert the absence of a
+     SIZE choice specifically, not the absence of groups — `Side With Meal` is
+     queued to be attached at the register, and when it is this item gains a
+     sides picker and should still have no sizes. */
+  const dish = items.find((i) => i.id === STEW_PEAS_SEAFOOD);
+
+  it("carries no size or flavour group", () => {
+    const choosable = (dish.groups ?? []).filter((g) => g.kind === "variant" || g.kind === "flavor");
+    expect(choosable).toEqual([]);
+  });
+
+  it("shows one price, never a range", () => {
+    // A range is what renders as "$20.00 – $30.00" and implies a choice.
+    expect(dish.lo).toBe(dish.hi);
+    expect(dish.lo).toBe(30);
+    expect(sizePrices(dish), "a Med/Lg row would imply two sizes").toBeNull();
+  });
+
+  it("says large in its own copy", () => {
+    expect(dish.desc).toMatch(/one size, large/i);
+  });
+
+  it("offers no size words to search", () => {
+    // "medium stew peas" must not reach it through the index.
+    expect(dish.search).not.toMatch(/medium|large|small/i);
+  });
+
+  it("adds in one tap rather than opening a chooser", () => {
+    /* hasChoices drives both the sheet and the button's label, so this is the
+       single thing that decides whether a customer is offered options. */
+    expect(hasChoices(dish)).toBe(false);
+  });
+
+  it("is not a plate, so nothing promises it comes with sides", () => {
+    // Until Side With Meal is attached in Clover, it genuinely has no sides.
+    expect(PLATE_IDS.has(dish.id)).toBe(false);
   });
 });
 
