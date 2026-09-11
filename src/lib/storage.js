@@ -47,3 +47,34 @@ export async function saveAccount(account) {
     /* non-fatal: the order still goes through, points sync next launch */
   }
 }
+
+/**
+ * Erase the account and everything personal stored with it.
+ *
+ * Separate from saveAccount(null) on purpose. This is what a customer's
+ * "Delete my account" taps into, so it is deliberate about being thorough:
+ * both storage backends are cleared, not just the one currently in use. A
+ * device that ran an older browser build has a copy under the same key in
+ * localStorage; `readRaw` would never look at it once Preferences exists, but
+ * it is still the customer's name and phone number sitting on their phone
+ * after they asked for it to be gone.
+ *
+ * No network call, by design. The account only ever existed on this device, so
+ * deleting it cannot fail because the kitchen is unreachable.
+ *
+ * Returns true when the data is gone.
+ */
+export async function deleteAccount() {
+  let ok = true;
+  try {
+    await writeRaw(null);
+  } catch { ok = false; }
+
+  // Belt and braces: whichever backend was NOT used above.
+  try { globalThis.localStorage?.removeItem(KEY); } catch { /* blocked storage */ }
+  if (Preferences) {
+    try { await Preferences.remove({ key: KEY }); } catch { /* already gone */ }
+  }
+
+  return ok;
+}

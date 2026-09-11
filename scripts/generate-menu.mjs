@@ -45,6 +45,56 @@ const DELISTED = new Set([
   "Y79KKCYGMHRB6",   // Chicken Patty
 ]);
 const SIDE_GROUP = "Side With Meal";
+const SIDE_GROUP_GID = "YQWN3PKBKV9NG";
+
+/* ============================================================================
+   SIDES: THREE SETS, STATED OUTRIGHT
+
+   A side costs a different amount depending on what it is attached to, and
+   Clover already models that correctly — "Side With Meal" and the standalone
+   "Side" are separate modifier GROUPS holding separate modifier OBJECTS with
+   their own ids and their own prices. Festival is `T4SQAVXQ7MJ1E` at $0 with a
+   plate and `SJ27CE6ZE34BW` at $1 on its own. So context-dependent pricing
+   needs no special handling: it falls out of the data.
+
+   What does need stating is which sides are meant to carry an upcharge with a
+   plate, because Clover has several of them at $0 by mistake and $0 is
+   indistinguishable from "included" once it reaches the app. Nothing was
+   hardcoded before — the sheet simply printed "Included" for anything at $0,
+   faithfully, including a fried chicken the shop means to charge for.
+
+   1. UPCHARGE — priced with a plate.
+   2. FREE_WITH_MEAL — $0 with a plate, but sold standalone at its own price.
+      Declared rather than inferred so the category is testable; the data
+      already behaves this way and this set asserts it stays that way.
+   3. Everything else — included and free. Asserted to be $0, so a price
+      appearing on one in Clover is reported instead of silently charged.
+   ============================================================================ */
+
+/* Live Clover has Shrimp and Seafood Mac priced correctly. Fried Chicken and
+   Whiting Fish are $0 in the meal group — so the register charges nothing for
+   them today, which is revenue the shop loses rather than a customer surprise.
+   These two are the standalone Side prices, applied by decision.
+
+   !! The register still charges Clover's price, which is $0 for those two. !!
+   Until the Clover dashboard is corrected the app shows an upcharge the till
+   does not take. That is the same divergence as the nine items in
+   PRINTED-MENU-PRICES.md, and this script reports it on every run. */
+const SIDE_UPCHARGE = {
+  "Shrimp": 5.0,          // already correct in Clover
+  "Seafood Mac": 3.5,     // already correct in Clover
+  "Fried Chicken": 6.0,   // Clover has $0 — needs fixing at the source
+  "Whiting Fish X1": 2.5, // Clover has $0 — needs fixing at the source
+};
+
+/* Free with a plate, priced on their own. No override: this set exists to be
+   asserted, not applied.
+
+   Pepper Shrimp is deliberately absent from all of this. It is a standalone
+   side only ($15) and is not in the Side With Meal group at all, so it cannot
+   be chosen with a plate. Adding it would be a Clover change, not a code one. */
+const SIDE_FREE_WITH_MEAL = new Set(["Festival", "Pasta"]);
+
 
 // Uber Eats prices, verified by hand. Only used to show what ordering direct saves.
 // Re-check these occasionally; Uber changes them without telling anyone.
@@ -416,6 +466,32 @@ for (const it of items.values()) {
   if (base > 0 && variants.length) {
     issues.push(`${it.name}: base $${base} plus a priced size group — rings up double at the register`);
     base = 0;
+  }
+
+  /* Sides with a plate, against the three sets above. Done before the general
+     printed-menu pass so a side override is reported as a side, not as an
+     anonymous modifier edit. */
+  for (const g of gs) {
+    if (g.kind !== "side") continue;
+    for (const m of g.mods) {
+      const want = SIDE_UPCHARGE[m.n];
+      if (want !== undefined) {
+        if (want !== m.p) {
+          priceEdits.push({ item: it.name, group: g.name, option: m.n, clover: m.p, menu: want });
+          m.p = want;
+        }
+        continue;
+      }
+      /* Not an upcharge, so it is included and must be free. A price here means
+         Clover has started charging for something the menu gives away with the
+         plate — reported rather than passed on to a customer. */
+      if (m.p !== 0) {
+        issues.push(
+          `${it.name}: side "${m.n}" is $${m.p} in "${g.name}" but is not an upcharge side — ` +
+          "either add it to SIDE_UPCHARGE or set it to $0 in Clover"
+        );
+      }
+    }
   }
 
   // Printed-menu price wins over Clover, and anything not on the menu is hidden.

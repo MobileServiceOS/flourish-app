@@ -6,7 +6,7 @@ import { MENU, UE, CAT_OF, PLATE_IDS, hasChoices } from "./data/menu.data.js";
 import { cents, withTax } from "./lib/money.js";
 import { rewardOf, discountFor, pointsFor } from "./lib/loyalty.js";
 import { searchItems } from "./lib/search.js";
-import { loadAccount, saveAccount } from "./lib/storage.js";
+import { loadAccount, saveAccount, deleteAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
 import { createOrder, syncCustomer, setStock } from "./lib/clover.js";
 import {
@@ -169,6 +169,33 @@ export default function App() {
     saveAccount(null);
     setView("menu");
     flash("Signed out");
+  };
+
+  /* Apple guideline 5.1.1(v): an app that lets you create an account has to let
+     you delete it from inside the app. "Call the restaurant" does not satisfy
+     it, and is a routine rejection.
+
+     Deliberately network-free. A Flourish account is a name, a phone number and
+     a points balance held on this device — there is no server-side account to
+     tell about this — so deletion works with the proxy down, on a plane, with
+     the shop shut.
+
+     What it does NOT touch is the restaurant's own records. Orders already sent
+     to Clover are the shop's transaction history: their books, their tax
+     records, the ticket the kitchen cooked from. Deleting a customer's copy of
+     an order must not reach back and delete the shop's. The confirmation copy
+     says so, because "delete my account" reasonably sounds like it might. */
+  const deleteMyAccount = async () => {
+    setAccount(null);
+    setPoints(0);
+    setOrders([]);
+    setVouchers([]);
+    setApplied(null);
+    setActive(null);
+    awardedRef.current = new Set();
+    await deleteAccount();
+    setView("menu");
+    flash("Your account and its data have been deleted from this device");
   };
   const redeem = (r) => {
     if (points < r.cost) return flash("Not enough points yet");
@@ -482,7 +509,8 @@ export default function App() {
            test orders makes no sense when no order can be placed. */
         sandbox: clover.status === "online" && clover.sandbox }} />}
       {view === "rewards" && (account
-        ? <RewardsView {...{ account, points, vouchers, orders, redeem, signOut }} onReorder={reorder} />
+        ? <RewardsView {...{ account, points, vouchers, orders, redeem, signOut }}
+            onReorder={reorder} onDeleteAccount={deleteMyAccount} />
         : <SignInView onSignIn={signIn} />)}
       {view === "orders" && <OrdersView orders={orders} active={active} onReorder={reorder}
         onBrowse={() => setView("menu")} onTrack={() => active && setView("track")} />}

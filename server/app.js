@@ -33,8 +33,8 @@ import { cartPrepMinutes, readyWindow } from "../src/lib/prep.js";
 import { isValidName, isValidPhone, phoneDigits } from "../src/lib/phone.js";
 import { ADDRESS } from "../src/lib/restaurant.js";
 import {
-  rateLimit, payRateLimit, checkOrigin, requireAppKey, capCharge,
-  describeGuard, ALLOWED_ORIGINS,
+  rateLimit, payRateLimit, checkOrigin, requireAppKey, requireAppKeyWith, capCharge,
+  describeGuard, ALLOWED_ORIGINS, NATIVE_ORIGINS,
 } from "./guard.js";
 
 /* What the customer receives. Kept here rather than inline so the wording is in
@@ -65,16 +65,24 @@ export function createApp({
      through. The default binds the orchestrator to whichever client is in use,
      so the production path is the one in clover.js. */
   printTicket = (orderId) => printOrderTicket(orderId, { client: clover }),
+  /* Injectable for the same reason the Clover client is. Left undefined, the
+     key is read from the environment on every request, which is production
+     behaviour; a test passes one so it never has to mutate process.env, which
+     vitest shares between workers. */
+  appKey,
 } = {}) {
+  const guardAppKey = appKey === undefined ? requireAppKey : requireAppKeyWith(() => appKey);
   const app = express();
 
   // Behind a host that terminates TLS, req.ip must come from the forwarded
   // header or every caller looks like the proxy and the rate limit is useless.
   app.set("trust proxy", 1);
+  /* The native app's own origins are always allowed alongside whatever is
+     configured — see NATIVE_ORIGINS in guard.js. */
   app.use(cors({
     origin: ALLOWED_ORIGINS.length
-      ? ALLOWED_ORIGINS
-      : [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/],
+      ? [...ALLOWED_ORIGINS, ...NATIVE_ORIGINS]
+      : [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/, ...NATIVE_ORIGINS],
   }));
   app.use(express.json({ limit: "64kb" }));
   app.use("/api/clover", checkOrigin, rateLimit());
@@ -140,7 +148,7 @@ export function createApp({
   // Everything past health needs the app key. Health does not, because the app
   // calls it to decide whether ordering is available at all.
   app.use("/api/clover", (req, res, next) =>
-    req.path === "/health" ? next() : requireAppKey(req, res, next));
+    req.path === "/health" ? next() : guardAppKey(req, res, next));
 
   const requireConfig = (_req, res, next) =>
     CONFIGURED ? next() : res.status(503).json({ error: "Clover is not configured", code: "NOT_CONFIGURED" });

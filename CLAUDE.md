@@ -392,6 +392,45 @@ Chicken" side. There is no separate Fried Shrimp item in Clover and there should
 not be one: Clover has a single Shrimp item with its flavours inside it, and the
 fried shrimp *side* is the existing $5 Shrimp modifier.
 
+### Sides, and why "Included" was wrong
+
+A side costs a different amount depending on what it is attached to, and **Clover
+already models that correctly**: "Side With Meal" (`YQWN3PKBKV9NG`) and the
+standalone "Side" (`S032100JQ3P4T`) are separate modifier groups holding separate
+modifier *objects*. Festival is `T4SQAVXQ7MJ1E` at $0 with a plate and
+`SJ27CE6ZE34BW` at $1 on its own. Context-dependent pricing needs no special
+handling — it falls out of the data, and nothing forces one price per side.
+
+Nothing was ever hardcoded. The sheet prints `m.p ? "+$X" : "Included"`, and
+"Included" means one thing only: **Clover says $0.00**.
+
+The problem was narrower. Clover has several meal-group sides at $0 by mistake,
+and once that reaches the app, $0 is indistinguishable from "included" — so the
+sheet said Fried Chicken was free with a plate, truthfully about the register and
+wrongly about what the shop means to charge. Note the direction: the register
+charged $0 too, so the shop was losing the money and no customer was surprised.
+
+Three sets, declared outright in `scripts/generate-menu.mjs`:
+
+- `SIDE_UPCHARGE` — priced with a plate. Shrimp $5 and Seafood Mac $3.50 are
+  already right in Clover; **Fried Chicken $6 and Whiting Fish $2.50 are not**,
+  and are applied by decision from the standalone prices.
+- `SIDE_FREE_WITH_MEAL` — Festival and Pasta: $0 with a plate, own price alone.
+  Declared to be *asserted*, not applied; the data already behaves this way.
+- everything else — included, and asserted to be $0. A price appearing on one is
+  reported as an issue rather than silently charged.
+
+**The two overridden sides make the app quote more than the till takes.** Clover
+prices its own orders and has them at $0, so until the dashboard is corrected the
+customer pays *less* at the counter than the app said. That is the rule-1 /
+rule-2 divergence again, but in the opposite direction from the nine items in
+PRINTED-MENU-PRICES.md — worth knowing before someone "fixes" it. See
+CLOVER-FIXES.md §6.
+
+Pepper Shrimp is deliberately absent: it is a standalone side only and is not in
+the meal group at all, so it cannot be offered with a plate without a Clover
+change.
+
 ### Grouping line items
 
 Orders are created with `groupLineItems: true`. Ten of the same plate was
@@ -511,7 +550,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 519 tests
+npm test            # 563 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

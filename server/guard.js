@@ -78,23 +78,44 @@ sweep.unref?.();
 
 export const __resetRateLimit = () => hits.clear();
 
-/* ---------- origin ---------- */
+/* ---------- origin ----------
+
+   The iOS app is not a web page: its web view loads from `capacitor://localhost`
+   and sends that as its Origin. Those schemes are always allowed, because a page
+   on a real website cannot forge them — a browser will not let evil.com claim to
+   be `capacitor://localhost`, which is the whole reason the origin allowlist is
+   worth anything. Leaving them out would 403 every customer on the App Store
+   build while the web build carried on working. */
+export const NATIVE_ORIGINS = ["capacitor://localhost", "ionic://localhost"];
+
 export function checkOrigin(req, res, next) {
   const origin = req.get("origin");
-  // Same-origin browser requests and native app requests send no Origin at all.
+  // Same-origin browser requests and some native requests send no Origin at all.
   if (!origin) return next();
+  if (NATIVE_ORIGINS.includes(origin)) return next();
   if (!ALLOWED_ORIGINS.length) return next();           // not configured, dev
   if (ALLOWED_ORIGINS.includes(origin)) return next();
   return res.status(403).json({ error: "Origin not allowed", code: "BAD_ORIGIN" });
 }
 
 /* ---------- app key ---------- */
+/* The middleware, parameterised by where the key comes from. The default reads
+   the environment on every request (see appKey above); tests inject a fixed one
+   so they never have to mutate process.env, which vitest shares across workers
+   and which made an unrelated suite fail one run in nine. */
+export function requireAppKeyWith(getKey) {
+  return (req, res, next) => appKeyGuard(getKey(), req, res, next);
+}
+
 export function requireAppKey(req, res, next) {
+  return appKeyGuard(appKey(), req, res, next);
+}
+
+function appKeyGuard(key, req, res, next) {
   // Unset means development. Localhost is let through so `npm run dev:all`
   // needs no ceremony; anything remote is refused outright rather than left
   // open, because an unauthenticated payment endpoint on the internet is the
   // failure mode this whole file exists to prevent.
-  const key = appKey();
   if (!key) {
     return isLocal(req)
       ? next()
