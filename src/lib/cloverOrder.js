@@ -83,8 +83,53 @@ export function resolveModifiers(modifiers = [], catalog = {}) {
 /* Clover truncates a long order note, and a truncated note loses whatever is at
    the bottom. So the customer's name and phone sit near the TOP, above anything
    optional, and the builder measures itself against this cap rather than hoping.
-   255 is Clover's documented order-note length. */
+   255 is Clover's documented order-note length.
+
+   SPECIAL INSTRUCTIONS ARE NOT IN HERE. They ride on `lineItems[].note`, which
+   was verified to print on the real Station under its own line item:
+
+       1  Jerk Chicken
+          Jerk Chicken: Medium; Side With Meal: 2 White Rice
+          No veg
+
+   That is where a cook needs them — indented under the plate they belong to,
+   not lumped at the bottom of the order where "no veg" names no dish. It also
+   means there is no 255-character budget to ration between the customer's
+   details and their instructions: the two live in different fields. An earlier
+   design capped each line and ranked truncation priority; none of that
+   machinery is needed and none of it is here. */
 export const NOTE_MAX = 255;
+
+/** What a customer may type into "Special instructions", per line item. */
+export const LINE_NOTE_MAX = 140;
+
+/** A vehicle description on the ticket. Short: it shares the 255-char note. */
+export const VEHICLE_MAX = 60;
+
+/**
+ * Clean one line's special instructions.
+ *
+ * Enforced HERE rather than only in the input's maxLength, because the browser
+ * cap is a courtesy to an honest client — a crafted request would otherwise put
+ * arbitrary text and arbitrary bytes onto a thermal printer.
+ *
+ * Control characters are stripped rather than escaped. A newline inside a line
+ * note breaks the ticket's layout, and a bare carriage return or an ESC byte can
+ * reach the printer as a command rather than as text. Tabs and newlines collapse
+ * to a single space so the words survive; everything else in the control range
+ * is dropped.
+ */
+export function cleanLineNote(raw) {
+  if (raw === null || raw === undefined) return "";
+  return String(raw)
+    // Whitespace-ish control chars become a space; the rest vanish.
+    .replace(/[\t\n\r\v\f\u0085\u2028\u2029]+/g, " ")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, LINE_NOTE_MAX);
+}
 
 export class MissingCustomerError extends Error {
   constructor(missing) {
@@ -105,7 +150,7 @@ export class MissingCustomerError extends Error {
    was every order, because App.jsx passed the saved *account* rather than the
    name and phone typed into the checkout. It throws now, and the proxy turns
    that into a 400 before anything reaches Clover. */
-export function kitchenNote({ orderNumber, customer, pickupLabel, reward, note }) {
+export function kitchenNote({ orderNumber, customer, pickupLabel, reward, curbside }) {
   const name = String(customer?.name ?? "").trim();
   const phone = String(customer?.phone ?? "").trim();
   const missing = [];
@@ -116,14 +161,42 @@ export function kitchenNote({ orderNumber, customer, pickupLabel, reward, note }
   const lines = ["PICKUP ORDER — PAY AT REGISTER"];
   if (orderNumber) lines.push(`Order ${orderNumber}`);
   lines.push(`${name} · ${formatPhone(phone) || phone}`);
+
+  /* Curbside sits directly under the customer, because it changes what staff
+     DO — the food is walked out rather than waited for. Shouted, for the same
+     reason PAY AT REGISTER is: nobody reads a ticket carefully at a rush. */
+  const vehicle = cleanVehicle(curbside);
+  if (vehicle) lines.push(`CURBSIDE — BRING OUT TO: ${vehicle}`);
+
   lines.push(`Pickup: ${pickupLabel}`);
   if (reward?.name) lines.push(`Reward: ${reward.name}`);
-  if (note) lines.push(`Note: ${note}`);
 
-  /* Trim from the bottom if it will not fit. The optional lines go first, so
-     what survives a truncation is always what staff need to hand the bag over. */
-  while (lines.length > 4 && lines.join(NL).length > NOTE_MAX) lines.pop();
+  /* Trim from the bottom if it will not fit. Everything above `keep` has to
+     survive: who it is for, where they are sitting, and when it is due. Only
+     the reward line is expendable — it is already a real Clover discount on the
+     order, so losing the words costs nothing. */
+  const keep = 4 + (vehicle ? 1 : 0);
+  while (lines.length > keep && lines.join(NL).length > NOTE_MAX) lines.pop();
   return lines.join(NL).slice(0, NOTE_MAX);
+}
+
+/**
+ * The vehicle description for the ticket, or "" when this is not curbside.
+ *
+ * Accepts `{ vehicle, plate }`, plate optional. Cleaned exactly like a line
+ * note: the same control characters would break the same ticket.
+ */
+export function cleanVehicle(curbside) {
+  if (!curbside) return "";
+  /* A bare string is accepted for convenience, but the fallback has to check
+     for one: `curbside.vehicle ?? curbside` on an object with no `vehicle` fed
+     the object itself to String(), and "[object Object]" is not falsy — so
+     `{}` printed CURBSIDE — BRING OUT TO: [object Object] on a real ticket. */
+  const source = typeof curbside === "string" ? curbside : curbside.vehicle;
+  const vehicle = cleanLineNote(source).slice(0, VEHICLE_MAX);
+  if (!vehicle) return "";
+  const plate = cleanLineNote(curbside.plate ?? "").slice(0, 12).toUpperCase();
+  return plate ? `${vehicle} · ${plate}` : vehicle;
 }
 
 export function buildAtomicOrder({
@@ -133,7 +206,7 @@ export function buildAtomicOrder({
   customer = null,
   orderNumber = null,
   pickupLabel,
-  note = "",
+  curbside = null,
   catalog = {},
 } = {}) {
   if (!Array.isArray(cart) || cart.length === 0) {
@@ -155,7 +228,9 @@ export function buildAtomicOrder({
       lineItems.push({
         item: { id: line.itemId },
         ...(modifications.length ? { modifications } : {}),
-        ...(line.note ? { note: String(line.note).slice(0, 255) } : {}),
+        /* Cleaned and capped here, not trusted from the client. 140 is what the
+           field offers; 255 was the order-note cap and never belonged on a line. */
+        ...(cleanLineNote(line.note) ? { note: cleanLineNote(line.note) } : {}),
       });
     }
   }
@@ -168,8 +243,10 @@ export function buildAtomicOrder({
        a special instruction — is a different line and stays its own. */
     groupLineItems: true,
     // The title is what shows in the Clover order list; the note is what prints.
-    title: orderNumber ? `${orderNumber} · PAY AT REGISTER` : `Flourish app · pickup ${pickupLabel}`,
-    note: kitchenNote({ orderNumber, customer, pickupLabel, reward, note }),
+    title: (orderNumber ? `${orderNumber} · PAY AT REGISTER` : `Flourish app · pickup ${pickupLabel}`)
+      // Visible in the Clover order list, where staff triage without opening anything.
+      + (cleanVehicle(curbside) ? " · CURBSIDE" : ""),
+    note: kitchenNote({ orderNumber, customer, pickupLabel, reward, curbside }),
     /* No payment is attached, deliberately. That is what leaves the order open
        and owing at the register — this app never takes money. */
   };
