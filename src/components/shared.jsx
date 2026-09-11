@@ -82,16 +82,38 @@ export const Group = ({ label, children }) => (
 );
 
 /* One selectable modifier. `right` shows its price or "Included". */
-export const Option = ({ sel, onClick, label, right }) => (
-  <div className={"opt" + (sel ? " sel" : "")} onClick={onClick} role="button" tabIndex={0}
-    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}>
-    <span style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-      <span className="radio">{sel && <Check size={12} color="#fff" strokeWidth={3} />}</span>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-    </span>
-    {right && <span style={{ color: "var(--muted)", fontSize: 13, flex: "0 0 auto", marginLeft: 10 }}>{right}</span>}
-  </div>
-);
+/* One selectable modifier. `right` shows its price or "Included".
+
+   `unavailable` is for an option that is real and on the menu but not sold
+   today — seafood soup on a Tuesday. It stays visible, greyed, with the reason
+   in place of its price: an option that simply vanished four days a week leaves
+   a customer wondering whether the shop stopped making it. It cannot be picked,
+   by pointer or keyboard, and the proxy refuses it too. */
+export const Option = ({ sel, onClick, label, right, unavailable = null }) => {
+  const blocked = Boolean(unavailable);
+  const pick = () => { if (!blocked) onClick(); };
+  return (
+    <div className={"opt" + (sel && !blocked ? " sel" : "") + (blocked ? " opt-off" : "")}
+      onClick={pick} role="button" tabIndex={blocked ? -1 : 0}
+      aria-disabled={blocked || undefined}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        pick();
+      }}>
+      <span style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+        <span className="radio">{sel && !blocked && <Check size={12} color="#fff" strokeWidth={3} />}</span>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      </span>
+      {(blocked || right) && (
+        <span style={{ color: "var(--muted)", fontSize: blocked ? 11.5 : 13, flex: "0 0 auto", marginLeft: 10,
+          fontWeight: blocked ? 700 : undefined }}>
+          {blocked ? unavailable : right}
+        </span>
+      )}
+    </div>
+  );
+};
 
 export const Section = ({ title, children }) => (
   <div style={{ marginTop: 18 }}>

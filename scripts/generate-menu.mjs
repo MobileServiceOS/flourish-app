@@ -146,7 +146,28 @@ const CATEGORY_DAYS = { "Seafood Fridays": [5] };
 // precedence over CATEGORY_DAYS. Clover has no concept of a day-limited item,
 // so this map is the only place that knowledge lives.
 const ITEM_DAYS = {
-  "32VDQ4G5J131P": [5, 6],   // Seafood Stew Peas — Fri & Sat only
+  "32VDQ4G5J131P": [5],      // Seafood Stew Peas — Fridays only
+};
+
+/* Modifiers only sold on certain days, keyed "<modifier group id>::<name>".
+
+   Soup is one Clover item with six sizes in one group, and the kitchen makes
+   the three soups on different days. Clover has no concept of a day-limited
+   modifier any more than a day-limited item, so this map is the only place
+   that knowledge lives — and it has to be a MODIFIER lock, because the thing
+   with the window is an option inside a group, not a dish of its own.
+
+   Hiding them instead (the `oos` route) would be wrong here: an option that is
+   genuinely on the menu four days a week should say so, not vanish and leave a
+   customer wondering whether the shop stopped making it. */
+const MODIFIER_DAYS = {
+  // Seafood soup — Friday and Saturday
+  "H2749PVKFN4EY::Medium Seafood": [5, 6],
+  "H2749PVKFN4EY::Large Seafood": [5, 6],
+  // Chicken soup — Sunday through Thursday
+  "H2749PVKFN4EY::Medium Chicken": [0, 1, 2, 3, 4],
+  "H2749PVKFN4EY::Large Chicken": [0, 1, 2, 3, 4],
+  // Goat soup carries no lock: it is made every day.
 };
 
 /* Modifiers that are really a separate dish sitting in another item's size
@@ -503,6 +524,9 @@ for (const it of items.values()) {
         offMenu.push(`${it.name}: "${m.n}" (${m.p}) is on the register but not the printed menu`);
         continue;
       }
+      /* A day-locked modifier keeps its price and its place on the sheet; the
+         lock only decides whether it can be picked today. */
+      if (MODIFIER_DAYS[key]) m.days = MODIFIER_DAYS[key];
       if (MENU_PRICE[key] !== undefined && MENU_PRICE[key] !== m.p) {
         priceEdits.push({ item: it.name, group: g.name, option: m.n, clover: m.p, menu: MENU_PRICE[key] });
         m.p = MENU_PRICE[key];
@@ -554,7 +578,8 @@ for (const list of byCat.values()) list.sort((a, b) => b.hi - a.hi);
 
 const q = (s) => JSON.stringify(String(s));
 const modStr = (m) =>
-  `{ n: ${q(m.n)}, p: ${m.p}${m.mid ? `, mid: ${q(m.mid)}` : ""}${m.oos ? ", oos: true" : ""} }`;
+  `{ n: ${q(m.n)}, p: ${m.p}${m.mid ? `, mid: ${q(m.mid)}` : ""}` +
+  `${m.days ? `, days: ${JSON.stringify(m.days)}` : ""}${m.oos ? ", oos: true" : ""} }`;
 
 let js = `// GENERATED FROM THE CLOVER INVENTORY EXPORT — do not hand-edit prices.
 // Regenerate with:  npm run menu -- <clover-export.xlsx>
@@ -628,6 +653,16 @@ for (const id of POPULAR_IDS) {
 }
 for (const id of Object.keys(PREP_MINUTES)) {
   if (!ids.has(id)) console.warn(`  ! Prep time set for ${id}, which is not on the menu anymore`);
+}
+
+/* A day lock on a modifier that no longer exists is a silent no-op, and the
+   option it was meant to restrict would be orderable every day. */
+{
+  const seen = new Set();
+  for (const i of out) for (const g of i.groups) for (const m of g.mods) seen.add(`${g.gid}::${m.n}`);
+  for (const key of Object.keys(MODIFIER_DAYS)) {
+    if (!seen.has(key)) console.warn(`  ! Day lock set for "${key}", which is not a modifier on the menu`);
+  }
 }
 const undescribed = out.filter((i) => !DESC[i.id]);
 if (undescribed.length) {

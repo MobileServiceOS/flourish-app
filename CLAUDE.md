@@ -392,6 +392,64 @@ Chicken" side. There is no separate Fried Shrimp item in Clover and there should
 not be one: Clover has a single Shrimp item with its flavours inside it, and the
 fried shrimp *side* is the existing $5 Shrimp modifier.
 
+### Day locks: items and modifiers, one mechanism
+
+Some dishes are only cooked on certain days. So are some **options inside a
+group**: Soup is one Clover item (`9WV3BMMSC8G5E`) whose six sizes are three
+different soups, and the kitchen makes them on different days.
+
+| | Window |
+|---|---|
+| Soup — Medium/Large **Seafood** | Fri, Sat |
+| Soup — Medium/Large **Chicken** | Sun–Thu |
+| Soup — Medium/Large **Goat** | every day, no lock |
+| Seafood Stew Peas (item) | **Fri only** — was Fri+Sat, corrected |
+| Seafood Fridays (category) | Fri |
+
+Three declarations in `scripts/generate-menu.mjs`, all keyed the way the rest of
+the maps are: `CATEGORY_DAYS` by name, `ITEM_DAYS` by Clover item id,
+`MODIFIER_DAYS` by `"<group id>::<modifier name>"`. Clover has no concept of a
+day-limited anything, so these maps are the only place that knowledge lives, and
+`modStr` emits `days` onto the modifier so a regeneration carries it.
+
+`src/lib/availability.js` is the **single** evaluation. The proxy and the sheet
+both call it, so they cannot disagree about whether today is Friday.
+
+**The day is always New York's day.** `new Date().getDay()` is the *device's*
+idea of the day: a customer in London at 1am Saturday is still in Friday evening
+as far as the kitchen is concerned, and a container in UTC crosses midnight five
+hours early. Both would offer or refuse the wrong food, so `dayOfWeek()` names
+the zone through `Intl` rather than inheriting it. That makes it independent of
+the `TZ` pin in `server/index.js`, which stays for the hours logic.
+
+**A locked option is shown, greyed, with the reason** — "Fri & Sat only" in
+place of its price — not hidden. An option that vanishes four days a week reads
+as "they stopped making it". It cannot be picked by pointer or keyboard, and the
+sheet's default selection skips it: defaulting to `!m.oos` alone would open the
+soup sheet on seafood on a Tuesday, priced for something the proxy then refuses.
+Search preselection is filtered the same way.
+
+**Enforced server-side, in the same pass as the item locks.** `POST /orders`
+refuses with `409 NOT_AVAILABLE_TODAY`, listing everything unavailable rather
+than only the first, because a customer fixing one problem at a time is a
+customer giving up. Greying the sheet is a courtesy to an honest client; a tab
+left open overnight or a replayed request is stopped by the proxy, same as
+hours.
+
+`daysLabel` collapses runs: `[0,1,2,3,4]` reads "Sun–Thu only", not
+"Sun & Mon & Tue & Wed & Thu only".
+
+**Why the Seafood stew-peas `oos` flag is NOT a day lock.** Now that modifier
+locks exist, `KR1HHY64E4QPJ::Seafood` ($30, `QT4GSARF6ZHV8`) could have become
+`[5]` instead of a hide — and it should not. That modifier is a $30 "size" of
+ordinary Stew Peas, and the dish exists as its own item (`32VDQ4G5J131P`). A day
+lock would make it *selectable on Fridays through the wrong item*, ringing up as
+Stew Peas with a size modifier rather than as Seafood Stew Peas — a different
+Clover line, a different ticket, and the item's own Friday lock bypassed. The
+flag is not standing in for a missing day mechanism; it is hiding a structural
+mistake in Clover. The fix is to delete that modifier from the Stew Peas group
+at the register. See CLOVER-FIXES.md §5.
+
 ### Sides, and why "Included" was wrong
 
 A side costs a different amount depending on what it is attached to, and **Clover
