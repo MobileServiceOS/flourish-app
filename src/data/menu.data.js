@@ -127,15 +127,6 @@ export const MENU = [
     { id: "A1YZ2ZD5CA1SW", name: "Lobster Platter (Shrimp & 2 Sides)", emoji: "🦞",
         desc: "Lobster with shrimp and two sides", days: [5], base: 39.99, lo: 39.99, hi: 39.99, prepMinutes: 30, search: "lobster platter shrimp 2 sides", groups: [
       ] },
-    { id: "06Z80836S0GZR", name: "Fish Platter (Shrimp & 2 Sides)", emoji: "🐠",
-        desc: "Fish with shrimp and two sides", days: [5], base: 30.0, lo: 30.0, hi: 30.0, prepMinutes: 30, search: "fish platter shrimp 2 sides", groups: [
-      ] },
-    { id: "CAFAH5FKPTRW8", name: "Shrimp", emoji: "🍤",
-        desc: "Shrimp with two sides", days: [5], base: 21.99, lo: 21.99, hi: 21.99, prepMinutes: 30, search: "shrimp", groups: [
-      ] },
-    { id: "0NQ5E11VABFDY", name: "Salmon (Shrimp & 2 Sides)", emoji: "🍽️",
-        desc: "Salmon with shrimp and two sides", days: [5], base: 21.99, lo: 21.99, hi: 21.99, prepMinutes: 30, search: "salmon shrimp 2 sides", groups: [
-      ] },
   ]},
   { cat: "Drinks", sub: "Refreshing beverages", items: [
     { id: "EWT1J5Q9K7KX0", name: "Pina Colada", emoji: "🍹",
