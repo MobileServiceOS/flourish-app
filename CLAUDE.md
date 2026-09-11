@@ -523,6 +523,77 @@ Pepper Shrimp is deliberately absent: it is a standalone side only and is not in
 the meal group at all, so it cannot be offered with a plate without a Clover
 change.
 
+### Special instructions
+
+"gravy on the rice", "no veg", "extra spicy". They ride on
+**`lineItems[].note`**, and that was verified printing on the real Station —
+ticket FL-4212 came out as:
+
+```
+1  Jerk Chicken
+   Jerk Chicken: Medium; Side With Meal: 2 White Rice
+   No veg
+```
+
+Indented under the plate they belong to, which is where a cook needs them. At
+the bottom of the order "no veg" names no dish.
+
+**There is therefore no 255-character budget to ration.** The instructions and
+the customer's details live in different Clover fields. An earlier design capped
+each line's instructions and ranked truncation priority so the customer's name
+would survive; none of that machinery was needed and none of it exists. The
+`Note:` line in `kitchenNote` is gone too — it was dead code that nothing ever
+populated.
+
+`cleanLineNote` in `cloverOrder.js` enforces **140 characters and strips control
+characters**, server-side. The input's `maxLength` is a courtesy to an honest
+client; a crafted request would otherwise put arbitrary bytes on a thermal
+printer, where a bare ESC can arrive as a command rather than as text. Tabs and
+newlines collapse to a space so the words survive; the rest of the control range
+is dropped.
+
+The field shows a countdown only past 100 characters — a counter sitting at 140
+from the first keystroke is noise on a field most people leave empty. It is
+**editable from the cart**, because it used to be a read-only chip and changing
+"no veg" meant deleting the line and walking the whole sheet again.
+
+**It is not an allergy channel**, and says so: *"For allergies, please call the
+restaurant."* The kitchen may not read a free-text box in time, and someone
+trusting it could be harmed.
+
+### Curbside
+
+People double-park on Laconia and get ticketed, so "I'll wait in my car" is the
+reason a lot of customers will use the app at all. Off by default — most collect
+at the counter, and a toggle starting on would put CURBSIDE on every ticket.
+
+The vehicle description goes in the **order** note, directly under the name and
+phone, because it changes what staff *do* with the bag:
+
+```
+PICKUP ORDER — PAY AT REGISTER
+Order FL-3412
+Kay K · (347) 555-1234
+CURBSIDE — BRING OUT TO: Blue Honda Civic · ABC1234
+Pickup: 2:10–2:20 PM
+```
+
+Shouted for the same reason PAY AT REGISTER is: nobody reads a ticket carefully
+during a rush. The order *title* carries ` · CURBSIDE` too, since staff triage
+the Clover order list without opening anything.
+
+The description is required once the toggle is on, enforced in the proxy with
+`400 VEHICLE_REQUIRED` — a ticket telling staff to walk food out to a car they
+cannot identify is as unactionable as an order with no customer. A description
+left behind by a toggle switched off again is ignored rather than sent.
+
+Note trimming protects it: the floor is header, order number, customer,
+curbside and pickup window, so only the reward line is expendable. It is already
+a real Clover discount on the order, so losing the words costs nothing.
+
+Surfaced on the **menu** screen as well as at checkout. Nobody discovers a
+checkout toggle they never reach, and avoiding the ticket is the selling point.
+
 ### Grouping line items
 
 Orders are created with `groupLineItems: true`. Ten of the same plate was

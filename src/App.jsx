@@ -300,6 +300,13 @@ export default function App() {
     setCart((c) => c.map((l) => l.key === key ? { ...l, qty: Math.max(1, l.qty + d) } : l));
   const removeLine = (key) => setCart((c) => c.filter((l) => l.key !== key));
 
+  /* Edit one line's special instructions from the cart. The note is part of the
+     line's identity on the kitchen ticket — two plates with different notes are
+     two lines — but NOT part of its cart key, so changing it does not merge or
+     split the row under the customer. */
+  const setNote = (key, note) =>
+    setCart((c) => c.map((l) => (l.key === key ? { ...l, note } : l)));
+
   /* Tapping a chip and scroll-spy both write activeCat, so they fight: the
      smooth scroll passes over every section on the way and the spy would drag
      the highlight along with it. Tapping wins for as long as the scroll runs. */
@@ -378,7 +385,7 @@ export default function App() {
      Doing it the other way round risks a charged customer with no order on the
      register, which is the one outcome staff cannot fix from the counter.
      A failed charge on an existing order is recoverable — they pay at pickup. */
-  const placeOrder = async (pickup, tip, contact) => {
+  const placeOrder = async (pickup, tip, contact, curbside = null) => {
     setPayError(null);
     setSubmitting(true);
 
@@ -400,6 +407,7 @@ export default function App() {
       let messaged = false;
       let pickupLabel = pickup.label;
       let readyWindow = null;
+      let curbsideOut = curbside ? { vehicle: curbside.vehicle } : null;
 
       if (clover.status === "online") {
         /* The name and phone come from the CHECKOUT, not from the saved
@@ -413,6 +421,7 @@ export default function App() {
           customer: { name: contact.name, phone: contact.phone },
           orderNumber: num,
           pickupAt: pickup.iso ?? null,
+          curbside,
         });
         cloverOrderId = res.orderId;
         printed = res.printed;
@@ -422,6 +431,8 @@ export default function App() {
            the kitchen ticket say the same thing. */
         pickupLabel = res.pickupLabel ?? pickupLabel;
         readyWindow = res.readyWindow ?? null;
+        // The server echoes the cleaned description; show that, not the raw input.
+        curbsideOut = res.curbside ?? null;
         if (printed === false) {
           flash("Order received — the printer is down, staff have it on screen");
         }
@@ -445,6 +456,7 @@ export default function App() {
         earnable: account ? pointsFor(subtotal - discount, loyalty) : 0,
         pointsAwarded: false,
         printed, printError, messaged, reward,
+        curbside: curbsideOut,
         lines: cart.map((l) => ({ ...l })),
       };
 
@@ -516,7 +528,7 @@ export default function App() {
         onBrowse={() => setView("menu")} onTrack={() => active && setView("track")} />}
       {view === "cart" && <CartView {...{ cart, subtotal, saved, account, setQty, removeLine, setView,
           vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher: () => setApplied(null),
-          quote }} />}
+          quote, setNote }} />}
       {view === "checkout" && (
         <CheckoutView subtotal={subtotal} points={points} account={account} goJoin={() => setView("rewards")}
           discount={discount} appliedVoucher={appliedVoucher}

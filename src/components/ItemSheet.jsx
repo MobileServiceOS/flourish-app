@@ -4,6 +4,7 @@ import { UE, CAT_OF, PLATE_IDS } from "../data/menu.data.js";
 import { cents, money } from "../lib/money.js";
 import { isCookedToOrder, prepMinutesForItem } from "../lib/prep.js";
 import { isModifierAvailable, daysLabel } from "../lib/availability.js";
+import { LINE_NOTE_MAX } from "../lib/cloverOrder.js";
 import { preselectFor } from "../lib/search.js";
 import { Group, Option, useSheet } from "./shared.jsx";
 
@@ -140,10 +141,25 @@ export default function ItemSheet({ item, onClose, onAdd, query = "" }) {
           ))}
 
           <Group label="Special instructions">
-            <input className="field" placeholder="Extra gravy, no pepper, etc."
-              aria-label={`Special instructions for ${item.name}`} maxLength={140}
+            <input className="field" placeholder="gravy on the rice, no veg, extra spicy"
+              aria-label={`Special instructions for ${item.name}`} maxLength={LINE_NOTE_MAX}
               value={note} onChange={(e) => setNote(e.target.value)} />
-            <div className="field-hint">Goes straight to the kitchen ticket.</div>
+            <div className="field-hint">
+              Prints on the kitchen ticket under this item.
+              {/* Only once it is worth knowing. A counter sitting at 140 from
+                  the first keystroke is noise on a field most people leave
+                  empty or use briefly. */}
+              {note.length > 100 && (
+                <span style={{ float: "right", fontWeight: 700,
+                  color: note.length >= LINE_NOTE_MAX ? "var(--rose-ink)" : "var(--muted)" }}>
+                  {LINE_NOTE_MAX - note.length} left
+                </span>
+              )}
+            </div>
+            {/* A free-text box is not an allergy channel and must not pretend to
+                be one: the kitchen may not read it in time, and someone trusting
+                it could be harmed. Say where to go instead. */}
+            <div className="field-hint">For allergies, please call the restaurant.</div>
           </Group>
 
           {saves > 0 && (

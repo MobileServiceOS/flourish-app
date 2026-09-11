@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { MapPin, Check, Clock, Award, ChevronRight, Store, AlertCircle } from "lucide-react";
+import { MapPin, Check, Clock, Award, ChevronRight, Store, AlertCircle, Car } from "lucide-react";
 import { cents, money, taxOn, TAX_LABEL } from "../lib/money.js";
 import {
   isOpen, nextOpening, formatTime, describeOpening, closingOn, HOURS_LINE,
@@ -26,6 +26,17 @@ export default function CheckoutView({
   // The account stores bare digits; show them the way they typed them.
   const [phone, setPhone] = useState(account ? formatPhone(account.phone) : "");
   const [touched, setTouched] = useState({});
+
+  /* Curbside. People double-park on Laconia and get ticketed, so "I'll wait in
+     my car" is the reason a lot of them will use the app at all. Off by
+     default: most collect at the counter, and a toggle that starts on would put
+     CURBSIDE on every ticket. */
+  const [curbside, setCurbside] = useState(false);
+  const [vehicle, setVehicle] = useState("");
+  const [plate, setPlate] = useState("");
+  /* A toggle with no description is a ticket telling staff to walk food out to a
+     car they cannot identify, so the description is required once it is on. */
+  const vehicleOk = !curbside || vehicle.trim().length >= 3;
   const [tipIdx, setTipIdx] = useState(1);
   const tips = [0, 0.1, 0.15, 0.2];
   const base = Math.max(0, subtotal - discount);
@@ -64,12 +75,18 @@ export default function CheckoutView({
      — and this is what puts the customer's name on the printed ticket at all. */
   const contact = () => ({ name: name.trim(), phone: phoneDigits(phone) });
 
+  /* Sent only when the toggle is on, so the server and the ticket never carry a
+     stale description from a toggle someone switched off again. */
+  const curbsideChoice = () => (curbside
+    ? { waiting: true, vehicle: vehicle.trim(), plate: plate.trim() }
+    : null);
+
   const nameOk = isValidName(name);
   const phoneOk = isValidPhone(phone);
   // No quote means we do not yet know the food can be cooked before close, and
   // `fitsBeforeClose: false` means it cannot.
   const canCook = Boolean(quote?.fitsBeforeClose);
-  const ready = nameOk && phoneOk && open && canCook && subtotal > 0;
+  const ready = nameOk && phoneOk && vehicleOk && open && canCook && subtotal > 0;
 
   return (
     <>
@@ -167,6 +184,41 @@ export default function CheckoutView({
           )}
         </Section>
 
+        <Section title="Collecting it">
+          <button className={`slot-window ${curbside ? "on" : ""}`}
+            onClick={() => setCurbside((v) => !v)} aria-pressed={curbside}>
+            <Car size={17} aria-hidden="true" />
+            <span>
+              <strong>I'll wait in my car</strong>
+              <span style={{ display: "block", fontSize: 12, opacity: .85 }}>
+                Staff bring it out — no need to park up
+              </span>
+            </span>
+            {curbside && <Check size={17} style={{ marginLeft: "auto" }} aria-hidden="true" />}
+          </button>
+
+          {curbside && (
+            <>
+              <input className="field" style={{ marginTop: 12 }}
+                placeholder="Blue Honda Civic" aria-label="Vehicle description"
+                autoComplete="off" maxLength={60}
+                value={vehicle} onChange={(e) => setVehicle(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, vehicle: true }))}
+                aria-invalid={touched.vehicle && !vehicleOk ? "true" : undefined}
+                aria-describedby="co-vehicle-hint" />
+              <div id="co-vehicle-hint" className={`field-hint${touched.vehicle && !vehicleOk ? " bad" : ""}`}>
+                {touched.vehicle && !vehicleOk
+                  ? "Make and colour, so staff can spot you."
+                  : "Make and colour — staff look for this, not your name."}
+              </div>
+              <input className="field" style={{ marginTop: 8 }}
+                placeholder="Plate (optional)" aria-label="Licence plate, optional"
+                autoComplete="off" maxLength={12}
+                value={plate} onChange={(e) => setPlate(e.target.value)} />
+            </>
+          )}
+        </Section>
+
         <Section title="Add a tip">
           <div style={{ display: "flex", gap: 8 }} role="group" aria-label="Tip amount">
             {tips.map((t, i) => (
@@ -244,7 +296,7 @@ export default function CheckoutView({
             )}
             {payError.retryable && (
               <button className="pill-btn ghost" style={{ marginTop: 10 }}
-                onClick={() => onPay(pickupChoice(), tip, contact())}>
+                onClick={() => onPay(pickupChoice(), tip, contact(), curbsideChoice())}>
                 Try again
               </button>
             )}
@@ -252,12 +304,13 @@ export default function CheckoutView({
         )}
 
         <button className="pill-btn" disabled={!ready || submitting || cloverStatus !== "online"}
-          onClick={() => onPay(pickupChoice(), tip, contact())}>
+          onClick={() => onPay(pickupChoice(), tip, contact(), curbsideChoice())}>
           {submitting ? "Sending to the kitchen…"
             : cloverStatus !== "online" ? "Ordering not available right now"
             : !open ? `Closed until ${formatTime(nextOpening(now))}`
             : !nameOk ? "Enter your name"
             : !phoneOk ? "Enter your phone number"
+            : !vehicleOk ? "Describe your car"
             : !quote ? "Checking with the kitchen…"
             : !canCook ? "Not enough time to cook this today"
             : `Place order · ${money(total)} at pickup`}

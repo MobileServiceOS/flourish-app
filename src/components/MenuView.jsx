@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Star, Clock, MapPin, X, Sparkles, Lock, ChevronRight } from "lucide-react";
+import { Plus, Star, Clock, MapPin, X, Sparkles, Lock, ChevronRight, Car } from "lucide-react";
 import { UE, hasChoices } from "../data/menu.data.js";
 import { money } from "../lib/money.js";
 import { HOURS_LINE } from "../lib/hours.js";
@@ -112,6 +112,17 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}><MapPin size={13} /> 4035 Laconia Ave</span>
         </div>
       </header>
+
+      {/* Surfaced here, not only at checkout. Avoiding a parking ticket on
+          Laconia is the reason a lot of people will use this app at all, and
+          nobody discovers a checkout toggle they never reach. */}
+      <div className="curbside-note">
+        <Car size={16} aria-hidden="true" style={{ flex: "0 0 auto" }} />
+        <span>
+          <strong>Don't want to park?</strong> Choose "I'll wait in my car" at
+          checkout and we'll bring it out to you.
+        </span>
+      </div>
 
       <div className="search-row">
         <input className="search" placeholder="Search menu" value={search}

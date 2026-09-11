@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Clock, MapPin, Phone, ChevronLeft, Check, Navigation, Store, Award } from "lucide-react";
+import { Clock, MapPin, Phone, ChevronLeft, Check, Navigation, Store, Award, Car } from "lucide-react";
 import { money } from "../lib/money.js";
 import { formatTime } from "../lib/hours.js";
 import { PHONE_E164, PHONE_HUMAN, MAPS_URL } from "../lib/restaurant.js";
@@ -138,6 +138,20 @@ export default function TrackView({ order, setView, live = false, signedIn = fal
                   : `You'll earn ${order.earnable} points when you pay at the counter.`}
               </div>
             )
+          )}
+
+          {/* Curbside changes what the customer should DO, so it outranks the
+              address: staying put is the whole point of having asked. */}
+          {order.curbside?.vehicle && (
+            <div className="points-earned" role="status" style={{ marginTop: 10 }}>
+              <Car size={17} aria-hidden="true" style={{ flex: "0 0 auto" }} />
+              <div>
+                <strong>Stay in your car</strong>
+                <span style={{ display: "block", fontSize: 12, opacity: .9 }}>
+                  We'll bring it out to {order.curbside.vehicle}. No need to come in.
+                </span>
+              </div>
+            </div>
           )}
 
           {stage < 2 && (

@@ -37,10 +37,13 @@ const DELISTED = new Set([
   "21RNMJ880YCMC",   // Crab Legs & Shrimp
   "PEB98GZ1MBF6P",   // Lobster Tail (No Meal)
   "K7EX5APPAXPEJ",   // Lobster Roll & Fries
-  "PH221AJ7W66EA",   // Pepper Shrimp & Mussels
   "S0GK9MD2NE414",   // Salmon (1 Piece)
   "PZ1FB6X44MGYE",   // Lex Special
-  "DH0P3NGRN9RNE",   // Blue Crab $15 — duplicate; the menu lists one at $20
+  /* Blue Crab is duplicated in Clover and the shop's own flyer settles it at
+     $15, so DH0P3NGRN9RNE is the live one and the $20 entry is the stray. This
+     was the other way round, on a guess that the $20 was authoritative — so the
+     app sold blue crab at $20, from Lunch & Dinner, five dollars over the flyer. */
+  "PSGB77QNZR2WM",   // Blue Crab $20 — the duplicate; the flyer lists $15
   "QDCGERYM91BP0",   // Beef Patty
   "Y79KKCYGMHRB6",   // Chicken Patty
 ]);
@@ -140,6 +143,18 @@ const CATEGORY_SUB = {
 
 // Categories only sold on certain days. 0=Sun ... 6=Sat.
 // The app greys the item out and says when it's back.
+/* Which category an item belongs to when Clover files it in more than one.
+
+   Without this the generator takes whichever the export lists first, which put
+   Seafood Stew Peas, Blue Crab and Pepper Shrimp & Mussels under Lunch & Dinner
+   — all three are on the Seafood Fridays flyer, and Lunch & Dinner is not day
+   locked, so they read as everyday dishes. */
+const ITEM_CATEGORY = {
+  "32VDQ4G5J131P": "Seafood Fridays",   // Seafood Stew Peas
+  "DH0P3NGRN9RNE": "Seafood Fridays",   // Blue Crab $15
+  "PH221AJ7W66EA": "Seafood Fridays",   // Pepper Shrimp & Mussels
+};
+
 const CATEGORY_DAYS = { "Seafood Fridays": [5] };
 
 // Individual items only cooked on certain days, keyed by Clover id. Takes
@@ -283,7 +298,7 @@ const DESC = {
   "7916EWVQFPGH8": "Slow-braised lamb with two sides",
   "VQZ0T4XK707EC": "Brown stew, escovitch, or steamed",
   "ZTAQ37M4E9S4C": "Red peas simmered in coconut milk",
-  "32VDQ4G5J131P": "Stew peas loaded with seafood. One size, large.",
+  "32VDQ4G5J131P": "Lobster tail, shrimp and conch. One size, large.",
   "60KCQ1V22Q98M": "Slow-cooked, fall-off-the-bone tender",
   "JAD3BJK9BSTW8": "Plain, chicken, shrimp, steak, or oxtail",
   "PEB98GZ1MBF6P": "Lobster tail on its own, no sides",
@@ -307,7 +322,7 @@ const DESC = {
   "9WV3BMMSC8G5E": "Chicken, goat, or seafood",
   "6NX7XK602V0ZM": "One side on its own",
   "S0GK9MD2NE414": "One piece of salmon, no sides",
-  "DH0P3NGRN9RNE": "Blue crab on its own, no sides",
+  "DH0P3NGRN9RNE": "Blue crab, Fridays only",
   "49BD3KVSBHXRR": "Curry chicken, medium or large",
   "KW21XBQ6XVTGA": "Smaller plates at lunch prices",
   "QDCGERYM91BP0": "Flaky crust, seasoned beef",
@@ -405,7 +420,8 @@ const PREP_MINUTES = {
   "H9520PFNBT2NY": COOKED_TO_ORDER,   // Salmon
   "AYBW9QMTC6154": COOKED_TO_ORDER,   // Ackee & Shrimp
   "VHHCS7EDV70HC": COOKED_TO_ORDER,   // Shrimp
-  "PSGB77QNZR2WM": COOKED_TO_ORDER,   // Blue Crab
+  "DH0P3NGRN9RNE": COOKED_TO_ORDER,   // Blue Crab ($15, the flyer's one)
+  "PH221AJ7W66EA": COOKED_TO_ORDER,   // Pepper Shrimp & Mussels
   "QB9EKT4QGVWDA": COOKED_TO_ORDER,   // Shrimp & Waffles
   "BRMP82TR0Z45C": COOKED_TO_ORDER,   // Crab Legs Platter (Shrimp & 2 Sides)
   "A1YZ2ZD5CA1SW": COOKED_TO_ORDER,   // Lobster Platter (Shrimp & 2 Sides)
@@ -436,7 +452,12 @@ if (!src) {
   process.exit(1);
 }
 
-const wb = XLSX.readFile(resolve(src));
+/* Read the bytes ourselves rather than XLSX.readFile().
+   The xlsx ESM build does not wire up Node's fs, so readFile() is simply not a
+   function there — `npm run menu` died on this line with "XLSX.readFile is not
+   a function" before anything was parsed. XLSX.read() on a Buffer needs no fs
+   and behaves identically. */
+const wb = XLSX.read(readFileSync(resolve(src)), { type: "buffer" });
 const sheet = (n) => XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: null });
 
 /* ---------- modifier groups ---------- */
@@ -620,7 +641,15 @@ for (const it of items.values()) {
   }
   if (lo <= 0) continue;
 
-  out.push({ id: it.id, name: it.name, cat: cats[0], base, lo, hi, groups: gs });
+  /* An explicit pin wins, but only if the item really is in that category in
+     Clover — otherwise the pin is a fiction and the item would appear under a
+     heading the register does not agree with. */
+  const pinned = ITEM_CATEGORY[it.id];
+  const cat = pinned && cats.includes(pinned) ? pinned : cats[0];
+  if (pinned && !cats.includes(pinned)) {
+    issues.push(`${it.name}: pinned to "${pinned}" but Clover has it in ${cats.join(", ") || "no kept category"}`);
+  }
+  out.push({ id: it.id, name: it.name, cat, base, lo, hi, groups: gs });
 }
 
 /* ---------- emit ---------- */

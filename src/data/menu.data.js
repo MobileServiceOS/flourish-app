@@ -32,9 +32,6 @@ export const MENU = [
         { gid: "KR1HHY64E4QPJ", name: "Stew Peas", kind: "variant", mods: [{ n: "Medium", p: 15.0 }, { n: "Large", p: 18.0 }, { n: "Seafood", p: 30.0, oos: true }] },
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 6.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 2.5 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
-    { id: "32VDQ4G5J131P", name: "Seafood Stew Peas", emoji: "🫘",
-        desc: "Stew peas loaded with seafood. One size, large.", days: [5], base: 30.0, lo: 30.0, hi: 30.0, prepMinutes: 30, search: "seafood stew peas", groups: [
-      ] },
     { id: "60KCQ1V22Q98M", name: "Oxtail", emoji: "🍖",
         desc: "Slow-cooked, fall-off-the-bone tender", base: 0.0, lo: 20.0, hi: 25.0, prepMinutes: 15, search: "oxtail medium large", groups: [
         { gid: "45KGD3ZDMT2ZY", name: "Oxtail Size", kind: "variant", mods: [{ n: "Medium", p: 20.0 }, { n: "Large", p: 25.0 }] },
@@ -62,10 +59,6 @@ export const MENU = [
         desc: "Stew or jerk, medium or large", base: 0.0, lo: 20.0, hi: 25.0, prepMinutes: 15, search: "pork medium stew large jerk", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 6.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 2.5 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] },
         { gid: "907Z8BF726CQ4", name: "Pork", kind: "variant", mods: [{ n: "Medium Stew", p: 20 }, { n: "Large Stew", p: 25 }, { n: "Medium Jerk", p: 20 }, { n: "Large Jerk", p: 25 }] }
-      ] },
-    { id: "PSGB77QNZR2WM", name: "Blue Crab", emoji: "🦀",
-        desc: "Blue crab with two sides", base: 20.0, lo: 20.0, hi: 20.0, prepMinutes: 30, search: "blue crab", groups: [
-        { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0.0 }, { n: "Mac And Cheese", p: 0.0 }, { n: "Rice And Peas", p: 0.0 }, { n: "Fried Chicken", p: 6.0 }, { n: "Festival", p: 0.0 }, { n: "Pasta", p: 0.0 }, { n: "Shrimp", p: 5.0 }, { n: "Whiting Fish X1", p: 2.5 }, { n: "Mashed Potatoes", p: 0.0 }, { n: "Waffles", p: 0.0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0.0 }, { n: "Steam Veg.", p: 0.0 }, { n: "Plaintain", p: 0.0 }] }
       ] },
     { id: "QB9EKT4QGVWDA", name: "Shrimp & Waffles", emoji: "🧇",
         desc: "Shrimp over waffles, six flavors to pick from", base: 20.0, lo: 20.0, hi: 20.0, prepMinutes: 30, search: "shrimp waffles red velvet strawberry easter bun cinnamin buttermilk coconut toto", groups: [
@@ -121,6 +114,13 @@ export const MENU = [
       ] },
   ]},
   { cat: "Seafood Fridays", sub: "Fridays only", items: [
+    { id: "32VDQ4G5J131P", name: "Seafood Stew Peas", emoji: "🫘",
+        desc: "Lobster tail, shrimp and conch. One size, large.", days: [5], base: 30.0, lo: 30.0, hi: 30.0, prepMinutes: 30, search: "seafood stew peas", groups: [
+      ] },
+    { id: "DH0P3NGRN9RNE", name: "Blue Crab", emoji: "🦀", desc: "Blue crab, Fridays only", days: [5], base: 15, lo: 15, hi: 15, prepMinutes: 30, search: "blue crab", groups: [
+      ] },
+    { id: "PH221AJ7W66EA", name: "Pepper Shrimp & Mussels", emoji: "🦐", desc: "Pepper shrimp and mussels, plenty of heat", days: [5], base: 17, lo: 17, hi: 17, prepMinutes: 30, search: "pepper shrimp mussels", groups: [
+      ] },
     { id: "BRMP82TR0Z45C", name: "Crab Legs Platter (Shrimp & 2 Sides)", emoji: "🦀",
         desc: "Crab legs with shrimp and two sides", days: [5], base: 39.99, lo: 39.99, hi: 39.99, prepMinutes: 30, search: "crab legs platter shrimp 2 sides", groups: [
       ] },

@@ -24,6 +24,7 @@ import {
 import { CONFIGURED, IS_SANDBOX, describe } from "./env.js";
 import {
   buildAtomicOrder, buildPayment, toCents, MissingCustomerError,
+  cleanVehicle,
 } from "../src/lib/cloverOrder.js";
 import {
   isOpen, nextOpening, describeOpening, closingOn, formatTime, pickupSlots,
@@ -259,7 +260,7 @@ export function createApp({
   let lastOrder = null;
 
   app.post("/api/clover/orders", requireConfig, requireOpen, async (req, res) => {
-    const { cart, reward, customerId, customer, orderNumber, pickupAt, note } = req.body ?? {};
+    const { cart, reward, customerId, customer, orderNumber, pickupAt, curbside } = req.body ?? {};
     if (!Array.isArray(cart) || !cart.length) {
       return res.status(400).json({ error: "Cart is empty" });
     }
@@ -278,6 +279,16 @@ export function createApp({
           ...(isValidName(name) ? [] : ["name"]),
           ...(isValidPhone(phone) ? [] : ["phone"]),
         ],
+      });
+    }
+
+    /* Curbside without a vehicle description is a ticket that tells staff to
+       walk food out to a car they cannot identify. Refused for the same reason
+       an order with no customer is: it is not actionable at the counter. */
+    if (curbside?.waiting && !cleanVehicle(curbside)) {
+      return res.status(400).json({
+        error: "We need to know what you're driving so staff can find you.",
+        code: "VEHICLE_REQUIRED",
       });
     }
 
@@ -347,7 +358,8 @@ export function createApp({
       const body = buildAtomicOrder({
         cart: priced, reward, customerId,
         customer: { name, phone },
-        orderNumber, pickupLabel, note, catalog: cat,
+        orderNumber, pickupLabel, catalog: cat,
+        curbside: curbside?.waiting ? curbside : null,
       });
       const order = await clover.createOrder(body);
       lastOrder = { id: order.id, orderNumber: orderNumber ?? null, at: Date.now() };
@@ -435,6 +447,7 @@ export function createApp({
         printer: print.printer ?? null,
         messaged, attached,
         pickupLabel,
+        curbside: curbside?.waiting ? { vehicle: cleanVehicle(curbside) } : null,
         readyWindow: { startISO: quote.startISO, endISO: quote.endISO, label: quote.label },
         prepMinutes: quote.prepMinutes,
       });

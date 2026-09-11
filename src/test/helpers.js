@@ -23,7 +23,7 @@ export async function addItem(user, { note } = {}) {
     within(lunch).getByRole("button", { name: new RegExp(`^Choose options for ${ACKEE.name}$`) })
   );
   const sheet = await screen.findByRole("dialog");
-  if (note) await user.type(within(sheet).getByPlaceholderText(/extra gravy/i), note);
+  if (note) await user.type(within(sheet).getByPlaceholderText(/gravy on the rice/i), note);
   await user.click(within(sheet).getByRole("button", { name: /^Add · \$/ }));
 }
 

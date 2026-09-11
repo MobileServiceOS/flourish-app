@@ -24,7 +24,7 @@ async function addOxtailWithNote(user, note = "no pepper") {
   const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
   await user.click(within(lunch).getByRole("button", { name: /^Choose options for Oxtail$/ }));
   const sheet = await screen.findByRole("dialog");
-  await user.type(within(sheet).getByPlaceholderText(/extra gravy/i), note);
+  await user.type(within(sheet).getByPlaceholderText(/gravy on the rice/i), note);
   await user.click(within(sheet).getByRole("button", { name: /^Add · \$/ }));
 }
 
@@ -246,8 +246,10 @@ describe("items cooked only on certain days", () => {
 
   it("greys out Seafood Stew Peas midweek and says when it's back", async () => {
     const { user } = await renderApp(MON_NOON);
-    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
-    const row = within(lunch).getByRole("button", { name: /^Seafood Stew Peas/ });
+    /* It lives in Seafood Fridays now, not Lunch & Dinner. Clover files it in
+       both; the flyer settles it, and the generator pins it. */
+    const seafood = document.querySelector('section[data-cat="Seafood Fridays"]');
+    const row = within(seafood).getByRole("button", { name: /^Seafood Stew Peas/ });
 
     expect(row).toHaveAttribute("aria-disabled", "true");
     expect(within(row).getByText("FRI ONLY")).toBeInTheDocument();
@@ -259,8 +261,10 @@ describe("items cooked only on certain days", () => {
 
   it("sells it on a Friday", async () => {
     await renderApp(FRI_NOON);
-    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
-    const row = within(lunch).getByRole("button", { name: /^Seafood Stew Peas/ });
+    /* It lives in Seafood Fridays now, not Lunch & Dinner. Clover files it in
+       both; the flyer settles it, and the generator pins it. */
+    const seafood = document.querySelector('section[data-cat="Seafood Fridays"]');
+    const row = within(seafood).getByRole("button", { name: /^Seafood Stew Peas/ });
     expect(row).not.toHaveAttribute("aria-disabled");
     expect(within(row).queryByText(/ONLY/)).not.toBeInTheDocument();
   });
@@ -269,8 +273,10 @@ describe("items cooked only on certain days", () => {
     /* It was Friday AND Saturday. The shop corrected that to Fridays only, so
        Saturday is now a closed day for this dish like any other. */
     await renderApp(SAT_NOON);
-    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
-    const row = within(lunch).getByRole("button", { name: /^Seafood Stew Peas/ });
+    /* It lives in Seafood Fridays now, not Lunch & Dinner. Clover files it in
+       both; the flyer settles it, and the generator pins it. */
+    const seafood = document.querySelector('section[data-cat="Seafood Fridays"]');
+    const row = within(seafood).getByRole("button", { name: /^Seafood Stew Peas/ });
     expect(row).toHaveAttribute("aria-disabled", "true");
     expect(within(row).getByText("FRI ONLY")).toBeInTheDocument();
   });
@@ -316,7 +322,8 @@ describe("seafood stew peas is one dish, not a size of another", () => {
     const { user } = await renderApp(FRI_NOON);
     const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
     // No choices at all means it quick-adds rather than opening a sheet
-    await user.click(within(lunch).getByRole("button", { name: /^Add Seafood Stew Peas to cart$/ }));
+    const seafood = document.querySelector('section[data-cat="Seafood Fridays"]');
+    await user.click(within(seafood).getByRole("button", { name: /^Add Seafood Stew Peas to cart$/ }));
 
     expect(await screen.findByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

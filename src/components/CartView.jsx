@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ShoppingBag, Plus, Minus, Sparkles, Ticket, Clock } from "lucide-react";
 import { money } from "../lib/money.js";
+import { cleanLineNote, LINE_NOTE_MAX } from "../lib/cloverOrder.js";
 import { rewardOf, discountFor } from "../lib/loyalty.js";
 import { isOpen, nextOpening, describeOpening, HOURS_LINE } from "../lib/hours.js";
 import { cartPrepMinutes, isCookedToOrder, COOKED_TO_ORDER_MINUTES } from "../lib/prep.js";
@@ -8,7 +9,8 @@ import { SubHeader, Empty } from "./shared.jsx";
 
 /* ---------- CART ---------- */
 export default function CartView({ cart, subtotal, saved, account, setQty, removeLine, setView,
-  vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher, quote = null }) {
+  vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher, quote = null,
+  setNote }) {
   /* Say it here rather than letting someone build an order, walk to checkout
      and only then find out. Re-checked on a minute tick so a cart left open
      across closing time notices. */
@@ -18,6 +20,15 @@ export default function CartView({ cart, subtotal, saved, account, setQty, remov
     return () => clearInterval(t);
   }, []);
   const open = isOpen(now);
+
+  /* Which line's instructions are being edited, and the text so far. Held here
+     rather than per-row so only one is ever open. */
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState("");
+  const commit = (key) => {
+    setNote?.(key, cleanLineNote(draft));
+    setEditing(null);
+  };
 
   /* Which lines are the reason this order takes as long as it does. Working out
      *which* item is slow is a display question and stays here; how long the
@@ -38,7 +49,44 @@ export default function CartView({ cart, subtotal, saved, account, setQty, remov
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{l.name}</div>
                 {l.meta && <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 3 }}>{l.meta}</div>}
-                {l.note && <div className="note-chip" style={{ marginTop: 6 }}>Note: {l.note}</div>}
+                {/* Editable in place. It used to be a read-only chip, so changing
+                    "no veg" to "no pepper" meant removing the line and
+                    rebuilding the whole item from the sheet. */}
+                {editing === l.key ? (
+                  <div style={{ marginTop: 6 }}>
+                    <input className="field" autoFocus
+                      aria-label={`Special instructions for ${l.name}`}
+                      placeholder="gravy on the rice, no veg, extra spicy"
+                      maxLength={LINE_NOTE_MAX}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); commit(l.key); }
+                        if (e.key === "Escape") { e.preventDefault(); setEditing(null); }
+                      }}
+                      onBlur={() => commit(l.key)} />
+                    <div className="field-hint">
+                      Prints on the kitchen ticket under this item.
+                      {draft.length > 100 && (
+                        <span style={{ float: "right", fontWeight: 700,
+                          color: draft.length >= LINE_NOTE_MAX ? "var(--rose-ink)" : "var(--muted)" }}>
+                          {LINE_NOTE_MAX - draft.length} left
+                        </span>
+                      )}
+                    </div>
+                    <div className="field-hint">For allergies, please call the restaurant.</div>
+                  </div>
+                ) : (
+                  <button onClick={() => { setEditing(l.key); setDraft(l.note ?? ""); }}
+                    className="note-chip"
+                    aria-label={l.note
+                      ? `Edit special instructions for ${l.name}: ${l.note}`
+                      : `Add special instructions for ${l.name}`}
+                    style={{ marginTop: 6, border: 0, font: "inherit", cursor: "pointer",
+                      textAlign: "left", display: "block" }}>
+                    {l.note ? `Note: ${l.note}` : "+ Add special instructions"}
+                  </button>
+                )}
                 <div className="stepper" style={{ marginTop: 10 }}>
                   <button className="step-b" onClick={() => setQty(l.key, -1)}
                     aria-label={`Decrease ${l.name} quantity`}>
