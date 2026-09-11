@@ -110,26 +110,76 @@ Seafood Stew Peas is sold as its own item, one size, and is greyed out with
 
 ---
 
-## 6. The "Fried Chicken" side is priced for Uber Eats, and walk-ins pay it
+## 6. Sides that should carry an upcharge with a plate are $0 in Clover
 
-**Where:** Modifier Groups → Side With Meal → `Fried Chicken` (`0VK0R5TDR2FRC`), **$6**
-**Problem:** $6 is a delivery-platform price. It is sitting in the in-store register, so it
-is what the counter charges someone standing in the shop — and what this app charges,
-because Clover prices its own orders. Every other side in that group is $0 with the plate;
-the seafood upcharges are $3.50 and $5.
+**Corrected 2026-09-11.** An earlier version of this entry said `0VK0R5TDR2FRC`
+($6 Fried Chicken) was in **Side With Meal**. It is not — a live query against
+`/v3/merchants/{mId}/modifier_groups?expand=modifiers` shows that id belongs to
+the **standalone Side** group. The two groups hold separate modifier objects:
 
-This one is not a display bug or a rounding difference. It is money, taken from walk-in
-customers, on every plate that picks that side.
+| | Side With Meal (`YQWN3PKBKV9NG`) | standalone Side (`S032100JQ3P4T`) |
+|---|---|---|
+| Fried Chicken | `W63ZR0Q92XER4` — **$0.00** | `0VK0R5TDR2FRC` — $6.00 |
+| Whiting Fish | `WHGNBP3G67PJP` — **$0.00** | `GHTNE4XTHNVAC` — $2.50 |
+| Shrimp | `FDBPRRCP57X8R` — $5.00 ✓ | `36XNV6AG9FWCM` — $5.00 |
+| Seafood Mac | `H5GZAVN2CQSHJ` — $3.50 ✓ | `PJHN20XXA5STW` — $8.00 |
+| Pepper Shrimp | *not in this group* | `YVXSHPFGPY6TY` — $15.00 |
 
-**Fix:** correct it in the Clover dashboard to the in-store price. If the $6 exists to
-cover a platform's commission, it belongs in that platform's own menu, not in the register
-every other channel reads from.
+**Problem:** the shop charges for fried chicken and whiting fish with a plate.
+Clover has both at **$0.00** in the meal group, so the register charges nothing
+for them — and the app, which sends no line prices, showed "Included" and was
+telling the truth about the till. This is the shop losing money on every plate
+that picks one, not a customer being overcharged. The direction matters: nobody
+is surprised at the counter, so it is revenue leakage rather than a trust bug.
 
-**App behavior meanwhile:** the app charges what Clover charges — it deliberately sends no
-line prices — so it shows and rings up $6 like the counter does. **This must not be
-"fixed" in the app.** Overriding it here would make the app disagree with the register and
-put the till out; see the two rules at the top of CLAUDE.md. The only correct place to
-change it is Clover.
+**Fix in Clover:** Modifier Groups → Side With Meal, set
+
+- `Fried Chicken` (`W63ZR0Q92XER4`) → **$6.00**
+- `Whiting Fish X1` (`WHGNBP3G67PJP`) → **$2.50**
+
+Those are the standalone Side prices, chosen deliberately for want of any
+meal-context price in Clover to read.
+
+**App behaviour meanwhile — read this carefully, it is the opposite of the usual
+direction.** The app now *shows* those upcharges, declared in `SIDE_UPCHARGE` in
+`scripts/generate-menu.mjs`. Clover still charges its own price, which is $0, so
+until the dashboard is corrected **the app quotes a total higher than the till
+takes**. That is the same rule-1 / rule-2 divergence as the items in
+PRINTED-MENU-PRICES.md, and the generator reports it on every run — but it is
+worth being explicit that the customer pays *less* at the counter than the app
+said, not more.
+
+If the $6 exists to cover a delivery platform's commission it belongs in that
+platform's own menu, not in the register every other channel reads from. Say so
+and I will lower it.
+
+---
+
+## 6b. Pepper Shrimp cannot be ordered as a side with a plate
+
+**Where:** Modifier Groups → Side With Meal — `Pepper Shrimp` is absent
+**Problem:** it exists only as a standalone side (`YVXSHPFGPY6TY`, $15.00). There
+is no meal-group modifier for it, so the app cannot offer it with a plate however
+it is configured. Left out by decision rather than worked around.
+
+**Fix, if it should be orderable with a plate:** add a `Pepper Shrimp` modifier to
+the Side With Meal group at the intended upcharge, then regenerate the menu. No
+code change is needed — it appears on its own.
+
+---
+
+## 6c. Festival's standalone price may be wrong
+
+**Where:** Modifier Groups → Side (`S032100JQ3P4T`) → `Festival` (`SJ27CE6ZE34BW`), **$1.00**
+**Problem:** live Clover says $1.00. The shop has described it as **$2 each**. One
+of the two is wrong and I did not guess which, so nothing was changed.
+
+Also stale: `PRINTED-MENU-PRICES.md` records the standalone Fried Chicken side as
+Clover $7.99; live Clover says $6.00. The xlsx export that document was written
+from is older than the current register.
+
+**Fix:** confirm the intended Festival price. If it is $2, correct it in Clover
+and regenerate; if $1 is right, `PRINTED-MENU-PRICES.md` needs updating instead.
 
 ---
 
