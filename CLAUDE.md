@@ -720,6 +720,26 @@ Preview mode is a real, tested state: if the proxy isn't running the app still
 browses, searches and builds a cart, and the checkout says *"App is in preview
 mode — ordering is not connected yet"* rather than throwing.
 
+## Audits worth reading before you trust a map
+
+Two documents record things measured against the live register rather than
+assumed. Both were written because a comment that read like a reason turned out
+to be a guess.
+
+**`docs/HIDE-REASONS-AUDIT.md`** — all 21 `DELISTED` / `NOT_ON_PRINTED_MENU` /
+`MISFILED_AS_SIZE` / `HIDDEN_IN_APP` entries, checked against Clover and against
+600 orders of sales history. 3 verified, 2 wrong, **8 with no stated reason at
+all**, and **6 that are still actively selling** — `F0Q8615QD5HMM::Wings` alone
+sold 185 times in the sample and the app will not sell it. Read it before
+adding another exclusion, and give the next one a reason.
+
+**`docs/EXPORT-VS-CLOVER.md`** — the curated xlsx export is now a *subset* of
+the register. Live Clover has **no Drinks category** (both drink items sit in
+Lunch & Dinner, which would also cost them their `noPrep` flag) and **15
+Breakfast items**, twelve of them at $0.00. A regeneration from live Clover
+today empties the Drinks section and adds a dozen free porridges. The export is
+doing real filtering that has never been written down.
+
 ## Known blockers
 
 **The credentials now work, and they point at PRODUCTION.** `.env.local` has
