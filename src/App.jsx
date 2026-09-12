@@ -364,6 +364,9 @@ export default function App() {
 
      The amount comes off the order itself. Re-deriving it from the cart would
      read zero: the cart was emptied when the order was placed. */
+  /* Survives a retry of the same order, so a lost response cannot become two
+     orders. See placeOrder. */
+  const idemRef = useRef(null);
   const awardedRef = useRef(new Set());
   const awardPoints = useCallback((order) => {
     const num = order?.num;
@@ -399,11 +402,24 @@ export default function App() {
     setPayError(null);
     setSubmitting(true);
 
-    const net = Math.max(0, subtotal - discount);
-    const localTotal = cents(withTax(net) + tip);
+    /* The local figure, used until the server answers. It is the display
+       estimate — the same relationship the tax line already has to Clover. */
+    let effectiveDiscount = discount;
+    /* Local display only. The AMOUNT is deliberately not sent: the proxy looks
+       the reward up in REWARDS and computes the discount from the re-priced
+       cart, and refuses a body that tries to name a figure. This used to travel
+       to Clover untouched, which meant any client could name its own discount. */
     const reward = appliedVoucher
       ? { name: appliedVoucher.name, code: appliedVoucher.code, amount: discount }
       : null;
+
+    /* One key per order ATTEMPT, held in a ref so pressing "try again" after a
+       timeout re-sends the same one. A fresh key on every retry is what turns a
+       lost response into two orders on the register. Cleared on success. */
+    if (!idemRef.current) {
+      idemRef.current = (globalThis.crypto?.randomUUID?.()
+        ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    }
 
     /* The number is minted here, before the order is sent, so the kitchen
        ticket and the customer's screen show the same thing. Deriving it from
@@ -426,7 +442,11 @@ export default function App() {
            no customer at all, and the printed ticket had nothing on it but an
            order number. The server refuses an order without them now. */
         const res = await createOrder({
-          cart, reward,
+          cart,
+          // The id only. The server owns the name, the cap and the amount.
+          rewardId: appliedVoucher?.rid ?? null,
+          rewardCode: appliedVoucher?.code ?? null,
+          idempotencyKey: idemRef.current,
           customerId: account?.cloverCustomerId ?? null,
           customer: { name: contact.name, phone: contact.phone },
           orderNumber: num,
@@ -443,13 +463,20 @@ export default function App() {
         readyWindow = res.readyWindow ?? null;
         // The server echoes the cleaned description; show that, not the raw input.
         curbsideOut = res.curbside ?? null;
+        /* The discount is the server's number now, so the confirmation screen
+           and the order history show what the till will actually take off. The
+           two agree in every ordinary case; if they ever diverge, the register
+           is right and the app must not keep claiming otherwise. */
+        if (res.discount) effectiveDiscount = res.discount.amount;
+        else if (appliedVoucher) effectiveDiscount = 0;
         if (printed === false) {
           flash("Order received — the printer is down, staff have it on screen");
         }
       }
 
+      const net = Math.max(0, subtotal - effectiveDiscount);
       const order = {
-        num, cloverOrderId, when: "Today", total: localTotal, status: "preparing",
+        num, cloverOrderId, when: "Today", total: cents(withTax(net) + tip), status: "preparing",
         /* A real timestamp, because `when` is the frozen string "Today" and is
            wrong by the next morning. The launch sweep needs to know whether an
            unpaid order is recent enough to still be worth asking about. */
@@ -467,9 +494,12 @@ export default function App() {
            the cart still exists. `pointsAwarded` is the guard that makes the
            award happen exactly once, and it is persisted with the order so a
            relaunch cannot pay it twice. */
-        earnable: account ? pointsFor(subtotal - discount, loyalty) : 0,
+        earnable: account ? pointsFor(net, loyalty) : 0,
         pointsAwarded: false,
-        printed, printError, messaged, reward,
+        printed, printError, messaged,
+        /* The amount is the server's, not the one this client worked out, so
+           the order history cannot claim a discount the till never gave. */
+        reward: reward ? { ...reward, amount: effectiveDiscount } : null,
         curbside: curbsideOut,
         lines: cart.map((l) => ({ ...l })),
       };
@@ -486,6 +516,7 @@ export default function App() {
         setApplied(null);
       }
       setCart([]);
+      idemRef.current = null;   // this attempt is done; the next order is a new one
       setView("track");
     } catch (e) {
       /* Never fail silently, and never drop the cart — it is kept exactly as it

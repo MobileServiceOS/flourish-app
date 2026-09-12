@@ -105,7 +105,11 @@ export default function RewardsView({
                   {can ? r.desc : `${r.cost - points} more ${CURRENCY_MANY}`}
                 </div>
               </div>
+              {/* The visible label is the cost, which is what a customer is
+                  scanning for — but two rewards cost 100, so the cost alone
+                  names neither. The accessible name says which one. */}
               <button className="pill-btn ghost" style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
+                aria-label={`Redeem ${r.name} for ${currencyAmount(r.cost)}`}
                 disabled={!can} onClick={() => redeem(r)}>
                 {currencyAmount(r.cost)}
               </button>

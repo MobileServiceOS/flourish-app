@@ -133,12 +133,151 @@ describe("order push", () => {
     expect(JSON.stringify(clover.createOrder.mock.calls[0][0])).not.toMatch(/tax/i);
   });
 
+  /* ==========================================================================
+     THE DISCOUNT IS THE SERVER'S NUMBER
+
+     Every line is re-priced from Clover's catalog because the client's prices
+     are display state — and the reward amount escaped that for a long time.
+     The client sent `reward: { amount }` and it went onto the Clover order
+     untouched, so a crafted request could take any sum off a real order with
+     no account and no Petals, and then pay the discounted total at the counter.
+     `capCharge` would not have caught it: that guards /pay, and this flow never
+     goes there.
+
+     The client sends a rewardId now. Everything else about the discount is
+     decided here.
+     ========================================================================== */
   it("applies a redeemed reward as a negative order discount", async () => {
     const { agent, clover } = app();
     await agent.post("/api/clover/orders")
-      .send({ cart: CART, customer: CUSTOMER, reward: { name: "Free side", code: "FL1234", amount: 6 } }).expect(200);
+      .send({ cart: CART, customer: CUSTOMER, rewardId: "r-5off", rewardCode: "FL1234" })
+      .expect(200);
     expect(clover.createOrder.mock.calls[0][0].orderCart.discounts)
-      .toEqual([{ name: "Free side (FL1234)", amount: -600 }]);
+      .toEqual([{ name: "$5 off (FL1234)", amount: -500 }]);
+  });
+
+  it("refuses a client that tries to name its own discount", async () => {
+    const { agent, clover } = app();
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER,
+              reward: { name: "Free plate", code: "FL1234", amount: 250 } })
+      .expect(400);
+    expect(r.body.code).toBe("REWARD_AMOUNT_NOT_ACCEPTED");
+    expect(clover.createOrder).not.toHaveBeenCalled();
+  });
+
+  it("refuses a bare discount field too, whatever it is called", async () => {
+    const { agent, clover } = app();
+    for (const body of [{ discount: 250 }, { rewardAmount: 250 }]) {
+      const r = await agent.post("/api/clover/orders")
+        .send({ cart: CART, customer: CUSTOMER, rewardId: "r-5off", ...body }).expect(400);
+      expect(r.body.code).toBe("REWARD_AMOUNT_NOT_ACCEPTED");
+    }
+    expect(clover.createOrder).not.toHaveBeenCalled();
+  });
+
+  it("refuses a reward it does not recognise", async () => {
+    const { agent, clover } = app();
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER, rewardId: "r-free-everything" }).expect(400);
+    expect(r.body.code).toBe("UNKNOWN_REWARD");
+    expect(clover.createOrder).not.toHaveBeenCalled();
+  });
+
+  it("refuses a reward the cart has nothing for", async () => {
+    // A free drink against a cart holding one oxtail and no drink.
+    const { agent, clover } = app();
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER, rewardId: "r-drink" }).expect(400);
+    expect(r.body.code).toBe("REWARD_NOT_APPLICABLE");
+    expect(clover.createOrder).not.toHaveBeenCalled();
+  });
+
+  it("caps the discount at the reward's own value", async () => {
+    /* $5 off against a $20 plate is $5. Uncapped it would have been the whole
+       line, which is what "free plate" costs and "$5 off" does not. */
+    const { agent, clover } = app();
+    await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER, rewardId: "r-5off" }).expect(200);
+    expect(clover.createOrder.mock.calls[0][0].orderCart.discounts[0].amount).toBe(-500);
+  });
+
+  it("prices the discount off the catalog, not off the line price the client sent", async () => {
+    /* The client claims this oxtail costs $999. The server rebuilds the line
+       from the item's base plus the modifiers Clover prices — $20 — and the
+       free-plate reward is worth that, capped at $22. Trusting the client's
+       number would have handed over $999. */
+    const inflated = [{ ...CART[0], price: 999 }];
+    const { agent, clover } = app();
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: inflated, customer: CUSTOMER, rewardId: "r-plate" }).expect(200);
+    expect(clover.createOrder.mock.calls[0][0].orderCart.discounts[0].amount).toBe(-2000);
+    expect(r.body.discount).toEqual({ name: "Free plate", amount: 20 });
+  });
+
+  it("puts the server's figure in the response, so the screen cannot show another", async () => {
+    const { agent } = app();
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER, rewardId: "r-5off" }).expect(200);
+    expect(r.body.discount).toEqual({ name: "$5 off", amount: 5 });
+  });
+
+  it("keeps the voucher code for staff but never trusts it as text", async () => {
+    const { agent, clover } = app();
+    await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER, rewardId: "r-5off",
+              rewardCode: "fl-12<script>34!!!!!!!!!!!!!!" }).expect(200);
+    expect(clover.createOrder.mock.calls[0][0].orderCart.discounts[0].name)
+      .toBe("$5 off (FL12SCRIPT34)");
+  });
+
+  /* ---- replaying the same order ---- */
+
+  it("creates one order when the same attempt is sent twice", async () => {
+    /* A double-tap, or a retry after a response went missing. Two discounted
+       orders on the register is the failure being prevented. */
+    const { agent, clover } = app();
+    const body = { cart: CART, customer: CUSTOMER, rewardId: "r-5off", idempotencyKey: "attempt-1" };
+
+    const first = await agent.post("/api/clover/orders").send(body).expect(200);
+    const again = await agent.post("/api/clover/orders").send(body).expect(200);
+
+    expect(clover.createOrder).toHaveBeenCalledTimes(1);
+    expect(again.body.orderId).toBe(first.body.orderId);
+    expect(again.body.replayed).toBe(true);
+    expect(first.body.replayed).toBeUndefined();
+  });
+
+  it("treats a different attempt as a different order", async () => {
+    const { agent, clover } = app();
+    const body = { cart: CART, customer: CUSTOMER };
+    await agent.post("/api/clover/orders").send({ ...body, idempotencyKey: "a" }).expect(200);
+    await agent.post("/api/clover/orders").send({ ...body, idempotencyKey: "b" }).expect(200);
+    expect(clover.createOrder).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets a failed attempt be retried, because it created nothing", async () => {
+    /* Only successes are remembered. Caching the failure would leave a customer
+       unable to re-send an order that never reached the register. */
+    const clover = fakeClover({
+      createOrder: vi.fn()
+        .mockRejectedValueOnce(new CloverError(500, "Clover fell over"))
+        .mockResolvedValue({ id: "ORD-2", total: 2000 }),
+    });
+    const { agent } = app(clover);
+    const body = { cart: CART, customer: CUSTOMER, idempotencyKey: "same-key" };
+
+    await agent.post("/api/clover/orders").send(body).expect(500);
+    const ok = await agent.post("/api/clover/orders").send(body).expect(200);
+    expect(ok.body.orderId).toBe("ORD-2");
+    expect(clover.createOrder).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends no discount at all when no reward was redeemed", async () => {
+    const { agent, clover } = app();
+    const r = await agent.post("/api/clover/orders").send({ cart: CART, customer: CUSTOMER }).expect(200);
+    expect(clover.createOrder.mock.calls[0][0].orderCart.discounts).toBeUndefined();
+    expect(r.body.discount).toBeNull();
   });
 
   it("refuses an order whose modifiers no longer exist rather than ringing it up free", async () => {
