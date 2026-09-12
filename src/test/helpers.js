@@ -50,6 +50,10 @@ export const unpaidOrder = () => ({
 
 export function stubOnlineProxy({
   vi, order = {}, sandbox = true, quote = {},
+  /* Called with the posted body before the stub answers. Throwing from it is
+     how a test makes one order attempt fail — a dropped request, which is the
+     case the idempotency key exists for. */
+  onOrder = null,
   payment = unpaidOrder(),
   loyalty = { configured: false, reason: "NO_PROGRAM", program: null, tiers: [], source: "in-app" },
 } = {}) {
@@ -90,6 +94,7 @@ export function stubOnlineProxy({
     "POST /quote": (body) => { calls.quotes.push(body); return quoteFor(body?.cart); },
     "POST /orders": (body) => {
       calls.orders.push(body);
+      if (onOrder) onOrder(body);
       const q = quoteFor(body?.cart);
       // A scheduled slot keeps its own time; otherwise the window is the label.
       const pickupLabel = body?.pickupAt ? formatTime(new Date(body.pickupAt)) : q.label;

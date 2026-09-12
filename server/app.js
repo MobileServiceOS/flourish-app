@@ -33,11 +33,181 @@ import {
 import { cartPrepMinutes, readyWindow } from "../src/lib/prep.js";
 import { unavailableInCart, unavailableMessage, dayOfWeek } from "../src/lib/availability.js";
 import { isValidName, isValidPhone, phoneDigits } from "../src/lib/phone.js";
+import { REWARDS, discountFor } from "../src/lib/loyalty.js";
+import { MENU, PLATE_IDS, DRINK_ID, SIDE_ID } from "../src/data/menu.data.js";
 import { ADDRESS } from "../src/lib/restaurant.js";
 import {
   rateLimit, payRateLimit, checkOrigin, requireAppKey, requireAppKeyWith, capCharge,
   describeGuard, ALLOWED_ORIGINS, NATIVE_ORIGINS,
 } from "./guard.js";
+
+/* ============================================================================
+   THE DISCOUNT IS THE SERVER'S NUMBER, NOT THE CLIENT'S
+
+   Every line on an order is re-priced from Clover's own catalog before the
+   order is built, because the client's prices are display state. The reward
+   discount was the one number that escaped that: the client sent
+   `reward: { name, code, amount }` and the amount went onto the Clover order
+   untouched. A crafted request could take $250 off a real order — no account,
+   no Petals, no redemption — and since the app collects no money the attacker
+   simply paid the discounted total at the counter. The charge ceiling would not
+   have caught it either: `capCharge` guards /pay, and this flow never goes
+   there.
+
+   So the client now sends a `rewardId` and nothing else. The cost, the name and
+   the cap come from REWARDS here, the amount is computed here from the
+   re-priced cart, and a body that tries to assert an amount is refused rather
+   than quietly corrected — a client sending one is either an old build or an
+   attack, and both are worth failing loudly.
+
+   WHAT IS STILL NOT VERIFIED, stated plainly: the server has no idea whether
+   the customer had the Petals to spend. Balances live only on the device
+   (src/lib/storage.js), so "did they earn this" is a question nothing here can
+   answer, and the voucher code is an unvalidatable string kept for staff
+   reference. What this fix buys is a bound: a reward can only ever be one of
+   the five in REWARDS, and only ever worth up to its own cap against a line
+   that actually qualifies. Unbounded became bounded. Closing it completely
+   needs server-side balances.
+   ============================================================================ */
+
+/* Item base prices, by Clover id. Derived from the generated menu rather than
+   exported by it, so this needs no regeneration to stay in step. */
+const ITEM_BASE = new Map(MENU.flatMap((c) => c.items).map((i) => [i.id, i.base]));
+
+/**
+ * A cart line as the SERVER sees it, for reward matching.
+ *
+ * Rebuilt rather than filtered, so no client-asserted field can reach
+ * `discountFor`:
+ *
+ *   price  — the item's own base plus the modifiers Clover's catalog prices.
+ *            Most plates are base $0 with the real money in a size group, so
+ *            this is overwhelmingly Clover's number. The base is the app's
+ *            menu price (see the two rules in CLAUDE.md); it only decides which
+ *            line is the dearest eligible one, and the reward's cap bounds the
+ *            answer either way.
+ *   plate  — from PLATE_IDS, not the client's `plate` boolean, which is what
+ *            the "free plate" reward keys on.
+ *   meta   — the resolved modifier NAMES, so the seafood-mac reward matches on
+ *            what was actually ordered rather than on a display string.
+ */
+function trustedLine(line, cat) {
+  const mods = (line.modifiers ?? []).map((mm) => {
+    const group = cat[mm.gid] || {};
+    const key = Object.keys(group).find(
+      (k) => k.trim().toLowerCase() === String(mm.name).trim().toLowerCase()
+    );
+    return { name: key ?? mm.name, price: key ? group[key].price : 0 };
+  });
+  return {
+    itemId: line.itemId,
+    plate: PLATE_IDS.has(line.itemId),
+    meta: mods.map((m) => m.name).join(" "),
+    price: (ITEM_BASE.get(line.itemId) ?? 0) + mods.reduce((n, m) => n + (Number(m.price) || 0), 0),
+  };
+}
+
+/** A voucher code is display-only and unverified, so it is never trusted as text. */
+const cleanRewardCode = (code) =>
+  String(code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+
+/**
+ * The reward to put on the order, or an error to refuse it with.
+ *
+ * Returns `{ reward }` (possibly null, for an order with no reward) or
+ * `{ error }` carrying the status and body to send.
+ */
+export function resolveReward(body, pricedCart, cat) {
+  const { rewardId, rewardCode } = body ?? {};
+
+  /* The client may not assert an amount, in any shape. Refused rather than
+     ignored: silently dropping it would let a compromised or stale client
+     believe a discount was applied that never was, and the customer would
+     argue with the till. */
+  const asserted = body?.reward ?? null;
+  if (asserted !== null && typeof asserted === "object" && "amount" in asserted) {
+    return { error: { status: 400, body: {
+      error: "The discount is worked out here, not sent in.",
+      code: "REWARD_AMOUNT_NOT_ACCEPTED",
+    } } };
+  }
+  if (body?.discount !== undefined || body?.rewardAmount !== undefined) {
+    return { error: { status: 400, body: {
+      error: "The discount is worked out here, not sent in.",
+      code: "REWARD_AMOUNT_NOT_ACCEPTED",
+    } } };
+  }
+
+  if (!rewardId) return { reward: null };
+
+  const r = REWARDS.find((x) => x.id === rewardId);
+  if (!r) {
+    return { error: { status: 400, body: {
+      error: "That reward doesn't exist.",
+      code: "UNKNOWN_REWARD",
+    } } };
+  }
+
+  const lines = pricedCart.map((l) => trustedLine(l, cat));
+  const amount = discountFor({ rid: r.id }, lines);
+
+  /* Nothing in the cart the reward applies to. A customer who redeemed a free
+     drink and then emptied the drink out of their cart is the honest version of
+     this; refusing is the only answer that keeps the app and the till agreeing. */
+  if (!(amount > 0)) {
+    return { error: { status: 400, body: {
+      error: `Add ${r.needs} to use ${r.name}.`,
+      code: "REWARD_NOT_APPLICABLE",
+      needs: r.needs,
+    } } };
+  }
+
+  /* discountFor already caps, so this cannot fire from that path. It is here
+     because the cap is the only thing bounding the loss if it ever could. */
+  if (amount > r.cap) {
+    return { error: { status: 400, body: {
+      error: "That reward is worth less than that.",
+      code: "REWARD_OVER_CAP",
+      cap: r.cap,
+    } } };
+  }
+
+  return { reward: { name: r.name, code: cleanRewardCode(rewardCode) || null, amount } };
+}
+
+/* ---------- replaying the same order ----------
+   A double-tap, a retried request after a timeout, or a client that never saw
+   the response must not create a second discounted order in Clover. The client
+   mints a key per order attempt and re-sends the same one on retry; a repeat
+   gets the first response back instead of a new order.
+
+   In memory, like the rate limiter, and fine for one process — behind more than
+   one instance this needs shared storage or it becomes per-instance.
+
+   This protects honest clients. It is NOT an attack control: anything crafting
+   a request can vary the key freely, which is why the cap above is what
+   actually bounds a forged discount. */
+const REPLAY_TTL_MS = 10 * 60_000;
+const orderReplies = new Map();   // idempotencyKey -> { at, status, body }
+const ordersInFlight = new Set();
+
+function replayOf(key) {
+  if (!key) return null;
+  const hit = orderReplies.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > REPLAY_TTL_MS) { orderReplies.delete(key); return null; }
+  return hit;
+}
+
+function rememberReply(key, status, body) {
+  if (!key) return;
+  orderReplies.set(key, { at: Date.now(), status, body });
+  // Cheap sweep, so a long-running process does not hold every key forever.
+  if (orderReplies.size > 500) {
+    const cutoff = Date.now() - REPLAY_TTL_MS;
+    for (const [k, v] of orderReplies) if (v.at < cutoff) orderReplies.delete(k);
+  }
+}
 
 /* What the customer receives. Kept here rather than inline so the wording is in
    one place — it is the only thing the restaurant "says" to a customer between
@@ -260,9 +430,23 @@ export function createApp({
   let lastOrder = null;
 
   app.post("/api/clover/orders", requireConfig, requireOpen, async (req, res) => {
-    const { cart, reward, customerId, customer, orderNumber, pickupAt, curbside } = req.body ?? {};
+    const { cart, customerId, customer, orderNumber, pickupAt, curbside } = req.body ?? {};
+    const idem = typeof req.body?.idempotencyKey === "string"
+      ? req.body.idempotencyKey.slice(0, 100) : null;
     if (!Array.isArray(cart) || !cart.length) {
       return res.status(400).json({ error: "Cart is empty" });
+    }
+
+    /* Already answered this exact attempt: hand back the same answer rather
+       than creating a second order. Checked before any work, so a double-tap
+       costs one Clover call, not two. */
+    const seen = replayOf(idem);
+    if (seen) return res.status(seen.status).json({ ...seen.body, replayed: true });
+    if (idem && ordersInFlight.has(idem)) {
+      return res.status(409).json({
+        error: "That order is already going through.",
+        code: "ORDER_IN_FLIGHT",
+      });
     }
 
     /* A ticket with no customer on it is useless at the counter, so it must be
@@ -339,6 +523,7 @@ export function createApp({
       pickupLabel = formatTime(when);
     }
 
+    if (idem) ordersInFlight.add(idem);
     try {
       const cat = await catalog();
 
@@ -354,6 +539,15 @@ export function createApp({
         });
         return { ...line, modifiers: mods };
       });
+
+      /* The discount, worked out here from the re-priced cart. Same shape as
+         the line re-pricing directly above — it simply never included the one
+         number the client was allowed to name. */
+      const resolved = resolveReward(req.body, priced, cat);
+      if (resolved.error) {
+        return res.status(resolved.error.status).json(resolved.error.body);
+      }
+      const reward = resolved.reward;
 
       const body = buildAtomicOrder({
         cart: priced, reward, customerId,
@@ -436,7 +630,7 @@ export function createApp({
          register either way, and telling a customer their food failed when it
          did not is the worse mistake — but `printed` is now the truth of what
          happened, so the confirmation screen can stop guessing. */
-      res.json({
+      const payload = {
         success: true,
         orderId: order.id,
         orderNumber: orderNumber ?? null,
@@ -450,12 +644,21 @@ export function createApp({
         curbside: curbside?.waiting ? { vehicle: cleanVehicle(curbside) } : null,
         readyWindow: { startISO: quote.startISO, endISO: quote.endISO, label: quote.label },
         prepMinutes: quote.prepMinutes,
-      });
+        /* What was actually taken off, so the confirmation screen shows the
+           server's number rather than the one the client hoped for. */
+        discount: reward ? { name: reward.name, amount: reward.amount } : null,
+      };
+      /* Only successes are remembered. A failed attempt has created nothing, so
+         a retry of it must be allowed to go through. */
+      rememberReply(idem, 200, payload);
+      res.json(payload);
     } catch (e) {
       if (e instanceof MissingCustomerError) {
         return res.status(400).json({ error: e.message, code: "CUSTOMER_REQUIRED", missing: e.missing });
       }
       fail(res, e);
+    } finally {
+      if (idem) ordersInFlight.delete(idem);
     }
   });
 

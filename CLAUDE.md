@@ -57,7 +57,7 @@ JavaScript only ever sees a single-use token.
 A test asserts the private token is absent from `dist/` — see
 `src/test/cloverUi.test.jsx`.
 
-### Two things the server refuses to trust from the client
+### Three things the server refuses to trust from the client
 
 1. **Prices.** Every line is re-priced from Clover's own modifier catalog before
    the order is built. The client's prices are display state.
@@ -65,6 +65,68 @@ A test asserts the private token is absent from `dist/` — see
    in a size modifier group, so an order whose modifications don't resolve rings
    up an **Oxtail at $0.00**. Unresolved modifiers throw and the order is
    refused — a rejected order is recoverable, a free plate isn't.
+3. **The reward discount.** The client sends a `rewardId`; the cost, the name,
+   the cap and the amount are all decided in the proxy. See below.
+
+### The discount is the server's number
+
+This was the one figure that escaped the re-pricing directly above it. The
+client sent `reward: { name, code, amount }` and the amount went onto the
+Clover order untouched, so a crafted `POST /orders` could take **any** sum off a
+real order — no account, no Petals, no redemption — and because the app collects
+no money, the attacker simply paid the discounted total at the counter. The
+charge ceiling would not have caught it: `capCharge` guards `/pay`, and
+pay-at-pickup never goes there.
+
+`resolveReward` in `server/app.js` now owns it. The client sends `rewardId` and
+an unvalidated display `rewardCode`; the server finds the reward in `REWARDS`,
+rebuilds every cart line as the server sees it, and runs the same `discountFor`
+the UI uses. Four refusals, all 400:
+
+| Code | When |
+|---|---|
+| `REWARD_AMOUNT_NOT_ACCEPTED` | the body carries `reward.amount`, `discount` or `rewardAmount` |
+| `UNKNOWN_REWARD` | `rewardId` is not one of the five in `REWARDS` |
+| `REWARD_NOT_APPLICABLE` | nothing in the cart the reward matches |
+| `REWARD_OVER_CAP` | belt and braces; `discountFor` already caps |
+
+An asserted amount is **refused rather than ignored**, because silently dropping
+it would let a stale client tell a customer about a discount the till never
+gave, and they would argue with the counter about it.
+
+`trustedLine` is the part that matters: the line is rebuilt, not filtered, so no
+client field reaches `discountFor`. `price` is the item's base plus the
+modifiers Clover's catalog prices — a client claiming its oxtail costs $999 gets
+a discount computed on $20. `plate` comes from `PLATE_IDS`, not the client's
+boolean, which is what the free-plate reward keys on. `meta` is the resolved
+modifier names, so the seafood-mac reward matches what was ordered rather than a
+display string. The response carries the server's figure back as `discount`, and
+the client adopts it for the total it stores and shows.
+
+**What this does NOT fix, stated plainly:** the server still has no idea whether
+the customer had the Petals. Balances live only on the device (`lib/storage.js`),
+so "did they earn this" is unanswerable here, and the voucher code is a string
+nothing can validate. What the fix buys is a **bound** — a reward can only be
+one of five, worth at most its own cap, against a line that qualifies.
+Unbounded became bounded. Closing it needs server-side balances, which is a
+separate decision.
+
+### Replaying the same order
+
+`POST /orders` takes an `idempotencyKey`. A double-tap, or a retry after a
+response went missing, returns the first answer with `replayed: true` instead of
+creating a second discounted order; a repeat arriving while the first is still
+in flight gets `409 ORDER_IN_FLIGHT`. Only **successes** are remembered — a
+failed attempt created nothing, so retrying it has to be allowed.
+
+The client mints the key per order *attempt* and holds it in a ref, so "try
+again" re-sends the same one. A fresh key on every retry is precisely what turns
+one lost response into two orders on the register.
+
+In memory, like the rate limiter, and fine for one process — behind more than
+one instance it needs shared storage or it becomes per-instance. And it is not
+an attack control: anything crafting a request can vary the key freely. The cap
+above is what bounds a forged discount.
 
 ### Closed means closed
 
@@ -820,7 +882,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 718 tests
+npm test            # 734 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
@@ -929,6 +991,10 @@ or lose a customer, rather than on markup:
 - the private token never reaching the bundle
 - the print URL, character for character, including no `/orders/` in the path,
   no doubled slash, and the method and body that reach `fetch`
+- a client-named discount being refused, an unknown reward id being refused, a
+  reward capped at its own value, and the discount on the Clover order being the
+  server's figure and not the one the client sent
+- the same order attempt sent twice creating one order, not two
 - printer selection, including a `MY_LOCAL`-only merchant and an unknown type
 - the ticket carrying name, phone and window — and the order being refused
   without them
