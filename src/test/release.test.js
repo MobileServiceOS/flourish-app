@@ -4,6 +4,9 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../..");
@@ -62,10 +65,21 @@ describe("the app knows where the proxy is", () => {
 });
 
 describe("the release gate refuses to build a broken app", () => {
+  /* An empty directory, so the gate sees no .env files at all. Without this the
+     suite passed or failed depending on whether the developer running it had
+     configured a real release build — the one state in which the gate is least
+     testable and most important. */
+  const EMPTY = mkdtempSync(join(tmpdir(), "release-gate-"));
+
   const check = (env) => {
     try {
       const out = execFileSync("node", [resolve(ROOT, "scripts/check-release-config.mjs")], {
-        env: { ...process.env, VITE_API_BASE: "", VITE_APP_KEY: "", ...env },
+        env: {
+          ...process.env,
+          VITE_API_BASE: "", VITE_APP_KEY: "",
+          RELEASE_CHECK_ROOT: EMPTY,
+          ...env,
+        },
         cwd: ROOT,
         encoding: "utf8",
       });

@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { addItem, stubOnlineProxy } from "./helpers.js";
+import { CURRENCY_MANY } from "../lib/currency.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../..");
@@ -40,7 +41,7 @@ async function signIn(user) {
   await user.type(await screen.findByLabelText("Full name"), "Nevaeh Reid");
   await user.type(screen.getByLabelText("Phone number"), "3478599413");
   await user.click(screen.getByRole("button", { name: /Create my account/ }));
-  await screen.findByText("points available");
+  await screen.findByText(`${CURRENCY_MANY} available`);
 }
 
 async function placeOrder(user) {
@@ -59,7 +60,7 @@ async function placeOrder(user) {
 
 const openAccount = async (user) => {
   await user.click(screen.getByRole("button", { name: /^Rewards/ }));
-  await screen.findByText("points available");
+  await screen.findByText(`${CURRENCY_MANY} available`);
 };
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
@@ -81,7 +82,7 @@ describe("the account screen offers deletion", () => {
 
     expect(screen.getByText(/Delete your account\?/)).toBeInTheDocument();
     // Still signed in: nothing has happened yet.
-    expect(screen.getByText("points available")).toBeInTheDocument();
+    expect(screen.getByText(`${CURRENCY_MANY} available`)).toBeInTheDocument();
   });
 
   it("can be backed out of", async () => {
@@ -91,7 +92,7 @@ describe("the account screen offers deletion", () => {
     await user.click(screen.getByRole("button", { name: /Keep my account/ }));
 
     expect(screen.queryByText(/Delete your account\?/)).not.toBeInTheDocument();
-    expect(screen.getByText("points available")).toBeInTheDocument();
+    expect(screen.getByText(`${CURRENCY_MANY} available`)).toBeInTheDocument();
   });
 });
 
@@ -108,7 +109,7 @@ describe("the confirmation says what is actually lost", () => {
     expect(within(panel).getByText(/order history/i)).toBeInTheDocument();
     /* The balance and the count themselves, not just the words. textContent
        runs adjacent elements together, so no trailing word boundary. */
-    expect(panel.textContent).toMatch(/your 0 points/);
+    expect(panel.textContent).toMatch(/your 0 Petals/);
     expect(panel.textContent).toMatch(/\(1 order\)/);
   });
 

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Gift, Award } from "lucide-react";
-import { REWARDS } from "../lib/loyalty.js";
+import { REWARDS, CURRENCY_ONE, CURRENCY_MANY, SEPARATE_FROM_PERKS } from "../lib/loyalty.js";
 import { formatPhone, phoneDigits, isValidPhone, isValidName } from "../lib/phone.js";
 import { Hummingbird, SubHeader, Section } from "./shared.jsx";
 
@@ -23,7 +23,7 @@ export default function SignInView({ onSignIn }) {
           <Award size={30} style={{ marginBottom: 6 }} />
           <div className="serif" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.2 }}>Join Flourish Rewards</div>
           <div style={{ fontSize: 13, opacity: .95, marginTop: 6, lineHeight: 1.45 }}>
-            Earn a point for every dollar. Free sides, free drinks, free plates.
+            Earn a {CURRENCY_ONE} for every dollar. Free sides, free drinks, free plates.
           </div>
         </div>
 
@@ -51,7 +51,7 @@ export default function SignInView({ onSignIn }) {
           </div>
         </Section>
         <div style={{ color: "var(--muted)", fontSize: 11.5, margin: "10px 2px 0", lineHeight: 1.45 }}>
-          We use your number to look up your points and to reach you about an order. Nothing else.
+          We use your number to look up your {CURRENCY_MANY} and to reach you about an order. Nothing else.
         </div>
 
         <button className="pill-btn" style={{ marginTop: 16 }} disabled={!ok}
@@ -68,10 +68,17 @@ export default function SignInView({ onSignIn }) {
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 14.5 }}>{r.name}</div>
-              <div style={{ color: "var(--muted)", fontSize: 12.5 }}>{r.cost} pts · {r.desc}</div>
+              <div style={{ color: "var(--muted)", fontSize: 12.5 }}>{r.cost} {CURRENCY_MANY} · {r.desc}</div>
             </div>
           </div>
         ))}
+
+        {/* Said before they join, not after. Someone who already texts their
+            receipt code for Perks needs to know this is a second, separate
+            balance before they start expecting one total. */}
+        <p style={{ color: "var(--muted)", fontSize: 11.5, lineHeight: 1.5, margin: "12px 4px 0" }}>
+          {SEPARATE_FROM_PERKS}
+        </p>
       </div>
     </>
   );

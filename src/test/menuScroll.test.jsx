@@ -3,6 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { stubOnlineProxy } from "./helpers.js";
+import { MENU } from "../data/menu.data.js";
+
+/* A section that is not the first one, taken from the data rather than named.
+   These tests used to scroll to "Drinks", which stopped existing when the
+   register dropped the category. */
+const LATER_CAT = MENU.at(-1).cat;
+const LATER_RE = new RegExp(LATER_CAT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 
 const MON_NOON = new Date(2026, 6, 27, 12, 0);
 
@@ -126,7 +133,7 @@ describe("scrolling the menu never moves the content", () => {
     // A thumb-flick down the page: several sections pass under the nav.
     io.scrollTo("Lunch & Dinner");
     io.scrollTo("Seafood Fridays");
-    io.scrollTo("Drinks");
+    io.scrollTo(LATER_CAT);
 
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
@@ -137,8 +144,8 @@ describe("scrolling the menu never moves the content", () => {
     await renderApp();
     const io = observers.at(-1);
 
-    io.scrollTo("Drinks");
-    const chip = await screen.findByRole("tab", { name: /drinks/i });
+    io.scrollTo(LATER_CAT);
+    const chip = await screen.findByRole("tab", { name: LATER_RE });
     expect(chip).toHaveAttribute("aria-selected", "true");
   });
 
@@ -159,10 +166,10 @@ describe("scrolling the menu never moves the content", () => {
     nav.scrollTo = vi.fn();
     const anyScroll = vi.spyOn(Element.prototype, "scrollIntoView");
 
-    const chip = screen.getByRole("tab", { name: /drinks/i });
+    const chip = screen.getByRole("tab", { name: LATER_RE });
     fake(chip, { offsetLeft: 500, offsetWidth: 100 });
 
-    observers.at(-1).scrollTo("Drinks");
+    observers.at(-1).scrollTo(LATER_CAT);
 
     // Centred: 500 - (300 - 100) / 2 = 400.
     await waitFor(() =>
@@ -180,10 +187,10 @@ describe("scrolling the menu never moves the content", () => {
     const { user } = await renderApp();
     const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
 
-    await user.click(screen.getByRole("tab", { name: /drinks/i }));
+    await user.click(screen.getByRole("tab", { name: LATER_RE }));
 
     expect(spy).toHaveBeenCalled();
-    expect(screen.getByRole("tab", { name: /drinks/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: LATER_RE })).toHaveAttribute("aria-selected", "true");
     spy.mockRestore();
   });
 

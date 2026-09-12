@@ -75,10 +75,15 @@ describe("menu view", () => {
   });
 
   it("selects a chip when tapped", async () => {
+    /* Whichever category Clover has last, rather than a named one. This test
+       used to tap "Drinks", and broke the day the register stopped having a
+       Drinks category — a chip-selection test should not be the thing that
+       fails when the menu is reorganised. */
     const { user } = await renderApp();
-    const drinks = screen.getByRole("tab", { name: "Drinks" });
-    await user.click(drinks);
-    expect(drinks).toHaveAttribute("aria-selected", "true");
+    const last = MENU.at(-1).cat;
+    const chip = screen.getByRole("tab", { name: new RegExp(`^${last.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) });
+    await user.click(chip);
+    expect(chip).toHaveAttribute("aria-selected", "true");
   });
 });
 

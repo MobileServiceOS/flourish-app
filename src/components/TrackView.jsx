@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Clock, MapPin, Phone, ChevronLeft, Check, Navigation, Store, Award, Car } from "lucide-react";
 import { money } from "../lib/money.js";
+import { CURRENCY_MANY, currencyAmount } from "../lib/loyalty.js";
 import { formatTime } from "../lib/hours.js";
 import { PHONE_E164, PHONE_HUMAN, MAPS_URL } from "../lib/restaurant.js";
 import { useOrderStatus, useOrderPayment } from "../hooks/clover.js";
@@ -125,17 +126,17 @@ export default function TrackView({ order, setView, live = false, signedIn = fal
               <div className="points-earned" role="status">
                 <Award size={17} aria-hidden="true" style={{ flex: "0 0 auto" }} />
                 <div>
-                  <strong>Points earned!</strong>
+                  <strong>{CURRENCY_MANY} earned!</strong>
                   <span style={{ display: "block", fontSize: 12, opacity: .9 }}>
-                    +{order.earnable} points added for this order.
+                    +{currencyAmount(order.earnable)} added for this order.
                   </span>
                 </div>
               </div>
             ) : (
               <div className="field-hint" style={{ marginTop: 8 }}>
                 {payment.voided
-                  ? "This order was cancelled at the register, so no points were added."
-                  : `You'll earn ${order.earnable} points when you pay at the counter.`}
+                  ? `This order was cancelled at the register, so no ${CURRENCY_MANY} were added.`
+                  : `You'll earn ${currencyAmount(order.earnable)} when you pay at the counter.`}
               </div>
             )
           )}

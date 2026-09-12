@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import { Gift, LogOut, Ticket, RotateCcw, Share2, AlertTriangle } from "lucide-react";
 import { money } from "../lib/money.js";
-import { REWARDS, tierFor, nextTier } from "../lib/loyalty.js";
+import {
+  REWARDS, tierFor, nextTier,
+  CURRENCY_MANY, CURRENCY_RATE_LINE, SEPARATE_FROM_PERKS, currencyAmount,
+} from "../lib/loyalty.js";
 import { formatPhone } from "../lib/phone.js";
 import { shareFlourish } from "../lib/share.js";
 import { SubHeader } from "./shared.jsx";
@@ -30,16 +33,25 @@ export default function RewardsView({
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, opacity: .9 }}>{account.name}</div>
               <div className="serif" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.1 }}>{points}</div>
-              <div style={{ fontSize: 12.5, opacity: .9, marginTop: -2 }}>points available</div>
+              <div style={{ fontSize: 12.5, opacity: .9, marginTop: -2 }}>{CURRENCY_MANY} available</div>
             </div>
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, background: "rgba(255,255,255,.22)",
               padding: "5px 10px", borderRadius: 999 }}>{tier.name.toUpperCase()}</span>
           </div>
           <div className="progress" style={{ margin: "14px 0 8px" }}><span style={{ width: `${pct}%` }} /></div>
           <div style={{ fontSize: 12.5, opacity: .95 }}>
-            {next ? `${next.min - points} pts to ${next.name}` : "Top tier. Thank you for the love 🌺"}
+            {next
+              ? `${currencyAmount(next.min - points)} to ${next.name}`
+              : "Top tier. Thank you for the love 🌺"}
           </div>
         </div>
+
+        {/* Two programmes run at once and this is the balance screen, so this is
+            where the distinction has to be unmissable. A customer who reads
+            nothing else reads the number above it. */}
+        <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, margin: "-8px 4px 18px" }}>
+          {SEPARATE_FROM_PERKS}
+        </p>
         <div className="card" style={{ padding: 16, marginBottom: 18, borderRadius: 22, border: "1px solid var(--line)", background: "#fff" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
             <Share2 size={20} color="var(--leaf-ink)" aria-hidden="true" />
@@ -76,7 +88,7 @@ export default function RewardsView({
         )}
 
         {/* redeem */}
-        <h3 className="serif" style={{ fontWeight: 700, fontSize: 18, margin: "22px 4px 10px" }}>Redeem points</h3>
+        <h3 className="serif" style={{ fontWeight: 700, fontSize: 18, margin: "22px 4px 10px" }}>Redeem {CURRENCY_MANY}</h3>
         {REWARDS.map((r) => {
           const can = points >= r.cost;
           return (
@@ -90,12 +102,12 @@ export default function RewardsView({
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14.5 }}>{r.name}</div>
                 <div style={{ color: "var(--muted)", fontSize: 12.5 }}>
-                  {can ? r.desc : `${r.cost - points} more pts`}
+                  {can ? r.desc : `${r.cost - points} more ${CURRENCY_MANY}`}
                 </div>
               </div>
               <button className="pill-btn ghost" style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
                 disabled={!can} onClick={() => redeem(r)}>
-                {r.cost} pts
+                {currencyAmount(r.cost)}
               </button>
             </div>
           );
@@ -152,14 +164,14 @@ export default function RewardsView({
                   <li>your saved name and phone number</li>
                   <li>your order history in the app{orders.length ? ` (${orders.length} order${orders.length > 1 ? "s" : ""})` : ""}</li>
                   <li>
-                    your <strong>{points} point{points === 1 ? "" : "s"}</strong>
+                    your <strong>{currencyAmount(points)}</strong>
                     {vouchers.length > 0 && <> and {vouchers.length} unused reward{vouchers.length > 1 ? "s" : ""}</>}
                   </li>
                 </ul>
 
                 {/* Said plainly, before the tap that costs them. */}
                 <p style={{ margin: "0 0 8px" }}>
-                  <strong>Any points you have not spent are gone for good.</strong> They
+                  <strong>Any {CURRENCY_MANY} you have not spent are gone for good.</strong> They
                   cannot be restored, and starting a new account starts you at zero.
                 </p>
 
@@ -188,7 +200,8 @@ export default function RewardsView({
         </div>
 
         <div style={{ color: "var(--muted)", fontSize: 11.5, textAlign: "center", padding: "16px 20px 0", lineHeight: 1.5 }}>
-          Earn 1 point per $1 spent. Points never expire.
+          {CURRENCY_RATE_LINE}. {CURRENCY_MANY} never expire.
+          <br />{SEPARATE_FROM_PERKS}
         </div>
       </div>
     </>

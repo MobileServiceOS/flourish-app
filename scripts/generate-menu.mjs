@@ -43,11 +43,16 @@ const DELISTED = new Set([
   "K7EX5APPAXPEJ",   // Lobster Roll & Fries
   "S0GK9MD2NE414",   // Salmon (1 Piece)
   "PZ1FB6X44MGYE",   // Lex Special
-  /* Blue Crab is duplicated in Clover and the shop's own flyer settles it at
-     $15, so DH0P3NGRN9RNE is the live one and the $20 entry is the stray. This
-     was the other way round, on a guess that the $20 was authoritative — so the
-     app sold blue crab at $20, from Lunch & Dinner, five dollars over the flyer. */
-  "PSGB77QNZR2WM",   // Blue Crab $20 — the duplicate; the flyer lists $15
+  /* Blue Crab is NOT duplicated. Confirmed by the owner against the register:
+     DH0P3NGRN9RNE at $15 is the Friday price, in Seafood Fridays and carrying
+     the Friday lock, and PSGB77QNZR2WM at $20 is the everyday one in
+     Lunch & Dinner with no lock. Two prices for two different days, which is
+     the one shape the app can express without day-dependent pricing.
+
+     Both have now been wrong here in turn — first the $15 was delisted as a
+     stray, then the $20 was. Neither was ever a duplicate, and both guesses
+     came from reading two rows with one name as an error rather than asking.
+     See docs/HIDE-REASONS-AUDIT.md. */
   "QDCGERYM91BP0",   // Beef Patty
   "Y79KKCYGMHRB6",   // Chicken Patty
 ]);
@@ -78,20 +83,26 @@ const SIDE_GROUP_GID = "YQWN3PKBKV9NG";
       appearing on one in Clover is reported instead of silently charged.
    ============================================================================ */
 
-/* Live Clover has Shrimp and Seafood Mac priced correctly. Fried Chicken and
-   Whiting Fish are $0 in the meal group — so the register charges nothing for
-   them today, which is revenue the shop loses rather than a customer surprise.
-   These two are the standalone Side prices, applied by decision.
+/* All four now match Clover, so none of these is an override any more — the
+   map has become an assertion that the register keeps charging what the app
+   shows. The generator reports any entry it has to apply.
 
-   !! The register still charges Clover's price, which is $0 for those two. !!
-   Until the Clover dashboard is corrected the app shows an upcharge the till
-   does not take. That is the same divergence as the nine items in
-   PRINTED-MENU-PRICES.md, and this script reports it on every run. */
+   Fried Chicken and Whiting Fish X1 used to be $0 in the meal group, which the
+   app worked around by quoting the standalone prices — the one divergence that
+   ran in the shop's favour rather than the customer's. Both are priced at the
+   register now.
+
+   Whiting Fish X1 is $2.50 here, not $3.00. The $3.00 was applied to the
+   STANDALONE "Side" group, whose "Whiting Fish  X1" (two spaces) went $2.50 ->
+   $3.00; the meal group's "Whiting Fish X1" was set to $2.50. Raising this to
+   $3.00 would put the app 50c above the till on all 21 plates that share the
+   group, so it follows Clover. If $3.00 with a plate is the intent, it is a
+   one-field change at the register and this number follows it. */
 const SIDE_UPCHARGE = {
-  "Shrimp": 5.0,          // already correct in Clover
-  "Seafood Mac": 3.5,     // already correct in Clover
-  "Fried Chicken": 6.0,   // Clover has $0 — needs fixing at the source
-  "Whiting Fish X1": 2.5, // Clover has $0 — needs fixing at the source
+  "Shrimp": 5.0,          // matches Clover
+  "Seafood Mac": 3.5,     // matches Clover
+  "Fried Chicken": 6.0,   // matches Clover since the register was corrected
+  "Whiting Fish X1": 2.5, // matches Clover; the $3.00 landed on the standalone group
 };
 
 /* Free with a plate, priced on their own. No override: this set exists to be
@@ -101,6 +112,52 @@ const SIDE_UPCHARGE = {
    side only ($15) and is not in the Side With Meal group at all, so it cannot
    be chosen with a plate. Adding it would be a Clover change, not a code one. */
 const SIDE_FREE_WITH_MEAL = new Set(["Festival", "Pasta"]);
+
+/* ============================================================================
+   THE WRONG SIDE GROUP IS ATTACHED AT THE REGISTER
+
+   Ten items were meant to get "Side With Meal" (YQWN3PKBKV9NG, 14 options, $0
+   for the ones a plate includes). What they actually got is the STANDALONE
+   "Side" group (S032100JQ3P4T, 21 options at standalone prices). Same word on
+   the dashboard, different object, and the difference is money in both
+   directions:
+
+     - the app: a base price plus a priced group rings up double, so the
+       generator zeroes the base. Crab Legs Platter (Shrimp & 2 Sides) came out
+       as base $0 with a range of $1-$15 — a $39.99 platter advertised "from
+       $1", priced off its corn bread.
+     - the register: Clover adds modifiers to the base, so that platter now
+       rings $39.99 + $5 white rice = $44.99, on a flyer that says two sides
+       are included.
+     - the options themselves: White Rice $5 and Mac & Cheese $6 where the
+       plate includes them, plus Pepper Shrimp $15, Jerk Chicken $6 and
+       Chicken Breast $5 offered as "sides" on a seafood platter.
+
+   So the group is dropped here and the items keep the shape they had before —
+   no side picker, correct base price — until the right group is attached. That
+   is not the generator inventing data: it is refusing to quote a plate at a
+   price neither the app nor the register believes.
+
+   THE FIX IS AT THE REGISTER: on each item below, remove "Side" and add
+   "Side With Meal". Then delete it from this map and regenerate. A test
+   asserts every id here still has the wrong group, so the map cannot outlive
+   the problem.
+   ============================================================================ */
+const STANDALONE_SIDE_GROUP = "Side";
+const MISATTACHED_SIDE_GROUP = {
+  "BRMP82TR0Z45C": "Crab Legs Platter (Shrimp & 2 Sides)",
+  "A1YZ2ZD5CA1SW": "Lobster Platter (Shrimp & 2 Sides)",
+  "21RNMJ880YCMC": "Crab Legs & Shrimp — DELISTED, never reaches the app",
+  "32VDQ4G5J131P": "Seafood Stew Peas",
+  "DH0P3NGRN9RNE": "Blue Crab (Friday, $15)",
+  "PH221AJ7W66EA": "Pepper Shrimp & Mussels",
+  "K7EX5APPAXPEJ": "Lobster Roll & Fries — DELISTED, never reaches the app",
+  // The three hidden Friday SKUs carry it too. Listed so the map matches the
+  // register rather than only the part of it the app renders.
+  "06Z80836S0GZR": "Fish Platter (Shrimp & 2 Sides) — also hidden in the app",
+  "CAFAH5FKPTRW8": "Shrimp (Friday) — also hidden in the app",
+  "0NQ5E11VABFDY": "Salmon (Shrimp & 2 Sides) — also hidden in the app",
+};
 
 
 // Uber Eats prices, verified by hand. Only used to show what ordering direct saves.
@@ -217,14 +274,16 @@ const HIDDEN_ITEMS_IN_APP = {
   "CAFAH5FKPTRW8": "no sides group; everyday Shrimp is $1.99 CHEAPER and takes a flavour",
 };
 
-const HIDDEN_IN_APP = {
-  /* Goat soup is sold at the counter but not through the app. It also rings
-     $0 at the register (CLOVER-FIXES #2) — that is the owner's to fix in the
-     dashboard, and the app deliberately does NOT paper over it with a price
-     override any more. Hiding it is the whole of the app's involvement. */
-  "H2749PVKFN4EY::Medium Goat": "sold at the counter, not through the app",
-  "H2749PVKFN4EY::Large Goat": "sold at the counter, not through the app",
-};
+/* Empty, and worth keeping rather than deleting: it is the declared home for
+   "the register sells this, the app does not", and the next such decision
+   should land here instead of being improvised.
+
+   It held the two goat soup sizes until they were DELETED from the Soup group
+   at the register. Hiding them in the app was always the smaller half of that
+   fix — they rang $0 at the counter too — and with the modifiers gone there is
+   nothing left to hide. The generator warns about any key here that names a
+   modifier the export no longer carries, which is how these two were caught. */
+const HIDDEN_IN_APP = {};
 
 const MODIFIER_DAYS = {
   // Seafood soup — Friday and Saturday
@@ -233,7 +292,10 @@ const MODIFIER_DAYS = {
   // Chicken soup — Sunday through Thursday
   "H2749PVKFN4EY::Medium Chicken": [0, 1, 2, 3, 4],
   "H2749PVKFN4EY::Large Chicken": [0, 1, 2, 3, 4],
-  // Goat soup carries no lock: it is made every day.
+  /* Goat soup had no lock — it was made every day — and both its sizes have
+     since been deleted from the group at the register. Soup is now chicken
+     (Sun-Thu) and seafood (Fri-Sat), which still covers all seven days with
+     two selectable sizes on each. The generator asserts that property. */
 };
 
 /* Modifiers that are really a separate dish sitting in another item's size
@@ -275,10 +337,6 @@ const MENU_PRICE = {
   "D0F1SFXHWSQWT::Oxtail": 24,
   // Sides
   "S032100JQ3P4T::Chicken Mac & Cheese": 7.0,
-  /* Goat head soup's $0 sizes are NOT overridden here. They are hidden in the
-     app instead (HIDDEN_IN_APP), so there is no price for a customer to see and
-     nothing for the app to work around. The $0 at the register stays a
-     CLOVER-FIXES #2 item for the dashboard. */
   // Lunch specials — the chicken plates are $8 on the menu
   "F0Q8615QD5HMM::Curried Chicken": 8.0,
   "F0Q8615QD5HMM::Fried Chicken": 8.0,
@@ -352,6 +410,7 @@ const DESC = {
   "VHHCS7EDV70HC": "Sweet chili, garlic, curried, pepper, grilled, or fried",
   "8FW3GVMJKCGZG": "Stew or jerk, medium or large",
   "PSGB77QNZR2WM": "Blue crab with two sides",
+  "JC6BRY4NX3A6E": "Fried dough, slightly sweet",
   "QB9EKT4QGVWDA": "Shrimp over waffles, six flavors to pick from",
   "K7EX5APPAXPEJ": "Lobster roll with a side of fries",
   "C2RD25C1VXNN0": "Made to order. Pick your sauce.",
@@ -465,7 +524,8 @@ const PREP_MINUTES = {
   "H9520PFNBT2NY": COOKED_TO_ORDER,   // Salmon
   "AYBW9QMTC6154": COOKED_TO_ORDER,   // Ackee & Shrimp
   "VHHCS7EDV70HC": COOKED_TO_ORDER,   // Shrimp
-  "DH0P3NGRN9RNE": COOKED_TO_ORDER,   // Blue Crab ($15, the flyer's one)
+  "DH0P3NGRN9RNE": COOKED_TO_ORDER,   // Blue Crab ($15, the Friday price)
+  "PSGB77QNZR2WM": COOKED_TO_ORDER,   // Blue Crab ($20, everyday) — same dish, same pot
   "PH221AJ7W66EA": COOKED_TO_ORDER,   // Pepper Shrimp & Mussels
   "QB9EKT4QGVWDA": COOKED_TO_ORDER,   // Shrimp & Waffles
   "BRMP82TR0Z45C": COOKED_TO_ORDER,   // Crab Legs Platter (Shrimp & 2 Sides)
@@ -549,12 +609,36 @@ const kindOf = (name) => {
 /* ---------- items (a Clover item spans several rows, one per group) ---------- */
 const items = new Map();
 {
+  /* An item with several modifier groups spans several rows, and Clover blanks
+     every column but "Modifier Groups" on the continuation rows. So these
+     values have to carry forward — but ONLY within one item.
+
+     They used to carry forward across item boundaries too, and that is a data
+     corruption rather than an untidiness: an item whose OWN Categories cell is
+     empty silently inherited the category of whichever item happened to sit
+     above it in the sheet. This export has 15 uncategorised items (the
+     breakfast dishes), and they arrived in the app filed under Lunch & Dinner —
+     $0.00 porridges, fifteen-minute prep defaults and no descriptions — because
+     the row above the first porridge was a Lunch & Dinner beef patty. Sheet
+     order is not data. A new Clover ID therefore resets the carry, and an item
+     with no category of its own now has none and is dropped by the filter
+     below, which is what "leave Breakfast omitted" is supposed to mean.
+
+     The same leak applied to Price: an item with a blank price would have
+     inherited the previous item's, which is how a plate ends up charged as
+     something else entirely. */
   let id = null, name = null, price = null, cat = null;
   for (const r of sheet("Items")) {
-    id = r["Clover ID"] ?? id;
-    name = r["Name"] ?? name;
-    price = r["Price"] ?? price;
-    cat = r["Categories"] ?? cat;
+    if (r["Clover ID"]) {
+      id = r["Clover ID"];
+      name = r["Name"];
+      price = r["Price"];
+      cat = r["Categories"];
+    } else {
+      name = r["Name"] ?? name;
+      price = r["Price"] ?? price;
+      cat = r["Categories"] ?? cat;
+    }
     if (!id) continue;
     if (!items.has(id)) {
       items.set(id, { id, name: String(name).trim(), base: Number(price) || 0, cats: new Set(), groups: [] });
@@ -571,6 +655,7 @@ const issues = [];
 const priceEdits = [];   // where the printed menu overrode Clover
 const offMenu = [];      // sold on the register, not on the printed menu
 const appHidden = [];    // sold at the counter, deliberately not in the app
+const misattachedSides = []; // the standalone Side group attached instead of Side With Meal
 const out = [];
 
 for (const it of items.values()) {
@@ -584,6 +669,23 @@ for (const it of items.values()) {
   const gs = it.groups
     .filter((g) => groups.has(g))
     .map((g) => ({ gid: groups.get(g).gid, name: g, kind: kindOf(g), mods: groups.get(g).mods.map((m) => ({ ...m })) }));
+
+  /* Drop the standalone side group where it was attached in place of
+     "Side With Meal". Done before the base-price check below, so the plate
+     keeps its real price instead of being zeroed as a double-ringing size
+     group. See MISATTACHED_SIDE_GROUP. */
+  if (MISATTACHED_SIDE_GROUP[it.id]) {
+    const wrong = gs.findIndex((g) => g.name === STANDALONE_SIDE_GROUP);
+    if (wrong === -1) {
+      issues.push(
+        `${it.name} (${it.id}): listed in MISATTACHED_SIDE_GROUP but "${STANDALONE_SIDE_GROUP}" ` +
+        `is no longer attached — remove the entry from the generator and regenerate`
+      );
+    } else {
+      gs.splice(wrong, 1);
+      misattachedSides.push(`${it.name} (${it.id}) — "${STANDALONE_SIDE_GROUP}" attached instead of "${SIDE_GROUP}"`);
+    }
+  }
 
   let base = it.base;
   const variants = gs.filter((g) => g.kind === "variant");
@@ -793,7 +895,12 @@ for (const id of POPULAR_IDS) {
   if (!ids.has(id)) console.warn(`  ! Popular item ${id} is not on the menu anymore`);
 }
 for (const id of Object.keys(PREP_MINUTES)) {
-  if (!ids.has(id)) console.warn(`  ! Prep time set for ${id}, which is not on the menu anymore`);
+  /* An item hidden on purpose is not on the menu and is not stale either — it
+     keeps its prep time so un-hiding it does not silently fall back to 30. The
+     warning is for keys whose item has actually left the export. */
+  if (!ids.has(id) && !HIDDEN_ITEMS_IN_APP[id]) {
+    console.warn(`  ! Prep time set for ${id}, which is not on the menu anymore`);
+  }
 }
 
 /* A day lock on a modifier that no longer exists is a silent no-op, and the
@@ -811,6 +918,22 @@ for (const id of Object.keys(PREP_MINUTES)) {
     // `items` is the Map of everything the export carried, before any filtering.
     if (!items.has(id)) console.warn(`  ! HIDDEN_ITEMS_IN_APP names ${id}, which is not an item in the export`);
   }
+}
+
+if (misattachedSides.length) {
+  console.warn(
+    `\n  !! ${misattachedSides.length} item(s) have the WRONG SIDE GROUP at the register !!`
+  );
+  for (const m of misattachedSides) console.warn(`    - ${m}`);
+  console.warn(
+    "\n    The standalone \"Side\" group prices every option as if it were sold\n" +
+    "    on its own, and Clover adds it to the plate's base — so the register\n" +
+    "    rings a $39.99 platter at $44.99 with white rice, and the app would\n" +
+    "    have advertised it \"from $1\". The group is dropped from these items\n" +
+    "    here, so they keep their real price and offer no sides at all.\n" +
+    "\n    At the register, on each item: remove \"Side\", add \"Side With Meal\".\n" +
+    "    Then delete the id from MISATTACHED_SIDE_GROUP and regenerate."
+  );
 }
 
 if (appHidden.length) {

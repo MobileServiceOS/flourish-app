@@ -8,8 +8,8 @@ disagree on these items. Two consequences, in opposite directions:
 
 - On the items where Clover is **cheaper**, a customer sees the menu price in the
   app and is charged the lower Clover price. You lose the difference. The two
-  Side With Meal upcharges below are the worst of these: they are $0.00 in the
-  register and ride on 19 different plates.
+  Side With Meal upcharges were the worst of these — $0.00 in the register,
+  riding on 19 different plates — and they have now been fixed at the source.
 - On the two items where Clover is **dearer**, a customer sees the lower menu
   price and is charged more. **That one generates complaints** — it is the
   reason to do this sooner rather than later.
@@ -47,27 +47,33 @@ Modifier Groups → **Side** (`S032100JQ3P4T`)
 |---|---|---|
 | Chicken Mac & Cheese | $6.99 | **$7.00** |
 
-### Sides that come with a plate  ← the one that matters most
+### Sides that come with a plate — DONE
 
 Modifier Groups → **Side With Meal** (`YQWN3PKBKV9NG`)
 
-| Option | Clover now | Set to |
+| Option | Was | Now in Clover |
 |---|---|---|
-| Fried Chicken (`W63ZR0Q92XER4`) | **$0.00** | **$6.00** |
-| Whiting Fish X1 (`WHGNBP3G67PJP`) | **$0.00** | **$2.50** |
+| Fried Chicken (`W63ZR0Q92XER4`) | $0.00 | **$6.00** ✅ |
+| Whiting Fish X1 (`WHGNBP3G67PJP`) | $0.00 | **$2.50** ✅ |
 
-`Shrimp` ($5.00) and `Seafood Mac` ($3.50) in this group are already correct and
-need no change.
+This was the largest leak on the page and it is closed. Both were $0.00, so the
+counter charged nothing for them on any of the 19 plates sharing the group while
+the app showed the upcharge — the customer saw a total *higher* than they paid,
+which is why nobody ever complained and it went unnoticed for so long.
 
-**This is the largest leak on the page.** Those two are $0.00 in the register, so
-the counter charges nothing for them on any of the **19 plates** that share this
-group. The app shows the upcharge; Clover does not take it.
+The app follows Clover on both now, so the two agree and neither map is an
+override any more.
 
-Direction of the divergence, which is the opposite of everything else here: the
-customer sees a total **higher** than they pay. Nobody complains, and the shop
-absorbs it silently on every order — which is exactly why it went unnoticed long
-enough to be reported as "the app says Included but it costs $6". The app was
-telling the truth about the till.
+**One thing did not land where it was intended.** Whiting Fish X1 was meant to go
+to **$3.00** in this group. The $3.00 was applied to the *standalone* `Side`
+group instead (`S032100JQ3P4T`, "Whiting Fish  X1" — note the double space),
+which went $2.50 → $3.00; the meal group was set to $2.50. Both are now
+internally consistent, so nothing is mischarged either way, and the app quotes
+$2.50 with a plate because that is what the register takes.
+
+If $3.00 with a plate is what you want, it is one field:
+Side With Meal → Whiting Fish X1 → $3.00. The app picks it up on the next
+regeneration with no code change.
 
 ### Lunch specials
 Modifier Groups → **Lunch Specials** (`F0Q8615QD5HMM`)

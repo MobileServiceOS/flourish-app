@@ -4,6 +4,7 @@ import {
   kitchenNote, MissingCustomerError, NOTE_MAX,
   toCents, ModifierResolutionError,
 } from "../lib/cloverOrder.js";
+import { CURRENCY_MANY } from "../lib/currency.js";
 
 /* A slice of what Clover returns from /modifier_groups?expand=modifiers,
    reshaped the way server/clover.js caches it. */
@@ -294,9 +295,12 @@ describe("kitchen ticket note", () => {
   });
 
   it("names a redeemed reward, and says nothing when there isn't one", () => {
+    /* "Petals reward", not a bare "Reward". The shop runs Clover Perks at the
+       register as well, and a ticket that does not say which scheme paid for
+       the free drink leaves staff guessing between two balances. */
     expect(kitchenNote({ ...FULL, reward: { name: "Free drink" } }))
-      .toContain("Reward: Free drink");
-    expect(kitchenNote(FULL)).not.toContain("Reward:");
+      .toContain(`${CURRENCY_MANY} reward: Free drink`);
+    expect(kitchenNote(FULL)).not.toMatch(/reward/i);
   });
 
   it("refuses to build a ticket with no name", () => {

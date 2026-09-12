@@ -139,3 +139,31 @@ The Friday platters have **zero sales** and the everyday twins are what staff
 ring. Attaching the groups makes the Friday SKUs usable, but somebody still has
 to ring them on a Friday for the flyer price to reach a customer. Worth a word
 at the counter — this is a training question as much as a data one.
+
+
+---
+
+## Update — the side group was attached, but the wrong one (2026-09-11)
+
+The order of operations in this document was: attach `Side With Meal` at the
+register first, regenerate second. The attach happened. What got attached to all
+ten Seafood Fridays items was the **standalone `Side` group**
+(`S032100JQ3P4T`), not `Side With Meal` (`YQWN3PKBKV9NG`).
+
+They are different Clover objects with the same word on the dashboard, and the
+difference is the whole point of the two groups existing: the meal group prices
+an included side at $0, the standalone group prices it as something you buy on
+its own. So Crab Legs Platter now rings **$39.99 + $5.00 white rice = $44.99**
+at the register, and the first regeneration put it in the app as base $0
+advertised "from $1", priced off its corn bread.
+
+Crab legs and lobster were kept in the app on the reasoning in this document —
+sides are the whole of their identity, so `Side With Meal` alone makes them
+correct. That reasoning is unchanged; they just do not have it yet. Until they
+do, the generator drops the wrong group and they show their real price with no
+sides, exactly as before.
+
+**The crab legs price question is still open and unchanged:** $55.00 midweek
+against $39.99 on the flyer, and there is still no mechanism for a Friday price.
+
+Full detail, and the ten ids, in CLOVER-FIXES.md §10.

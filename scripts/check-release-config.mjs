@@ -19,7 +19,16 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+/* Normally the project root. Overridable so this gate's OWN tests can point it
+   at an empty fixture directory: they assert it fails when VITE_API_BASE is
+   unset, and once a developer has a real .env.production.local — which they
+   need in order to build a release at all — the gate correctly passes and the
+   test that proves it can fail no longer proves anything. The override is read
+   from the environment rather than argv so a release build cannot pick it up by
+   accident from a stray flag. */
+const ROOT = process.env.RELEASE_CHECK_ROOT
+  ? resolve(process.env.RELEASE_CHECK_ROOT)
+  : resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const problems = [];
 const notes = [];
 
