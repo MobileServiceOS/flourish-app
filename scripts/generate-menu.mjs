@@ -38,7 +38,6 @@ const DELISTED = new Set([
      wrong: the item sold 15 times in its own right. See CLOVER-FIXES #8. */
   "YQH6NFFB34SVM",   // BBQ Chicken — $0.00 in Clover, would ring free
   "49BD3KVSBHXRR",   // Curry Chicken — $0.00 in Clover, would ring free (sells 15x at the counter)
-  "21RNMJ880YCMC",   // Crab Legs & Shrimp
   "PEB98GZ1MBF6P",   // Lobster Tail (No Meal)
   "K7EX5APPAXPEJ",   // Lobster Roll & Fries
   "S0GK9MD2NE414",   // Salmon (1 Piece)
@@ -147,7 +146,7 @@ const STANDALONE_SIDE_GROUP = "Side";
 const MISATTACHED_SIDE_GROUP = {
   "BRMP82TR0Z45C": "Crab Legs Platter (Shrimp & 2 Sides)",
   "A1YZ2ZD5CA1SW": "Lobster Platter (Shrimp & 2 Sides)",
-  "21RNMJ880YCMC": "Crab Legs & Shrimp — DELISTED, never reaches the app",
+  "21RNMJ880YCMC": "Crab Legs & Shrimp — FIXED at the register, remove on regeneration",
   "32VDQ4G5J131P": "Seafood Stew Peas",
   "DH0P3NGRN9RNE": "Blue Crab (Friday, $15)",
   "PH221AJ7W66EA": "Pepper Shrimp & Mussels",
@@ -214,6 +213,21 @@ const ITEM_CATEGORY = {
   "32VDQ4G5J131P": "Seafood Fridays",   // Seafood Stew Peas
   "DH0P3NGRN9RNE": "Seafood Fridays",   // Blue Crab $15
   "PH221AJ7W66EA": "Seafood Fridays",   // Pepper Shrimp & Mussels
+
+  /* Crab Legs & Shrimp is in BOTH Lunch & Dinner and Seafood Fridays at the
+     register, and an item can only sit under one heading here. Without a pin
+     the winner is `cats[0]` — whichever category the export happens to list
+     first — and that decides whether the app treats it as Friday-only or
+     everyday, because the Friday lock rides on the category. Availability must
+     not depend on column order in a spreadsheet.
+
+     Pinned to Lunch & Dinner deliberately: Clover has it in that category, so
+     the register will ring it any day of the week. Pinning it to Seafood
+     Fridays would make the app refuse Tuesday orders the counter would take
+     happily — the app being stricter than the till is a lost sale, where the
+     reverse is a refused order. Flip this one line if it really is Friday-only,
+     and the Friday lock comes with it. */
+  "21RNMJ880YCMC": "Lunch & Dinner",    // Crab Legs & Shrimp $39.99
 };
 
 const CATEGORY_DAYS = { "Seafood Fridays": [5] };
@@ -394,7 +408,7 @@ const DESC = {
   "598S0BJH4J7DE": "Crab legs and shrimp with two sides",
   "VGZYVZCB2NCRY": "Whole lobster with two sides",
   "PZ1FB6X44MGYE": "The house plate. Ask what's on it today.",
-  "21RNMJ880YCMC": "Crab legs and shrimp, no sides",
+  "21RNMJ880YCMC": "Crab legs and shrimp, with two sides",
   "7916EWVQFPGH8": "Slow-braised lamb with two sides",
   "VQZ0T4XK707EC": "Brown stew, escovitch, or steamed",
   "ZTAQ37M4E9S4C": "Red peas simmered in coconut milk",

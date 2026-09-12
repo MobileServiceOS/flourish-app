@@ -60,10 +60,10 @@ export async function createPgStore({ connectionString, ssl } = {}) {
   const rowToCustomer = (r) => r && ({
     id: Number(r.id), phone: r.phone, name: r.name, createdAt: r.created_at,
   });
-  const rowToReservation = (r) => r && ({
+  const rowToOrder = (r) => r && ({
     id: Number(r.id), customerId: Number(r.customer_id), orderId: r.order_id,
-    rewardId: r.reward_id, petals: Number(r.petals), amountCents: Number(r.amount_cents),
-    state: r.state, createdAt: r.created_at,
+    rewardId: r.reward_id, hold: Number(r.hold), amountCents: Number(r.amount_cents),
+    earnable: Number(r.earnable), state: r.state, createdAt: r.created_at,
   });
 
   const bind = (q) => ({
@@ -105,42 +105,46 @@ export async function createPgStore({ connectionString, ssl } = {}) {
       return Number(rows[0]?.petals ?? 0);
     },
 
-    async createReservation({ customerId, orderId, rewardId, petals, amountCents, at }) {
+    async createOrderRow({ customerId, orderId, rewardId, hold, amountCents, earnable, at }) {
       const { rows } = await q(
-        `INSERT INTO petals_reservation
-           (customer_id, order_id, reward_id, petals, amount_cents, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO petals_order
+           (customer_id, order_id, reward_id, hold, amount_cents, earnable, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (order_id) DO UPDATE SET order_id = EXCLUDED.order_id
          RETURNING *`,
-        [customerId, orderId, rewardId, petals, amountCents ?? 0, need(at, "createReservation")]
+        [customerId, orderId, rewardId ?? null, hold ?? 0, amountCents ?? 0,
+         earnable ?? 0, need(at, "createOrderRow")]
       );
-      return rowToReservation(rows[0]);
+      return rowToOrder(rows[0]);
     },
 
-    async findReservationByOrder(orderId) {
-      const { rows } = await q("SELECT * FROM petals_reservation WHERE order_id = $1", [orderId]);
-      return rowToReservation(rows[0]) ?? null;
+    async findOrderRow(orderId) {
+      const { rows } = await q("SELECT * FROM petals_order WHERE order_id = $1", [orderId]);
+      return rowToOrder(rows[0]) ?? null;
     },
 
-    async setReservationState(id, state, at) {
+    async setOrderState(id, state, at) {
       const { rowCount } = await q(
-        `UPDATE petals_reservation
+        `UPDATE petals_order
             SET state = $2,
-                settled_at = CASE WHEN $2 = 'held' THEN NULL ELSE $3::timestamptz END
+                settled_at = CASE WHEN $2 = 'open' THEN NULL ELSE $3::timestamptz END
           WHERE id = $1`,
-        [id, state, need(at, "setReservationState")]
+        [id, state, need(at, "setOrderState")]
       );
       return rowCount > 0;
     },
 
-    async heldReservationsBefore(customerId, cutoff) {
+    /* Only rows that hold something need releasing; an unpaid order with no
+       reward simply never earns. */
+    async openHoldsBefore(customerId, cutoff) {
       const { rows } = customerId === null
-        ? await q("SELECT * FROM petals_reservation WHERE state = 'held' AND created_at < $1", [cutoff])
+        ? await q("SELECT * FROM petals_order WHERE state = 'open' AND hold > 0 AND created_at < $1", [cutoff])
         : await q(
-            "SELECT * FROM petals_reservation WHERE state = 'held' AND created_at < $1 AND customer_id = $2",
+            `SELECT * FROM petals_order
+              WHERE state = 'open' AND hold > 0 AND created_at < $1 AND customer_id = $2`,
             [cutoff, customerId]
           );
-      return rows.map(rowToReservation);
+      return rows.map(rowToOrder);
     },
   });
 

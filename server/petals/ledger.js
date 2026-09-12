@@ -76,18 +76,18 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
   /** Release anything held past its life, so a balance is never stuck. */
   async function expireHeld(tx, customerId) {
     const cutoff = new Date(now() - ttlMs);
-    const stale = await tx.heldReservationsBefore(customerId, cutoff);
+    const stale = await tx.openHoldsBefore(customerId, cutoff);
     for (const r of stale) {
       await tx.appendLedger({
         customerId: r.customerId,
-        delta: r.petals,
+        delta: r.hold,
         reason: REASONS.RELEASED,
         orderId: r.orderId,
         rewardId: r.rewardId,
         idemKey: `release:${r.orderId}`,
         at: stamp(),
       });
-      await tx.setReservationState(r.id, "released", stamp());
+      await tx.setOrderState(r.id, "expired", stamp());
     }
     return stale.length;
   }
@@ -189,51 +189,63 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
   }
 
   /**
-   * Hold the cost of a reward against an order.
+   * Record an app order: the reward hold, and what it will earn when paid.
    *
-   * Nothing is deducted when the customer taps redeem — that is a choice, not a
-   * spend. The hold happens when the order is created, which is the first
-   * moment the intent is real, and it lowers the balance so it cannot be spent
-   * twice while it is held.
+   * ONE ROW PER ORDER, whether or not a reward is on it. The earnable has to
+   * survive until Clover confirms the payment, and by then the cart it was
+   * computed from is long gone — the client used to hold that number, which is
+   * exactly the arrangement this moved away from.
+   *
+   * Nothing is deducted when the customer taps redeem; that is a choice, not a
+   * spend. The hold happens here, when the order becomes real, and it lowers
+   * the balance so it cannot be spent twice while held.
+   *
+   * EARNING REQUIRES AN EXISTING BALANCE. A phone with no customer row has not
+   * joined, so there is nothing to credit and no row is created — the server
+   * does not enrol someone silently because they gave a number at the counter.
    */
-  async function reserve({ phone, name, orderId, rewardId, cost, amountCents }) {
+  async function openOrder({ phone, name, orderId, rewardId = null, cost = 0, amountCents = 0, earnable = 0 }) {
     const p = normalisePhone(phone);
     if (!p) throw new PetalsError("BAD_PHONE", "That doesn't look like a 10-digit US number.");
-    if (!orderId) throw new PetalsError("ORDER_REQUIRED", "A reservation needs an order.");
-    const petals = Math.floor(Number(cost) || 0);
+    if (!orderId) throw new PetalsError("ORDER_REQUIRED", "A Petals order row needs an order id.");
+    const hold = Math.max(0, Math.floor(Number(cost) || 0));
+    const earn = Math.max(0, Math.floor(Number(earnable) || 0));
 
     return store.tx(async (tx) => {
       const customer = await tx.findCustomerByPhone(p);
-      if (!customer) throw new PetalsError("NO_BALANCE", "There's no rewards balance on that number.");
+      if (!customer) return { opened: false, reason: "NO_BALANCE" };
       if (normaliseName(customer.name) !== normaliseName(name)) {
         throw new PetalsError("NAME_MISMATCH", "That name doesn't match the one on this number.");
       }
 
-      /* An existing reservation for this order is the retry case, not a second
+      /* An existing row for this order is the retry case, not a second
          redemption. Return it rather than holding twice. */
-      const existing = await tx.findReservationByOrder(orderId);
-      if (existing) return { reserved: false, reservation: existing };
+      const existing = await tx.findOrderRow(orderId);
+      if (existing) return { opened: false, reason: "ALREADY_OPEN", row: existing };
 
       await expireHeld(tx, customer.id);
-      const available = await tx.balanceOf(customer.id);
-      if (available < petals) {
-        throw new PetalsError("INSUFFICIENT_PETALS", "There aren't enough Petals on that balance.", {
-          available, needed: petals,
+
+      if (hold > 0) {
+        const available = await tx.balanceOf(customer.id);
+        if (available < hold) {
+          throw new PetalsError("INSUFFICIENT_PETALS", "There aren't enough Petals on that balance.", {
+            available, needed: hold,
+          });
+        }
+        await tx.appendLedger({
+          customerId: customer.id,
+          delta: -hold,
+          reason: REASONS.RESERVED,
+          orderId, rewardId,
+          idemKey: `reserve:${orderId}`,
+          at: stamp(),
         });
       }
 
-      await tx.appendLedger({
-        customerId: customer.id,
-        delta: -petals,
-        reason: REASONS.RESERVED,
-        orderId, rewardId,
-        idemKey: `reserve:${orderId}`,
-        at: stamp(),
+      const row = await tx.createOrderRow({
+        customerId: customer.id, orderId, rewardId, hold, amountCents, earnable: earn, at: stamp(),
       });
-      const reservation = await tx.createReservation({
-        customerId: customer.id, orderId, rewardId, petals, amountCents, at: stamp(),
-      });
-      return { reserved: true, reservation, petals: await tx.balanceOf(customer.id) };
+      return { opened: true, row, petals: await tx.balanceOf(customer.id) };
     });
   }
 
@@ -247,10 +259,27 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
   async function settle(orderId) {
     if (!orderId) return { settled: false };
     return store.tx(async (tx) => {
-      const r = await tx.findReservationByOrder(orderId);
-      if (!r || r.state !== "held") return { settled: false, state: r?.state ?? null };
-      await tx.setReservationState(r.id, "settled", stamp());
-      return { settled: true, state: "settled" };
+      const r = await tx.findOrderRow(orderId);
+      if (!r || r.state !== "open") return { settled: false, state: r?.state ?? null };
+
+      /* The hold's negative row already exists from openOrder, so nothing is
+         deducted here — writing another would charge the customer twice for one
+         reward. What DOES happen here is the earning, because this is the first
+         moment anyone knows the money was actually taken. */
+      let credited = 0;
+      if (r.earnable > 0) {
+        const wrote = await tx.appendLedger({
+          customerId: r.customerId,
+          delta: r.earnable,
+          reason: REASONS.EARNED,
+          orderId: r.orderId,
+          idemKey: `earn:${r.orderId}`,
+          at: stamp(),
+        });
+        if (wrote) credited = r.earnable;
+      }
+      await tx.setOrderState(r.id, "settled", stamp());
+      return { settled: true, state: "settled", credited, petals: await tx.balanceOf(r.customerId) };
     });
   }
 
@@ -258,18 +287,23 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
   async function release(orderId) {
     if (!orderId) return { released: false };
     return store.tx(async (tx) => {
-      const r = await tx.findReservationByOrder(orderId);
-      if (!r || r.state !== "held") return { released: false, state: r?.state ?? null };
-      await tx.appendLedger({
-        customerId: r.customerId,
-        delta: r.petals,
-        reason: REASONS.RELEASED,
-        orderId: r.orderId,
-        rewardId: r.rewardId,
-        idemKey: `release:${r.orderId}`,
-        at: stamp(),
-      });
-      await tx.setReservationState(r.id, "released", stamp());
+      const r = await tx.findOrderRow(orderId);
+      if (!r || r.state !== "open") return { released: false, state: r?.state ?? null };
+      /* A void earns nothing — the money was never taken — and gives back
+         whatever was held. The customer lost the food; they must not also lose
+         the reward. */
+      if (r.hold > 0) {
+        await tx.appendLedger({
+          customerId: r.customerId,
+          delta: r.hold,
+          reason: REASONS.RELEASED,
+          orderId: r.orderId,
+          rewardId: r.rewardId,
+          idemKey: `release:${r.orderId}`,
+          at: stamp(),
+        });
+      }
+      await tx.setOrderState(r.id, "released", stamp());
       return { released: true, petals: await tx.balanceOf(r.customerId) };
     });
   }
@@ -279,5 +313,5 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
     return store.tx(async (tx) => ({ released: await expireHeld(tx, customerId) }));
   }
 
-  return { balance, claim, credit, reserve, settle, release, expire };
+  return { balance, claim, credit, openOrder, settle, release, expire };
 }

@@ -107,6 +107,10 @@ function trustedLine(line, cat) {
   };
 }
 
+/** What the cart is worth, by the server's reckoning rather than the client's. */
+const trustedSubtotal = (cart, cat) =>
+  cart.reduce((n, line) => n + trustedLine(line, cat).price * (Number(line.qty) || 1), 0);
+
 /** A voucher code is display-only and unverified, so it is never trusted as text. */
 const cleanRewardCode = (code) =>
   String(code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
@@ -255,6 +259,13 @@ export function createApp({
      behaviour; a test passes one so it never has to mutate process.env, which
      vitest shares between workers. */
   appKey,
+  /* Server-side Petals, or null when no DATABASE_URL is configured. Null is a
+     supported state, not a degraded one: the endpoints answer 503 with a code
+     the app understands, ordering carries on untouched, and nothing is redeemed
+     against a balance nobody can verify. There is deliberately NO in-memory
+     fallback — a proxy quietly holding balances in memory would lose them on
+     the next deploy and nobody would find out until a customer complained. */
+  petals = null,
 } = {}) {
   const guardAppKey = appKey === undefined ? requireAppKey : requireAppKeyWith(() => appKey);
   const app = express();
@@ -562,6 +573,45 @@ export function createApp({
       }
       const reward = resolved.reward;
 
+      /* BEFORE the order goes to Clover, check the balance can pay for the
+         reward — and refuse the whole order if it cannot.
+
+         The order of operations is the opposite of everything else here, where
+         the order is pushed first because a ticket on the register is the thing
+         that matters. A reward is different: an order created with a discount
+         the customer has not got is money off the till that no later step can
+         claw back, and the customer is standing at the counter with the food.
+         Refusing is recoverable — they order again without the reward.
+
+         The RESERVATION itself is taken after the order exists, because it is
+         keyed on the Clover order id. So this is a check first, then the hold;
+         the window between them is a few hundred milliseconds on one process,
+         and the hold is idempotent on the order id. */
+      if (reward && petals) {
+        const r = REWARDS.find((x) => x.id === req.body?.rewardId);
+        try {
+          const bal = await petals.balance({ name, phone });
+          if (!bal.known || bal.petals < r.cost) {
+            return res.status(409).json({
+              error: bal.known
+                ? "There aren't enough Petals on that balance."
+                : "We can't find a rewards balance on that number.",
+              code: bal.known ? "INSUFFICIENT_PETALS" : "NO_BALANCE",
+              available: bal.petals, needed: r.cost,
+            });
+          }
+        } catch (e) {
+          /* Cannot verify means cannot redeem. Never fall back to trusting the
+             client's word for a balance — that is the whole reason this moved
+             off the device. */
+          const code = e?.name === "PetalsError" ? e.code : "PETALS_UNAVAILABLE";
+          return res.status(e?.name === "PetalsError" ? 400 : 503).json({
+            error: e?.name === "PetalsError" ? e.message : "Rewards aren't available right now.",
+            code,
+          });
+        }
+      }
+
       const body = buildAtomicOrder({
         cart: priced, reward, customerId,
         customer: { name, phone },
@@ -570,6 +620,47 @@ export function createApp({
       });
       const order = await clover.createOrder(body);
       lastOrder = { id: order.id, orderNumber: orderNumber ?? null, at: Date.now() };
+
+      /* Hold the Petals against this order. Nothing was deducted when the
+         customer tapped redeem — that is a choice, not a spend — and nothing is
+         deducted for good until Clover confirms the payment. Reserve now,
+         settle on paid, release on void.
+
+         A failure here does NOT fail the order. The ticket is already on the
+         register and the discount is already on it; losing the sale over a
+         ledger write would be the wrong trade. It is logged loudly, and the
+         cost is that one reward went unpaid-for — bounded by the reward's own
+         cap, which is why that cap exists. */
+      /* One Petals row per order, reward or not. The EARNABLE is computed here
+         from the re-priced cart, for the same reason the discount is: the
+         client used to own that number, and it has to survive until Clover
+         confirms the payment, by which time the cart is long gone. A phone with
+         no balance has not joined, so no row is written and nothing is earned —
+         the server does not enrol someone because they gave a number. */
+      let petalsRow = null;
+      if (petals) {
+        const net = Math.max(0, trustedSubtotal(priced, cat) - (reward?.amount ?? 0));
+        try {
+          const opened = await petals.openOrder({
+            phone, name,
+            orderId: order.id,
+            rewardId: req.body?.rewardId ?? null,
+            cost: reward ? (REWARDS.find((x) => x.id === req.body?.rewardId)?.cost ?? 0) : 0,
+            amountCents: toCents(reward?.amount ?? 0),
+            earnable: Math.round(net),
+          });
+          petalsRow = opened.row ?? null;
+        } catch (e) {
+          /* Never fails the order. The ticket is on the register and the
+             discount is already on it; losing the sale over a ledger write
+             would be the wrong trade. The cost is one reward unpaid-for,
+             bounded by its own cap — which is why that cap exists. */
+          console.warn(
+            `  order ${order.id}: Petals row NOT written (${e?.message ?? "unknown"}) — ` +
+            `the discount stands, the balance was not charged, nothing will be earned`
+          );
+        }
+      }
 
       /* Print is best effort. The order exists in Clover either way and staff
          can see it on the register, so a dead printer must not lose the sale —
@@ -660,6 +751,10 @@ export function createApp({
         /* What was actually taken off, so the confirmation screen shows the
            server's number rather than the one the client hoped for. */
         discount: reward ? { name: reward.name, amount: reward.amount } : null,
+        /* What the ledger actually recorded, so the client shows a balance that
+           matches it rather than one it worked out itself. */
+        petalsHeld: petalsRow ? petalsRow.hold : 0,
+        petalsEarnable: petalsRow ? petalsRow.earnable : 0,
       };
       /* Only successes are remembered. A failed attempt has created nothing, so
          a retry of it must be allowed to go through. */
@@ -673,6 +768,58 @@ export function createApp({
     } finally {
       if (idem) ordersInFlight.delete(idem);
     }
+  });
+
+  /* ============================================================================
+     PETALS — the balance is the server's, not the device's
+
+     It used to live in one JSON blob on the customer's phone, so a reinstall
+     wiped it with no record anywhere and staff took the complaint with nothing
+     to look it up in. See server/petals/ledger.js and
+     docs/PETALS-SERVER-SCOPE.md.
+
+     Identity is name AND phone, with no SMS — Clover messaging answers 405 and
+     Twilio is not being added. That is a speed bump against strangers, not
+     authentication: anyone who knows the customer has both, and the kitchen
+     ticket prints both by design. The blast radius is one reward, collected in
+     person from a member of staff. Said plainly in the scope doc rather than
+     dressed up as security.
+     ============================================================================ */
+
+  /** 503 when Petals are not configured, so the app can say "unavailable". */
+  const needPetals = (_req, res, next) =>
+    petals ? next() : res.status(503).json({
+      error: "Rewards aren't available right now.",
+      code: "PETALS_UNAVAILABLE",
+    });
+
+  const petalsFail = (res, e) => {
+    if (e?.name === "PetalsError") {
+      const status = e.code === "INSUFFICIENT_PETALS" ? 409 : 400;
+      return res.status(status).json({ error: e.message, code: e.code, ...(
+        e.available === undefined ? {} : { available: e.available, needed: e.needed }
+      ) });
+    }
+    return fail(res, e);
+  };
+
+  /* POST, not GET: it carries a phone number, which has no business in a URL,
+     an access log or a proxy cache. */
+  app.post("/api/clover/petals/balance", needPetals, async (req, res) => {
+    try {
+      const { name, phone } = req.body ?? {};
+      res.json(await petals.balance({ name, phone }));
+    } catch (e) { petalsFail(res, e); }
+  });
+
+  /* Bind a phone to a balance, and carry a device balance across exactly once.
+     `deviceBalance` exists only for the migration off device-only storage; the
+     unique key behind it means a retry cannot double it. */
+  app.post("/api/clover/petals/claim", needPetals, async (req, res) => {
+    try {
+      const { name, phone, deviceBalance } = req.body ?? {};
+      res.json(await petals.claim({ name, phone, deviceBalance }));
+    } catch (e) { petalsFail(res, e); }
   });
 
   /* ---- printers ----
@@ -739,10 +886,31 @@ export function createApp({
      hang on the answer: they are awarded on a confirmed payment and never on
      an order being placed, because at that moment the customer owes for food
      they have not paid for and may never collect. */
+  /* Settling a reservation is a SIDE EFFECT of answering this question, and
+     that is deliberate. This endpoint is the only place that learns a payment
+     happened — the tracking screen polls it and the launch sweep asks it — so
+     hanging the settle/release off the answer means both paths drive it and
+     neither needs to remember to. Every write is keyed on the order, so being
+     asked ten times settles once.
+
+     Failures here are swallowed: a customer must never be told their order
+     status is unknown because a ledger write had a bad minute. The next poll,
+     or the next launch, tries again. */
+  const settleReservation = async (orderId, status) => {
+    if (!petals) return;
+    try {
+      if (status.paid && !status.voided) await petals.settle(orderId);
+      else if (status.voided) await petals.release(orderId);
+    } catch (e) {
+      console.warn(`  order ${orderId}: Petals not settled (${e?.message ?? "unknown"})`);
+    }
+  };
+
   app.get("/api/clover/orders/:orderId/status", requireConfig, async (req, res) => {
     try {
       const o = await clover.getOrder(req.params.orderId);
       const status = paymentStatus(o);
+      await settleReservation(o.id ?? req.params.orderId, status);
       res.json({
         id: o.id,
         ...status,
@@ -756,6 +924,9 @@ export function createApp({
          "voided at the register" case, and the client must stop polling and
          award nothing. */
       if (e instanceof CloverError && e.status === 404) {
+        /* A deleted order is a void, so the held Petals go back. The customer
+           lost the food; they must not also lose the reward. */
+        await settleReservation(req.params.orderId, { paid: false, voided: true });
         return res.json({
           id: req.params.orderId,
           paid: false, voided: true, refunded: false,

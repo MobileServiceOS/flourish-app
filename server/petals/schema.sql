@@ -28,18 +28,22 @@ CREATE TABLE IF NOT EXISTS petals_ledger (
 
 CREATE INDEX IF NOT EXISTS petals_ledger_customer ON petals_ledger (customer_id);
 
-CREATE TABLE IF NOT EXISTS petals_reservation (
+CREATE TABLE IF NOT EXISTS petals_order (
   id            bigserial PRIMARY KEY,
   customer_id   bigint NOT NULL REFERENCES petals_customer(id),
-  order_id      text NOT NULL UNIQUE,        -- one reward per order, in the schema
-  reward_id     text NOT NULL,
-  petals        integer NOT NULL,
-  amount_cents  integer NOT NULL DEFAULT 0,
-  state         text NOT NULL DEFAULT 'held',  -- held | settled | released
+  order_id      text NOT NULL UNIQUE,        -- one row per Clover order
+  -- A reward is optional. An order with no reward still needs a row, because
+  -- the earnable has to survive until Clover confirms the payment — the cart it
+  -- was computed from is long gone by then.
+  reward_id     text,
+  hold          integer NOT NULL DEFAULT 0,  -- Petals held for the reward
+  amount_cents  integer NOT NULL DEFAULT 0,  -- the discount actually applied
+  earnable      integer NOT NULL DEFAULT 0,  -- credited when the order is paid
+  state         text NOT NULL DEFAULT 'open',  -- open | settled | released | expired
   created_at    timestamptz NOT NULL DEFAULT now(),
   settled_at    timestamptz
 );
 
--- The expiry sweep's access pattern: held rows older than a cutoff.
-CREATE INDEX IF NOT EXISTS petals_reservation_held
-  ON petals_reservation (state, created_at);
+-- The expiry sweep's access pattern: open rows with a hold, older than a cutoff.
+CREATE INDEX IF NOT EXISTS petals_order_open
+  ON petals_order (state, created_at);

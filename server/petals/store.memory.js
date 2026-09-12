@@ -37,7 +37,7 @@ export function createMemoryStore() {
 
   const customers = [];      // { id, phone, name, createdAt }
   const ledger = [];         // { id, customerId, delta, reason, orderId, rewardId, idemKey, createdAt }
-  const reservations = [];    // { id, customerId, orderId, rewardId, petals, amountCents, state, createdAt }
+  const orders = [];         // { id, customerId, orderId, rewardId, hold, amountCents, earnable, state, createdAt }
 
   let queue = Promise.resolve();
 
@@ -69,33 +69,36 @@ export function createMemoryStore() {
         .reduce((n, l) => n + l.delta, 0);
     },
 
-    async createReservation({ customerId, orderId, rewardId, petals, amountCents, at }) {
-      const existing = reservations.find((r) => r.orderId === orderId);
-      if (existing) return existing;
+    async createOrderRow({ customerId, orderId, rewardId, hold, amountCents, earnable, at }) {
+      const existing = orders.find((r) => r.orderId === orderId);
+      if (existing) return existing;      // the unique constraint, honestly modelled
       const r = {
-        id: nextReservationId++, customerId, orderId, rewardId, petals,
-        amountCents: amountCents ?? 0, state: "held",
-        createdAt: need(at, "createReservation"), settledAt: null,
+        id: nextReservationId++, customerId, orderId, rewardId: rewardId ?? null,
+        hold: hold ?? 0, amountCents: amountCents ?? 0, earnable: earnable ?? 0,
+        state: "open", createdAt: need(at, "createOrderRow"), settledAt: null,
       };
-      reservations.push(r);
+      orders.push(r);
       return r;
     },
 
-    async findReservationByOrder(orderId) {
-      return reservations.find((r) => r.orderId === orderId) ?? null;
+    async findOrderRow(orderId) {
+      return orders.find((r) => r.orderId === orderId) ?? null;
     },
 
-    async setReservationState(id, state, at) {
-      const r = reservations.find((x) => x.id === id);
+    async setOrderState(id, state, at) {
+      const r = orders.find((x) => x.id === id);
       if (!r) return false;
       r.state = state;
-      r.settledAt = state === "held" ? null : need(at, "setReservationState");
+      r.settledAt = state === "open" ? null : need(at, "setOrderState");
       return true;
     },
 
-    async heldReservationsBefore(customerId, cutoff) {
-      return reservations.filter((r) =>
-        r.state === "held"
+    /* Only rows that actually hold something need releasing. An unpaid order
+       with no reward simply never earns — there is nothing to give back. */
+    async openHoldsBefore(customerId, cutoff) {
+      return orders.filter((r) =>
+        r.state === "open"
+        && r.hold > 0
         && r.createdAt < cutoff
         && (customerId === null || r.customerId === customerId));
     },
@@ -109,7 +112,7 @@ export function createMemoryStore() {
       return run;
     },
     /** Tests only: reach past the interface to age a reservation or read rows. */
-    __rows: { customers, ledger, reservations },
+    __rows: { customers, ledger, orders },
     async close() {},
   };
 }

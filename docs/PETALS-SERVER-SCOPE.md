@@ -261,3 +261,88 @@ transition including the ones that must not double-count.
    loses access.
 
 Nothing here is built. Once those four are settled it is a single branch.
+
+
+---
+
+# Built — what changed from this scope
+
+The scope above is what was proposed. This is what exists, and where it differs.
+
+## One table, not two
+
+`reservation` became **`petals_order`: one row per app order, reward or not.**
+
+The scope missed that **earning needs server-side state too.** A reservation
+table only records holds, and the earnable — how many Petals a paid order is
+worth — has to survive from order creation until Clover confirms the payment.
+By then the cart it was computed from is long gone. The client used to hold
+that number, which is exactly the arrangement this work moves away from.
+
+So every app order gets a row carrying `hold` (0 when no reward) and
+`earnable`, and payment does both things at once: settle the hold, credit the
+earnable, each under its own idempotency key.
+
+`earnable` is computed **by the server**, from the re-priced cart less the
+server's own discount — `trustedSubtotal` in `server/app.js`, built on the same
+`trustedLine` the discount uses. A client that inflates its line prices earns
+nothing extra.
+
+## Earning requires having joined
+
+A phone with no customer row gets no order row and earns nothing. The server
+does not enrol someone because they gave a number for the ticket — joining is
+`POST /petals/claim`, which the app calls on sign-in.
+
+## States
+
+`open → settled` (paid), `open → released` (voided), `open → expired` (held
+past 24 hours). Expiry only touches rows that actually hold something; an
+unpaid order with no reward simply never earns, so there is nothing to release.
+
+## Time has one source
+
+A bug the tests caught, worth recording because the shape recurs: the store
+stamped `created_at` from its own `new Date()` while the expiry sweep measured
+age against an injected clock. Two clocks, so the sweep never fired and could
+not be tested. Now the **logic** owns time — every write passes its own `at`,
+and both stores *throw* rather than defaulting when it is missing, on the same
+reasoning as `hours.js` and `prep.js`.
+
+## Refusing is in front of the order, holding is behind it
+
+The balance check runs **before** the order reaches Clover and refuses the
+whole order with 409 if the balance cannot pay — the opposite of this project's
+usual "push the order first". A discount the customer has not got is money off
+the till no later step can claw back, and they are standing at the counter with
+the food. Refusing is recoverable: they order again without the reward.
+
+The hold itself is taken **after** the order exists, because it is keyed on the
+Clover order id. A failure there does not fail the order — the ticket is already
+on the register — it is logged loudly, and the cost is one reward unpaid-for,
+bounded by the reward's own cap.
+
+## What is tested, and what is not
+
+**52 tests.** The arithmetic and the state machine are covered against the
+in-memory store: credited once per order however many times payment is
+reported, a void returning the hold, a settled reward that cannot be released,
+two holds that cannot overdraw one balance, the migration applying once however
+often it is retried, earning on the net rather than the gross, and the awkward
+expired-then-paid case where the hold is already gone and settle must not
+re-deduct.
+
+**The Postgres SQL is written and unexercised.** There is no `DATABASE_URL` to
+run it against, so a green suite proves the logic and says nothing about the
+SQL. Run it once against a real database before trusting it.
+
+## Still to do
+
+- **the client half**: fetching the balance on launch and after each order,
+  showing it as unavailable when the server cannot be reached, and removing the
+  device balance as a source of truth
+- **provision the database** and set `DATABASE_URL`. Until then Petals are OFF:
+  the endpoints answer `503 PETALS_UNAVAILABLE`, ordering is untouched, and the
+  boot banner says so. There is deliberately no in-memory fallback — that would
+  lose balances on the next deploy, silently
+- run the suite once against a real Postgres
