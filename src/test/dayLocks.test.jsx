@@ -166,15 +166,28 @@ describe("Seafood Stew Peas is large only, and says so", () => {
     expect(dish.search).not.toMatch(/medium|large|small/i);
   });
 
-  it("adds in one tap rather than opening a chooser", () => {
-    /* hasChoices drives both the sheet and the button's label, so this is the
-       single thing that decides whether a customer is offered options. */
-    expect(hasChoices(dish)).toBe(false);
+  it("opens a chooser now, because it has sides to choose", () => {
+    /* This asserted one-tap, which was right while the item had no modifier
+       groups at all. `Side With Meal` has since been attached at the register —
+       which the note in CLAUDE.md anticipated: "when it is, this item gains a
+       sides picker and should still have no sizes". Both halves matter, and the
+       size half is asserted separately above and below. */
+    expect(hasChoices(dish)).toBe(true);
+    expect(dish.groups.map((g) => g.name)).toEqual(["Side With Meal"]);
   });
 
-  it("is not a plate, so nothing promises it comes with sides", () => {
-    // Until Side With Meal is attached in Clover, it genuinely has no sides.
-    expect(PLATE_IDS.has(dish.id)).toBe(false);
+  it("is a plate now, and its copy has to keep up", () => {
+    /* PLATE_IDS is derived from having a side group, so this flipped with the
+       register change rather than with anything in the app. It is what the
+       free-plate reward keys on, so it is worth asserting rather than
+       inferring. */
+    expect(PLATE_IDS.has(dish.id)).toBe(true);
+  });
+
+  it("still offers no SIZE, which is the thing that was never true", () => {
+    // The whole point of this block: one size, large, whatever else it gains.
+    const sizeish = dish.groups.filter((g) => /size|stew peas/i.test(g.name));
+    expect(sizeish).toEqual([]);
   });
 });
 

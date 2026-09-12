@@ -123,3 +123,35 @@ voucher consumed.
 `/health` now carries `build: { version, commit }`, with `commit` from
 `RAILWAY_GIT_COMMIT_SHA`. Before shipping a build that changes the client/proxy
 contract, read it and confirm the proxy is the newer of the two.
+
+
+---
+
+## 4. A second, unexplained intermittent test timeout
+
+**Status: observed once, not reproduced. Recorded rather than dismissed.**
+
+`petalsEndpoints.test.js > reading a balance > refuses a mismatched name`
+timed out at the 20s `testTimeout` during one full-suite run. It passed in
+isolation immediately afterwards, and in two further complete runs. So: one
+occurrence, four clean runs, no explanation.
+
+**What rules out the known cause.** Entry #1 in this file is a shared
+`process.env` race, worked around with `fileParallelism: false`. That workaround
+was already in place when this happened, and serialised files cannot race on the
+environment — so this is a different cause, and #1's fix does not cover it.
+
+**What it is not:** a rate limit or a guard rejection would return 429 or 401,
+not hang. A timeout means a request that never got a response.
+
+**Where to look first.** Module-level state in `server/app.js` that survives
+between test files now that they all run in one process, in order:
+`orderReplies` and `ordersInFlight` (the order idempotency maps) and the guard's
+rate-limit window. `ordersInFlight` is the most suspicious — a key left in that
+Set makes a later request return 409, not hang, but it is the only piece of
+cross-file state whose lifetime is tied to a request completing. The Petals
+memory store's `tx` queue is the other candidate: it serialises through a
+promise chain, and a rejection handled wrongly there would stall every
+subsequent transaction in the process, which matches the symptom exactly.
+
+Reproduce before fixing. A one-in-many flake needs a loop of full runs, not one.

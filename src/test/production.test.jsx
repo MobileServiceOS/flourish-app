@@ -6,6 +6,7 @@ import { readFileSync, statSync, readdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { formatPhone, phoneDigits, isValidPhone, isValidName } from "../lib/phone.js";
+import { oneTapItem } from "./helpers.js";
 
 const MON_NOON = new Date(2026, 6, 27, 12, 0);
 
@@ -190,9 +191,11 @@ describe("accessibility", () => {
   });
 
   it("lets an item be added from the keyboard alone", async () => {
-    // Friday, because one-tap items are Friday-only since the menu cull
-    const { user } = await renderApp(new Date(2026, 6, 31, 12, 0));
-    const row = screen.getAllByRole("button", { name: /^Blue Crab,/ })[0];
+    /* Taken from the data rather than named: one-tap items keep becoming
+       multi-tap as side groups are attached at the register. See oneTapItem. */
+    const { user } = await renderApp();
+    const item = oneTapItem();
+    const row = screen.getAllByRole("button", { name: new RegExp(`^${item.name},`) })[0];
     row.focus();
     await user.keyboard("{Enter}");
     expect(await screen.findByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();

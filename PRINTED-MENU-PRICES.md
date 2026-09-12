@@ -215,3 +215,66 @@ npm run menu -- ~/Downloads/inventory-export.xlsx
 The script prints this same list every run, comparing the export against the
 printed-menu maps at the top of `scripts/generate-menu.mjs`. **When it prints
 nothing, Clover and the app agree** and this file can be deleted.
+
+
+---
+
+## Every override, checked against LIVE CLOVER (2026-09-12)
+
+"The printed menu wins" stopped being safe as a blanket rule the moment the
+register started being corrected: for anything already fixed at the source, the
+printed menu is now the OLDER document, and an override built from it drags the
+app back to a stale number.
+
+So each one was checked against `api.clover.com` — not the printed menu, not the
+export. Source for every row below: a live `GET /v3/merchants/{mId}/modifier_groups/{gid}?expand=modifiers`.
+
+| Override | Printed menu | **Live Clover** | Verdict |
+|---|---|---|---|
+| Side With Meal → Whiting Fish X1 | $2.50 | **$3.00** | **STALE — removed.** Register was corrected; the override was pulling the app *below* the till |
+| Pork → Medium Stew | $20 | $14 | override still needed — register unchanged |
+| Pork → Large Stew | $25 | $17 | override still needed |
+| Pork → Medium Jerk | $20 | $15 | override still needed |
+| Pork → Large Jerk | $25 | $20 | override still needed |
+| Pasta → Penne Alla Vodka | $18 | $15 | override still needed |
+| Pasta → Oxtail | $24 | **$25** | **app quotes BELOW the register — decide** |
+| Side → Chicken Mac & Cheese | $7.00 | $6.99 | override still needed (1c) |
+| Lunch Specials → Curried/Fried/Jerk/Stew Chicken | $8.00 | $7.99 | override still needed (1c) |
+| Chicken & Waffles (item price) | $15.00 | **$15.99** | **app quotes BELOW the register — decide** |
+| Side With Meal → Fried Chicken | $6.00 | $6.00 | matches; kept as an assertion, applies nothing |
+| Side With Meal → Shrimp | $5.00 | $5.00 | matches; assertion only |
+| Side With Meal → Seafood Mac | $3.50 | $3.50 | matches; assertion only |
+
+### Only one was stale
+
+Whiting. The register moved to $3.00 and the override kept forcing $2.50 — which
+the generator reported as twenty-odd `lower ... 3 -> 2.5` lines, one per plate
+sharing the group. Every one of those would have quoted a customer 50c under
+what the till takes. **That is the complaint-generating direction**, and it was
+created by leaving a number here after fixing it at the source.
+
+Note the key was **not deleted**. Any side not named in `SIDE_UPCHARGE` is
+asserted to be $0.00, so removing Whiting would make its legitimate $3.00 report
+as a pricing fault on every run. It stays at the register's number, as an
+assertion.
+
+### The rest are not stale — they are the original divergence, still open
+
+Pork, Pasta Penne, Chicken Mac and the four Lunch Specials plates read low in
+Clover because **the register has not been changed for them**. Deleting those
+overrides would make the app quote $14 for a pork plate the printed menu sells
+at $20 — undercutting the shop's own menu. They stay until the dashboard is
+updated, which is what the rest of this document is for.
+
+### Two need a decision, not a code change
+
+**Pasta → Oxtail** ($24 app / $25 register) and **Chicken & Waffles** ($15 app /
+$15.99 register) are the two where the app quotes **less** than the till. Same
+harmful direction as Whiting, and both predate it. Either:
+
+- the printed menu is right → change the register to $24 and $15, and these
+  overrides become assertions like Whiting's, or
+- the register is right → delete both overrides and the app follows.
+
+Whichever, the app and the counter should stop disagreeing on two items where the
+customer notices.

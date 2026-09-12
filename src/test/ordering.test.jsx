@@ -318,14 +318,20 @@ describe("seafood stew peas is one dish, not a size of another", () => {
     expect(within(sheet).queryByText("Seafood")).not.toBeInTheDocument();
   });
 
-  it("sells it as its own item, one size, with no size picker", async () => {
+  it("sells it as its own item, with sides but no size picker", async () => {
+    /* It used to quick-add, because it had no modifier groups at all. Since
+       `Side With Meal` was attached at the register it opens a sheet — which
+       CLAUDE.md anticipated: "this item gains a sides picker and should still
+       have no sizes". The thing being protected was never the one-tap add; it
+       is that no SIZE is ever offered, because the dish is large only. */
     const { user } = await renderApp(FRI_NOON);
-    const lunch = document.querySelector('section[data-cat="Lunch & Dinner"]');
-    // No choices at all means it quick-adds rather than opening a sheet
     const seafood = document.querySelector('section[data-cat="Seafood Fridays"]');
-    await user.click(within(seafood).getByRole("button", { name: /^Add Seafood Stew Peas to cart$/ }));
+    await user.click(within(seafood).getByRole("button", { name: /^Choose options for Seafood Stew Peas$/ }));
 
-    expect(await screen.findByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const sheet = await screen.findByRole("dialog");
+    expect(sheet.textContent).toMatch(/Side With Meal|side/i);
+    /* No size words anywhere on the sheet. "Medium"/"Large" appearing here
+       would mean the register had grown a size group for a one-size dish. */
+    expect(sheet.textContent).not.toMatch(/\bMedium\b|\bLarge\b|\bSmall\b/);
   });
 });

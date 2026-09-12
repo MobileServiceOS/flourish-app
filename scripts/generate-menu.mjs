@@ -103,17 +103,24 @@ const SIDE_GROUP_GID = "YQWN3PKBKV9NG";
    ran in the shop's favour rather than the customer's. Both are priced at the
    register now.
 
-   Whiting Fish X1 is $2.50 here, not $3.00. The $3.00 was applied to the
-   STANDALONE "Side" group, whose "Whiting Fish  X1" (two spaces) went $2.50 ->
-   $3.00; the meal group's "Whiting Fish X1" was set to $2.50. Raising this to
-   $3.00 would put the app 50c above the till on all 21 plates that share the
-   group, so it follows Clover. If $3.00 with a plate is the intent, it is a
-   one-field change at the register and this number follows it. */
+   Whiting Fish X1 is $3.00, set deliberately at the register and verified
+   against the live API. It was $2.50 here, which is the number this file had
+   while the register still said $2.50 — and once the register moved to $3.00
+   that stopped being an assertion and became an override pulling the app BELOW
+   the till. Twenty-odd "lower ... 3 -> 2.50" lines in the generator output, on
+   every plate sharing the group, quoting a customer 50c less than they would be
+   charged. That is the complaint-generating direction and the exact divergence
+   the register change had just closed.
+
+   NOTE THE KEY IS NOT DELETED, and must not be. The third rule in this block is
+   that any side NOT named here is asserted to be $0.00, so removing Whiting
+   would make its legitimate $3.00 report as a pricing fault on every run. It
+   stays, at the register's number, as an assertion rather than an override. */
 const SIDE_UPCHARGE = {
   "Shrimp": 5.0,          // matches Clover
   "Seafood Mac": 3.5,     // matches Clover
   "Fried Chicken": 6.0,   // matches Clover since the register was corrected
-  "Whiting Fish X1": 2.5, // matches Clover; the $3.00 landed on the standalone group
+  "Whiting Fish X1": 3.0, // matches Clover — raised at the register 2026-09-12
 };
 
 /* Free with a plate, priced on their own. No override: this set exists to be
@@ -155,20 +162,17 @@ const SIDE_FREE_WITH_MEAL = new Set(["Festival", "Pasta"]);
    the problem.
    ============================================================================ */
 const STANDALONE_SIDE_GROUP = "Side";
-const MISATTACHED_SIDE_GROUP = {
-  "BRMP82TR0Z45C": "Crab Legs Platter (Shrimp & 2 Sides)",
-  "A1YZ2ZD5CA1SW": "Lobster Platter (Shrimp & 2 Sides)",
-  "21RNMJ880YCMC": "Crab Legs & Shrimp — FIXED at the register, remove on regeneration",
-  "32VDQ4G5J131P": "Seafood Stew Peas",
-  "DH0P3NGRN9RNE": "Blue Crab (Friday, $15)",
-  "PH221AJ7W66EA": "Pepper Shrimp & Mussels",
-  "K7EX5APPAXPEJ": "Lobster Roll & Fries — DELISTED, never reaches the app",
-  // The three hidden Friday SKUs carry it too. Listed so the map matches the
-  // register rather than only the part of it the app renders.
-  "06Z80836S0GZR": "Fish Platter (Shrimp & 2 Sides) — also hidden in the app",
-  "CAFAH5FKPTRW8": "Shrimp (Friday) — also hidden in the app",
-  "0NQ5E11VABFDY": "Salmon (Shrimp & 2 Sides) — also hidden in the app",
-};
+
+/* EMPTY, AND THE PROBLEM IS FIXED. All ten items carry `Side With Meal` at the
+   register now, and the standalone group is attached to nothing but the
+   standalone Side item where it belongs. The generator reported each entry as
+   no longer applicable, which is the anti-rot check doing its job — a map that
+   outlived its problem would have stripped a side picker the register can ring.
+
+   The mechanism is kept rather than deleted. Two different groups with the same
+   word on the dashboard is a mistake that can be made again, and next time this
+   is where it gets declared. */
+const MISATTACHED_SIDE_GROUP = {};
 
 
 // Uber Eats prices, verified by hand. Only used to show what ordering direct saves.
@@ -287,22 +291,19 @@ const HIDDEN_ITEMS_IN_APP = {
      reason it was delisted under, which was wrong. */
   "YQH6NFFB34SVM": "taken off the app menu by the owner; still rings at the register",
 
-  /* The three Friday platters with no modifier groups. Their NAME and their
-     copy both promise "Shrimp & 2 Sides" and the SKU cannot record a side, so
-     ordering one tells the kitchen nothing about what comes with it. Each is
-     also within a cent of an everyday item that CAN take a flavour and sides —
-     and Friday Shrimp is $1.99 dearer than the everyday one.
+  /* THE THREE FRIDAY PLATTERS ARE GONE FROM HERE.
 
-     Zero sales across 600 orders, so nobody is relying on them.
+     They were hidden on the reason "no sides group; <twin> is the same price and
+     takes a flavour" — and the first half of that is no longer true. All nine
+     Seafood Fridays platters have `Side With Meal` attached at the register,
+     confirmed in the live API and in this morning's export. So the hide was not
+     an automatic check misfiring and not a stale export: it was this map, with
+     a reason that expired the moment the register was fixed.
 
-     The two Friday platters NOT here — Crab Legs and Lobster — are kept because
-     their everyday twins have no flavour group either, so sides are the whole
-     of the dish's identity and `Side With Meal` alone makes them correct. Fish,
-     salmon and shrimp are flavour-defined, and a Friday SKU with no flavour is
-     a worse version of a dish already on the menu. See docs/FRIDAY-PRICING.md. */
-  "06Z80836S0GZR": "no sides group; Snapper Fish is the same price and takes a flavour",
-  "0NQ5E11VABFDY": "no sides group; everyday Salmon is a cent more and takes a flavour",
-  "CAFAH5FKPTRW8": "no sides group; everyday Shrimp is $1.99 CHEAPER and takes a flavour",
+     The price comparisons in those reasons DO still hold — Friday Shrimp is
+     $21.99 against $20.00 for the everyday one — and that is a pricing question
+     for the register, not a reason to keep a dish the owner asked to be listed
+     out of the app. Flagged, not hidden. */
 };
 
 /* Empty, and worth keeping rather than deleting: it is the declared home for

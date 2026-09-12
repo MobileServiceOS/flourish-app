@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MENU, POPULAR_IDS } from "../data/menu.data.js";
-import { addItem } from "./helpers.js";
+import { addItem, oneTapItem } from "./helpers.js";
 
 /* App reads the day of the week at module scope to decide the default category,
    so the clock has to be set before the module is imported. */
@@ -106,13 +106,15 @@ describe("adding to the cart", () => {
   });
 
   it("pops the + button as a confirmation on quick-add", async () => {
-    // Since the printed-menu cull the only one-tap items are the Friday
-    // platters — everything sold on a weekday has sides to choose.
-    const { user } = await renderApp(new Date(2026, 6, 31, 12, 0)); // Friday
-    /* Blue Crab rather than a platter: the platters promise "2 Sides" and gain a
-         side picker once that group is attached in Clover, at which point they
-         stop being one-tap. Blue Crab is a flat $15 dish with nothing to pick. */
-      const add = screen.getByRole("button", { name: "Add Blue Crab to cart" });
+    /* The item comes from the DATA, not by name. Every named choice here has
+       eventually broken for the same good reason: a side group gets attached at
+       the register and the dish gains a chooser. Blue Crab was picked because it
+       was "a flat $15 dish with nothing to pick" and it is a plate with sides
+       now. `oneTapItem()` fails loudly if the menu has nothing addable in one
+       tap at all, which would make quick-add unreachable everywhere. */
+    const { user } = await renderApp();
+    const item = oneTapItem();
+    const add = await screen.findByRole("button", { name: `Add ${item.name} to cart` });
     await user.click(add);
     await vi.waitFor(() => expect(add.className).toContain("pop"));
     expect(await screen.findByRole("button", { name: /cart, 1 item/i })).toBeInTheDocument();
