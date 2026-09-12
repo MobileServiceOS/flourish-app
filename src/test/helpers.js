@@ -3,6 +3,7 @@ import {
   isOpen, nextOpening, closingOn, formatTime, pickupSlots, readyFitsBeforeClose,
 } from "../lib/hours.js";
 import { cartPrepMinutes, readyWindow } from "../lib/prep.js";
+import { MENU, hasChoices } from "../data/menu.data.js";
 
 /* Beef Patty used to be the convenient one-tap item in these tests. The
    printed-menu cull removed both patties, and everything left that sells on an
@@ -51,6 +52,29 @@ export const unpaidOrder = () => ({
 /* A 503 from the proxy, shaped the way lib/clover.js surfaces one. */
 class ApiUnavailable extends Error {
   constructor() { super("Rewards aren't available right now."); this.code = "PETALS_UNAVAILABLE"; }
+}
+
+/**
+ * An item a customer can add in ONE TAP, taken from the data.
+ *
+ * Named items kept breaking these tests, and always for a good reason: every
+ * time a side group was attached at the register, another dish gained a chooser
+ * and stopped being one-tap. Blue Crab was chosen precisely because it was
+ * "a flat $15 dish with nothing to pick", and it is a plate with sides now.
+ *
+ * So the test asks the data instead. If the menu ever has nothing addable in
+ * one tap, that is worth failing loudly for rather than papering over — the
+ * quick-add button would then be unreachable on every row.
+ */
+export function oneTapItem() {
+  const item = MENU.flatMap((c) => c.items).find((i) => !hasChoices(i) && !i.days);
+  if (!item) {
+    throw new Error(
+      "No item on the menu adds in one tap, so quick-add cannot be exercised. " +
+      "Every dish now has options — check whether that is intended."
+    );
+  }
+  return item;
 }
 
 export function stubOnlineProxy({

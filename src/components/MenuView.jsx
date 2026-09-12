@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Star, Clock, MapPin, X, Sparkles, Lock, ChevronRight, Car } from "lucide-react";
-import { UE, hasChoices } from "../data/menu.data.js";
+import { UE, FRIDAY_VS, hasChoices } from "../data/menu.data.js";
 import { money } from "../lib/money.js";
 import { HOURS_LINE } from "../lib/hours.js";
 import { PREP_RANGE_LABEL } from "../lib/prep.js";
-import { DOW, TODAY_IS_FRIDAY, daysLabel, chipLabel, SEAFOOD_CAT, sizePrices } from "../lib/restaurant.js";
+import {
+  DOW, TODAY_IS_FRIDAY, daysLabel, chipLabel, SEAFOOD_CAT, sizePrices,
+  uberComparison, fridaySaving,
+} from "../lib/restaurant.js";
 import { Thumb, Empty } from "./shared.jsx";
 
 /* ---------- MENU ---------- */
@@ -139,8 +142,15 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
           <span className="promo-emoji" aria-hidden="true">🐟</span>
           <span>
             <strong>It's Seafood Friday!</strong>
+            {/* Says what the offer IS. The old line named shrimp alongside crab
+                legs and lobster under an "It's Seafood Friday!" header, which
+                reads as a deal on all three — and the Friday shrimp platter is
+                $1.99 DEARER than the everyday one. Crab legs and lobster are
+                the real Friday prices; the rest are Friday-only dishes, which
+                is a different and smaller claim. See docs/FRIDAY-PRICING.md. */}
             <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 2 }}>
-              Crab legs, lobster and shrimp platters — today only. Tap to see them.
+              Crab legs and lobster platters at $39.99 today, plus Friday-only
+              seafood dishes. Tap to see them.
             </span>
           </span>
           <ChevronRight size={18} style={{ marginLeft: "auto", flex: "0 0 auto" }} aria-hidden="true" />
@@ -209,13 +219,44 @@ export default function MenuView({ activeCat, scrollToCat, setDetail, catRefs, s
                       return <>{money(it.lo)} <span style={{ color: "var(--muted)", fontWeight: 600 }}>–</span> {money(it.hi)}</>;
                     })()}
                   </span>
-                  {UE[it.id] > it.lo && (
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--teal-ink)", background: "rgba(47,182,168,.14)",
-                      padding: "2px 7px", borderRadius: 999, letterSpacing: .2 }}>
-                      SAVE {money(UE[it.id] - it.lo)}
-                    </span>
-                  )}
                 </div>
+                {/* Named, anchored, and on its own line.
+
+                    This was a teal "SAVE $4.00" pill sitting beside
+                    "Med $20.00 · Lg $25.00", which reads as a discount off our
+                    own price — the customer expects to pay $16. It also took
+                    the cheaper size, so on Oxtail it claimed $4.00 off while
+                    our Large is a dollar DEARER than Uber's. Nothing is shown
+                    now unless the comparison can be defended, and when it is
+                    shown it names Uber Eats and gives their price. */}
+                {(() => {
+                  const ue = uberComparison(it, UE);
+                  if (!ue) return null;
+                  const line = ue.perSize
+                    ? ue.perSize.map((r) => `${r.label} ${money(r.theirs)}`).join(" · ")
+                    : money(ue.theirs);
+                  const save = ue.perSize
+                    ? ue.perSize.map((r) => `${r.label} ${money(r.saving)}`).join(" · ")
+                    : money(ue.saving);
+                  return (
+                    <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.35 }}>
+                      Uber Eats: {line} — <strong style={{ color: "var(--teal-ink)" }}>
+                        you save {save}
+                      </strong> ordering direct
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  const fri = fridaySaving(it, FRIDAY_VS);
+                  if (!fri) return null;
+                  return (
+                    <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.35 }}>
+                      {fri.basis} any other day — <strong style={{ color: "var(--teal-ink)" }}>
+                        {money(fri.saving)} less today
+                      </strong>
+                    </div>
+                  );
+                })()}
               </div>
               <button className={`addbtn${popped === it.id ? " pop" : ""}`} disabled={out}
                 style={out ? { background: "var(--line)", boxShadow: "none", cursor: "not-allowed" } : undefined}

@@ -26,6 +26,15 @@ These two pull against each other by design, and rule 2 is the one that moves
 money. Do not "fix" a price mismatch by making the app charge its own total: the
 order in Clover would then disagree with the card, and the till goes out.
 
+**Rule 1 only ever raises.** An override that sets a price *below* Clover's
+makes the app quote less than the till takes, and that is the one direction a
+customer notices — they are told $24 and charged $25. The generator refuses to
+write a menu containing one: it exits non-zero and leaves `menu.data.js`
+untouched. Three have been caught this way (Whiting Fish X1 at $2.50 against a
+$3.00 register on 21 plates, Pasta Oxtail, Chicken & Waffles), so when the
+register is corrected for something, delete the override rather than leaving it
+to drag the app back.
+
 `src/data/menu.data.js` is generated and must never be hand-edited. A price that
 looks wrong is either wrong in Clover or missing from the printed-menu maps —
 fix it in one of those two places and regenerate. Menu copy, Popular ids and day-locks live in maps at the
@@ -957,7 +966,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 817 tests (+9 more with a test database)
+npm test            # 836 tests (+9 more with a test database)
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
@@ -990,6 +999,39 @@ which the item sheet prints on a chip — is treated as a timing claim; Wings
 reads "Made to order" at 15 minutes and that is accurate. And the day-word
 pattern matches whole words only, after `\b(fri)\w*\b` matched **"fried"** in
 Shrimp's flavour list and reported a day claim that was not there.
+
+### Comparisons a customer can check
+
+Two numbers on the menu card are claims about the outside world, and a customer
+can verify either in ten seconds. Both were wrong in the same way — a bare
+saving with nothing to anchor it — and both now name what is being compared and
+show the other price, or show nothing.
+
+**Uber Eats.** It was a teal `SAVE $4.00` pill beside `Med $20.00 · Lg $25.00`,
+which reads as a discount off our own price: the customer expects to pay $16. It
+also took the **cheaper** size while the card showed two, so on five of eight
+items the claim did not describe the larger one — and on Oxtail it advertised
+$4.00 off while our Large is a **dollar dearer** than Uber's.
+
+`UE` in the generator now takes either a flat number (valid only for a one-price
+dish) or `{ med, lg }`. `uberComparison` returns null rather than guessing, so
+those five show nothing until someone prices each size, and the generator
+reports them on every run. Every claim is listed in **docs/UBER-EATS-PRICES.md**
+for spot-checking — nobody had ever verified them.
+
+**Seafood Fridays.** The section is a real promotion on two dishes and simply a
+Friday-only dish on the rest. Crab legs are $39.99 against $55.00 like-for-like
+and lobster $39.99 against $50.00; the Friday **shrimp is $1.99 DEARER** than
+the everyday one and the Friday salmon is a cent under. `FRIDAY_COMPARISON`
+carries only the two real savings, with the basis stated (the everyday figure
+includes the $5.00 shrimp side, because the Friday platter includes shrimp), and
+`fridaySaving` refuses a comparison that is not a saving even if one is added to
+the map. The subtitle says which half is which.
+
+Whether those two Friday prices are a register error is answered in
+docs/FRIDAY-PRICING.md — briefly: both Friday SKUs share $21.99 while their
+weekday twins are $22.00 and $20.00, which is a flat flyer price entered against
+each dish rather than two pricing decisions.
 
 ## Audits worth reading before you trust a map
 

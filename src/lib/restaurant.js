@@ -56,6 +56,71 @@ export function sizePrices(item) {
   return { med: a.p, lg: b.p };
 }
 
+/* ============================================================================
+   COMPARISONS A CUSTOMER CAN CHECK
+
+   Both of these used to be one number in a teal pill reading "SAVE $4.00",
+   sitting under "Med $20.00 · Lg $25.00". Read as a discount off our own price
+   — the customer expects to pay $16 — and on five of eight items it was
+   computed against the cheaper size while the card showed two, so on two of
+   them the claim was false at the larger one.
+
+   So: name what is being compared, show the other price, and return NOTHING
+   rather than a number that cannot be defended.
+   ============================================================================ */
+
+/**
+ * What Uber Eats charges for the same dish, or null when it cannot be said.
+ *
+ * Null in three cases, all deliberate: no Uber price on record; a single Uber
+ * number against a dish sold in two sizes, which cannot say which size it is;
+ * and a dish where we are not actually cheaper — an honest comparison includes
+ * finding out we lost.
+ */
+export function uberComparison(item, ue) {
+  const price = ue?.[item.id];
+  if (price === undefined || price === null) return null;
+
+  // Per size: one line per size, each against the price beside it.
+  if (typeof price === "object") {
+    const s = sizePrices(item);
+    if (!s) return null;
+    const rows = [
+      { label: "Med", ours: s.med, theirs: price.med },
+      { label: "Lg", ours: s.lg, theirs: price.lg },
+    ].filter((r) => Number.isFinite(r.theirs) && r.theirs > r.ours)
+     .map((r) => ({ ...r, saving: Math.round((r.theirs - r.ours) * 100) / 100 }));
+    return rows.length ? { perSize: rows } : null;
+  }
+
+  /* A flat Uber price only means something against a flat price of ours.
+     Against two sizes it is ambiguous, and guessing which size it refers to is
+     how "SAVE $4.00" ended up on a plate whose Large costs a dollar more than
+     Uber's. The generator reports every one of these on each run. */
+  if (item.lo !== item.hi) return null;
+  if (!(price > item.lo)) return null;
+  return { theirs: price, ours: item.lo, saving: Math.round((price - item.lo) * 100) / 100 };
+}
+
+/**
+ * What the Friday price saves against the everyday dish, or null.
+ *
+ * Null for the Friday items that are not cheaper — Friday shrimp is $1.99
+ * DEARER than the everyday one, and Friday salmon is a cent under. Seafood
+ * Fridays is a real promotion on two platters and simply a Friday-only dish on
+ * the others, and a badge that flattened that difference would be the app
+ * inventing a deal.
+ */
+export function fridaySaving(item, fridayVs) {
+  const cmp = fridayVs?.[item.id];
+  if (!cmp || !(cmp.everyday > item.lo)) return null;
+  return {
+    everyday: cmp.everyday,
+    basis: cmp.basis,
+    saving: Math.round((cmp.everyday - item.lo) * 100) / 100,
+  };
+}
+
 /* A chip label — Seafood Fridays reads "(Fri)" on the six days it isn't on. */
 export const chipLabel = (cat) =>
   cat === SEAFOOD_CAT && !TODAY_IS_FRIDAY ? `${cat} (Fri)` : cat;

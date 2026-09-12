@@ -41,8 +41,16 @@ const declared = Object.fromEntries(
 );
 
 describe("the mis-attached side group is declared, not silently swallowed", () => {
-  it("names every affected item", () => {
-    expect(Object.keys(declared).length).toBeGreaterThan(0);
+  it("is empty, because the register was fixed", () => {
+    /* This asserted the map had entries, which was right while the problem was
+       live and is now the one thing that would fail for a good reason. All ten
+       items carry `Side With Meal`; the generator reported every entry as no
+       longer applicable, and they were removed.
+
+       The assertion that still earns its keep is the reverse one — that nothing
+       is silently swallowed — and it is in "the map cannot outlive the problem"
+       below, which holds for an empty map too. */
+    expect(Object.keys(declared)).toEqual([]);
   });
 
   it("gives each one a reason a human can read", () => {

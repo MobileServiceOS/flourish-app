@@ -37,10 +37,11 @@ const DAY_WORD = /\b(mon|tues?|wed(nes)?|thur?s?|fri|sat(ur)?|sun)(day)?s?\b/i;
 
    The allowlist cannot rot: the last test in this file fails once either item
    HAS the group, forcing the entry out rather than letting it sit here. */
-const PENDING_AT_REGISTER = new Set([
-  "BRMP82TR0Z45C",   // Crab Legs Platter (Shrimp & 2 Sides)
-  "A1YZ2ZD5CA1SW",   // Lobster Platter (Shrimp & 2 Sides)
-]);
+/* EMPTY, because the register was fixed. Both platters now carry
+   `Side With Meal`, so their names no longer promise sides the item cannot
+   record — and the anti-rot assertion below is what forced these entries out
+   rather than letting them sit here pretending the problem was still live. */
+const PENDING_AT_REGISTER = new Set([]);
 
 describe("every item has copy at all", () => {
   it("describes itself, or says nothing rather than something wrong", () => {

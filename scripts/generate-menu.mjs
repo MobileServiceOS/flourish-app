@@ -103,17 +103,24 @@ const SIDE_GROUP_GID = "YQWN3PKBKV9NG";
    ran in the shop's favour rather than the customer's. Both are priced at the
    register now.
 
-   Whiting Fish X1 is $2.50 here, not $3.00. The $3.00 was applied to the
-   STANDALONE "Side" group, whose "Whiting Fish  X1" (two spaces) went $2.50 ->
-   $3.00; the meal group's "Whiting Fish X1" was set to $2.50. Raising this to
-   $3.00 would put the app 50c above the till on all 21 plates that share the
-   group, so it follows Clover. If $3.00 with a plate is the intent, it is a
-   one-field change at the register and this number follows it. */
+   Whiting Fish X1 is $3.00, set deliberately at the register and verified
+   against the live API. It was $2.50 here, which is the number this file had
+   while the register still said $2.50 — and once the register moved to $3.00
+   that stopped being an assertion and became an override pulling the app BELOW
+   the till. Twenty-odd "lower ... 3 -> 2.50" lines in the generator output, on
+   every plate sharing the group, quoting a customer 50c less than they would be
+   charged. That is the complaint-generating direction and the exact divergence
+   the register change had just closed.
+
+   NOTE THE KEY IS NOT DELETED, and must not be. The third rule in this block is
+   that any side NOT named here is asserted to be $0.00, so removing Whiting
+   would make its legitimate $3.00 report as a pricing fault on every run. It
+   stays, at the register's number, as an assertion rather than an override. */
 const SIDE_UPCHARGE = {
   "Shrimp": 5.0,          // matches Clover
   "Seafood Mac": 3.5,     // matches Clover
   "Fried Chicken": 6.0,   // matches Clover since the register was corrected
-  "Whiting Fish X1": 2.5, // matches Clover; the $3.00 landed on the standalone group
+  "Whiting Fish X1": 3.0, // matches Clover — raised at the register 2026-09-12
 };
 
 /* Free with a plate, priced on their own. No override: this set exists to be
@@ -155,33 +162,93 @@ const SIDE_FREE_WITH_MEAL = new Set(["Festival", "Pasta"]);
    the problem.
    ============================================================================ */
 const STANDALONE_SIDE_GROUP = "Side";
-const MISATTACHED_SIDE_GROUP = {
-  "BRMP82TR0Z45C": "Crab Legs Platter (Shrimp & 2 Sides)",
-  "A1YZ2ZD5CA1SW": "Lobster Platter (Shrimp & 2 Sides)",
-  "21RNMJ880YCMC": "Crab Legs & Shrimp — FIXED at the register, remove on regeneration",
-  "32VDQ4G5J131P": "Seafood Stew Peas",
-  "DH0P3NGRN9RNE": "Blue Crab (Friday, $15)",
-  "PH221AJ7W66EA": "Pepper Shrimp & Mussels",
-  "K7EX5APPAXPEJ": "Lobster Roll & Fries — DELISTED, never reaches the app",
-  // The three hidden Friday SKUs carry it too. Listed so the map matches the
-  // register rather than only the part of it the app renders.
-  "06Z80836S0GZR": "Fish Platter (Shrimp & 2 Sides) — also hidden in the app",
-  "CAFAH5FKPTRW8": "Shrimp (Friday) — also hidden in the app",
-  "0NQ5E11VABFDY": "Salmon (Shrimp & 2 Sides) — also hidden in the app",
+
+/* EMPTY, AND THE PROBLEM IS FIXED. All ten items carry `Side With Meal` at the
+   register now, and the standalone group is attached to nothing but the
+   standalone Side item where it belongs. The generator reported each entry as
+   no longer applicable, which is the anti-rot check doing its job — a map that
+   outlived its problem would have stripped a side picker the register can ring.
+
+   The mechanism is kept rather than deleted. Two different groups with the same
+   word on the dashboard is a mistake that can be made again, and next time this
+   is where it gets declared. */
+const MISATTACHED_SIDE_GROUP = {};
+
+
+/* ============================================================================
+   UBER EATS PRICES — a comparison, and it has to be checkable
+
+   Used for one thing: telling a customer what ordering direct saves them. Which
+   means a customer can check it, on Uber, in ten seconds — so a number that is
+   wrong or ambiguous costs more trust than the badge ever earned.
+
+   TWO SHAPES ARE ACCEPTED:
+
+     <id>: 24               a flat price. Only valid for a one-price dish.
+     <id>: { med, lg }      per size, for a dish sold in two sizes.
+
+   The flat form used to be applied to multi-size dishes and compared against
+   the CHEAPEST size, which produced claims that were false at the other one:
+
+     Oxtail         Med $20 · Lg $25   Uber $24.00   badge said SAVE $4.00
+                    — but our Large is a dollar DEARER than Uber's
+     Fried Chicken  Med $13 · Lg $16   Uber $15.60   badge said SAVE $2.60
+                    — our Large is 40c dearer
+     Curried Goat   Med $15 · Lg $18   Uber $18.00   badge said SAVE $3.00
+     Wings          Med $15 · Lg $18   Uber $18.00   badge said SAVE $3.00
+                    — both exactly level at the Large
+
+   A single Uber number cannot say which of our sizes it corresponds to, so for
+   a two-size dish it cannot support a claim at all. Those five now show
+   NOTHING until someone supplies `{ med, lg }`, and the generator says so on
+   every run. Showing nothing costs a badge; showing $4.00 off a plate that is
+   a dollar dearer costs the customer's belief in every other number here.
+
+   LAST CHECKED: never, by anyone. The original comment said "re-check these
+   occasionally" and nobody has. docs/UBER-EATS-PRICES.md lists every claim for
+   spot-checking. */
+const UE = {
+  /* One price, one Uber price: the comparison is unambiguous. */
+  "7916EWVQFPGH8": 36,     // Lamb        — ours $30
+  "H9520PFNBT2NY": 24,     // Salmon      — ours $22
+  "VHHCS7EDV70HC": 24,     // Shrimp      — ours $20
+
+  /* Two sizes, one Uber number: NOT ENOUGH to make a claim. Left here, and
+     deliberately left flat, so the generator keeps reporting them until someone
+     prices each size on Uber. Change to { med, lg } and the badge returns. */
+  "60KCQ1V22Q98M": 24,     // Oxtail        Med $20 · Lg $25
+  "NEAR47KAE44HC": 18,     // Curried Goat  Med $15 · Lg $18
+  "C2RD25C1VXNN0": 18,     // Wings         Med $15 · Lg $18
+  "SJGN0N254K8KE": 16.8,   // Jerk Chicken  Med $14 · Lg $16
+  "QFNQ2XQB8SPN6": 15.6,   // Fried Chicken Med $13 · Lg $16
 };
 
+/* ============================================================================
+   WHAT A FRIDAY PRICE IS ACTUALLY WORTH
 
-// Uber Eats prices, verified by hand. Only used to show what ordering direct saves.
-// Re-check these occasionally; Uber changes them without telling anyone.
-const UE = {
-  "60KCQ1V22Q98M": 24,     // Oxtail
-  "7916EWVQFPGH8": 36,     // Lamb
-  "NEAR47KAE44HC": 18,     // Curried Goat
-  "C2RD25C1VXNN0": 18,     // Wings
-  "SJGN0N254K8KE": 16.8,   // Jerk Chicken
-  "QFNQ2XQB8SPN6": 15.6,   // Fried Chicken
-  "H9520PFNBT2NY": 24,     // Salmon
-  "VHHCS7EDV70HC": 24,     // Shrimp
+   Seafood Fridays is a real promotion on two dishes and simply a different
+   dish on the others, and the app should not imply otherwise. Numbers and
+   reasoning: docs/FRIDAY-PRICING.md.
+
+   The everyday figure is LIKE FOR LIKE, which is why it is declared rather than
+   read off the everyday item: the Friday crab legs platter includes shrimp and
+   two sides, so the honest comparison adds the $5.00 shrimp side to the $50.00
+   everyday plate. Comparing $39.99 against a bare $50.00 would understate the
+   saving; comparing it against nothing at all is what the app did before.
+
+   An item absent from this map gets no comparison. That is the case for the
+   two where Friday is not cheaper, and it is deliberate — see the note below. */
+const FRIDAY_COMPARISON = {
+  "BRMP82TR0Z45C": { everyday: 55.0, basis: "Crab Legs Platter $50.00 plus $5.00 for shrimp" },
+  "A1YZ2ZD5CA1SW": { everyday: 50.0, basis: "Lobster $45.00 plus $5.00 for shrimp" },
+
+  /* NOT HERE, ON PURPOSE:
+       Shrimp  CAFAH5FKPTRW8  $21.99 Friday against $20.00 everyday — DEARER
+       Salmon  0NQ5E11VABFDY  $21.99 Friday against $22.00 everyday — one cent
+     Both Friday SKUs also carry no flavour group where the everyday dishes have
+     four and six. A badge on either would be false or absurd, and a customer
+     who checks and finds the shrimp $1.99 above the weekday price trusts
+     nothing else on the screen. */
 };
 
 const EMOJI = {
@@ -208,7 +275,16 @@ const EMOJI = {
 const CATEGORY_ORDER = ["Lunch & Dinner", "Seafood Fridays", "Breakfast", "Drinks"];
 const CATEGORY_SUB = {
   "Lunch & Dinner": "Plates come with two sides",
-  "Seafood Fridays": "Fridays only",
+  /* "Fridays only" was true and said nothing about price, under a heading that
+     reads as a promotion. The Friday offer is NOT uniform: crab legs and
+     lobster are genuinely cheaper today, the fish/salmon/shrimp platters are
+     Friday-only dishes at their own price, and the Friday shrimp is $1.99 ABOVE
+     the everyday one. A customer who reads "Seafood Fridays" as a deal and then
+     finds the shrimp dearer trusts the app less than if it had framed nothing.
+     So the subtitle says which half is which. */
+  "Seafood Fridays":
+    "Fridays only. Crab legs and lobster are cheaper today — the rest are "
+    + "Friday-only dishes, not discounts.",
   "Breakfast": "Morning menu",
   "Drinks": "Refreshing beverages",
 };
@@ -287,22 +363,31 @@ const HIDDEN_ITEMS_IN_APP = {
      reason it was delisted under, which was wrong. */
   "YQH6NFFB34SVM": "taken off the app menu by the owner; still rings at the register",
 
-  /* The three Friday platters with no modifier groups. Their NAME and their
-     copy both promise "Shrimp & 2 Sides" and the SKU cannot record a side, so
-     ordering one tells the kitchen nothing about what comes with it. Each is
-     also within a cent of an everyday item that CAN take a flavour and sides —
-     and Friday Shrimp is $1.99 dearer than the everyday one.
+  /* Off the app menu by the owner's decision, which also settles a pricing
+     divergence without touching a price: the printed menu says $15.00 and the
+     register rings $15.99, so the app was quoting a dollar under the till.
+     Hiding it removes the quote rather than picking a side.
 
-     Zero sales across 600 orders, so nobody is relying on them.
+     Its ITEM_MENU_PRICE entry is deliberately LEFT IN PLACE. Nothing applies it
+     while the item is hidden, and removing it would be a price decision nobody
+     has made — but note that un-hiding without settling $15.00 vs $15.99 brings
+     the divergence straight back. */
+  "1PBGJ1BWC3Z52": "taken off the app menu by the owner; still rings at the register",
 
-     The two Friday platters NOT here — Crab Legs and Lobster — are kept because
-     their everyday twins have no flavour group either, so sides are the whole
-     of the dish's identity and `Side With Meal` alone makes them correct. Fish,
-     salmon and shrimp are flavour-defined, and a Friday SKU with no flavour is
-     a worse version of a dish already on the menu. See docs/FRIDAY-PRICING.md. */
-  "06Z80836S0GZR": "no sides group; Snapper Fish is the same price and takes a flavour",
-  "0NQ5E11VABFDY": "no sides group; everyday Salmon is a cent more and takes a flavour",
-  "CAFAH5FKPTRW8": "no sides group; everyday Shrimp is $1.99 CHEAPER and takes a flavour",
+  /* THE THREE FRIDAY PLATTERS ARE DELIBERATELY NOT HERE.
+
+     They were hidden on the reason "no sides group; <twin> is the same price and
+     takes a flavour", and the first half of that expired the moment the register
+     was fixed: all nine Seafood Fridays platters carry `Side With Meal`,
+     confirmed in the live API and in the export. So the hide was neither an
+     automatic check misfiring nor a stale export — it was this map, holding a
+     reason that had stopped being true.
+
+     The price halves still stand, and are handled where they belong rather than
+     by hiding the dish: Friday shrimp is $1.99 DEARER than the everyday one and
+     Friday salmon is a cent under, so neither appears in FRIDAY_COMPARISON and
+     neither gets a saving claim. Listing a dish and declining to call it a
+     bargain is honest; hiding it is not. */
 };
 
 /* Empty, and worth keeping rather than deleting: it is the declared home for
@@ -365,7 +450,11 @@ const MENU_PRICE = {
   "907Z8BF726CQ4::Large Jerk": 25,
   // Pasta
   "D0F1SFXHWSQWT::Penne Alla Vodka": 18,
-  "D0F1SFXHWSQWT::Oxtail": 24,
+  /* Pasta Oxtail's override is GONE. It forced $24 against a register that
+     charges $25, so the app quoted a dollar under the till — the same class of
+     mistake as the Oxtail savings badge, and the direction a customer notices.
+     The printed menu says $24 and the register says $25; the owner's call is
+     that the register wins, so there is nothing here to win with. */
   // Sides
   "S032100JQ3P4T::Chicken Mac & Cheese": 7.0,
   // Lunch specials — the chicken plates are $8 on the menu
@@ -570,6 +659,11 @@ const PREP_MINUTES = {
      item with no entry here comes back at 30 if it is ever un-hidden, and a
      test enforces that every hidden item keeps a time to return to. */
   "YQH6NFFB34SVM": DEFAULT_PREP,      // BBQ Chicken — hidden by the owner's decision
+  /* Waffles are made to order, and the sibling dish (Shrimp & Waffles) is
+     already thirty. Stated explicitly because the item is hidden: without an
+     entry it would come back at 30 anyway, but by accident rather than by
+     decision, and a test requires every hidden item to keep a time. */
+  "1PBGJ1BWC3Z52": COOKED_TO_ORDER,   // Chicken & Waffles — hidden by the owner's decision
 };
 
 /* Handed over from the counter, so they never decide a cart's ready time. */
@@ -896,6 +990,11 @@ js += `];
 
 export const UE = ${JSON.stringify(UE, null, 2)};
 
+/* Like-for-like everyday prices for the Friday platters, so a saving can be
+   stated with the number it is measured against. See FRIDAY_COMPARISON in the
+   generator, and docs/FRIDAY-PRICING.md for how each was worked out. */
+export const FRIDAY_VS = ${JSON.stringify(FRIDAY_COMPARISON, null, 2)};
+
 // Used for reward eligibility
 export const DRINK_ID = "D7MBX5PWRCGCE";
 export const SIDE_ID  = "6NX7XK602V0ZM";
@@ -918,10 +1017,89 @@ MENU.forEach((c) => c.items.forEach((i) => {
 export const hasChoices = (i) => i.groups.length > 0;
 `;
 
+/* ============================================================================
+   NO OVERRIDE MAY QUOTE BELOW THE REGISTER
+
+   The invariant this whole exercise was about. Clover prices its own orders, so
+   an override that sets a price BELOW Clover's makes the app quote less than the
+   till takes — the customer is told $24 and charged $25. That is the direction
+   a customer notices and complains about, and it has happened three times:
+
+     Whiting Fish X1   $2.50 forced over a register at $3.00, on 21 plates
+     Pasta Oxtail      $24 forced over a register at $25
+     Chicken & Waffles $15 forced over a register at $15.99
+
+   An override that RAISES is the opposite and is the point of the printed-menu
+   rule: the shop absorbs the difference until the dashboard catches up, and
+   nobody is overcharged. Those are reported as pending register changes.
+
+   So a lowering override is an error, not a report. It fails the run rather
+   than printing a line somebody scrolls past — a generated file that quotes
+   under the till should never reach a build.
+   ============================================================================ */
+{
+  const under = priceEdits.filter((e) => e.menu < e.clover);
+  if (under.length) {
+    console.error(`\n  !! ${under.length} override(s) would quote BELOW the register !!\n`);
+    for (const e of under) {
+      console.error(
+        `    ${e.item} / ${e.group} / ${e.option}: ` +
+        `the app would say $${e.menu}, the register charges $${e.clover}`
+      );
+    }
+    console.error(
+      "\n    The customer is quoted less than they are charged, which is the one\n" +
+      "    direction they notice. Either correct the register, or delete the\n" +
+      "    override so the app follows it. Nothing was written.\n"
+    );
+    process.exit(1);
+  }
+}
+
 writeFileSync(OUT, js);
 
 console.log(`Wrote ${out.length} items to src/data/menu.data.js`);
 for (const cat of CATEGORY_ORDER) console.log(`  ${cat}: ${byCat.get(cat).length}`);
+
+/* An Uber price that cannot support a claim. A flat number against a two-size
+   dish was compared to the cheaper size and produced savings that were false at
+   the other one — so it is reported until someone prices both sizes. */
+{
+  const bySize = new Map(out.map((i) => [i.id, i]));
+  const ambiguous = [];
+  for (const [id, price] of Object.entries(UE)) {
+    const item = bySize.get(id);
+    if (!item) continue;
+    const multi = item.lo !== item.hi;
+    if (multi && typeof price === "number") {
+      ambiguous.push(`${item.name}: Uber $${price} against our $${item.lo} and $${item.hi}`);
+    }
+    if (!multi && typeof price === "object") {
+      issues.push(`${item.name}: one price, but the Uber entry is per size`);
+    }
+  }
+  if (ambiguous.length) {
+    console.warn(`\n  ${ambiguous.length} Uber price(s) cannot support a saving — one number, two sizes:`);
+    for (const a of ambiguous) console.warn(`    - ${a}`);
+    console.warn(
+      "    Which of our sizes is that Uber price? Until each size has its own\n" +
+      "    number these show no comparison at all. Change the UE entry to\n" +
+      "    { med, lg } and it comes back. See docs/UBER-EATS-PRICES.md."
+    );
+  }
+}
+
+/* A Friday comparison for an item that is not on Friday, or is not cheaper. */
+for (const [id, cmp] of Object.entries(FRIDAY_COMPARISON)) {
+  const item = out.find((i) => i.id === id);
+  if (!item) { console.warn(`  ! FRIDAY_COMPARISON set for ${id}, which is not on the menu`); continue; }
+  if (!(cmp.everyday > item.lo)) {
+    issues.push(
+      `${item.name}: Friday $${item.lo} is not below the everyday $${cmp.everyday} — ` +
+      `remove it from FRIDAY_COMPARISON rather than claiming a saving`
+    );
+  }
+}
 
 // Warn about UE entries pointing at items that no longer exist
 const ids = new Set(out.map((i) => i.id));
