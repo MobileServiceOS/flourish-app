@@ -321,7 +321,12 @@ export function createApp({
   const PROBE_TTL = 30_000;
 
   app.get("/api/clover/health", async (_req, res) => {
-    const base = { ok: true, ...describe(), sandbox: IS_SANDBOX, build: BUILD };
+    /* `petals` so "are server-side balances on?" is answerable without POSTing
+       a phone number at the balance endpoint to see whether it 503s. */
+    const base = {
+      ok: true, ...describe(), sandbox: IS_SANDBOX, build: BUILD,
+      petals: petals ? "server-side" : "off",
+    };
     if (!CONFIGURED) return res.json({ ...base, configured: false, reason: "NO_CREDENTIALS" });
 
     const at = Date.now();

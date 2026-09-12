@@ -167,3 +167,62 @@ sides, exactly as before.
 against $39.99 on the flyer, and there is still no mechanism for a Friday price.
 
 Full detail, and the ten ids, in CLOVER-FIXES.md §10.
+
+
+---
+
+# Are the Friday shrimp and salmon prices an error? (2026-09-12)
+
+Asked directly, so answered directly: **I think yes — a flyer artifact rather
+than intent — and the shrimp is the one worth querying.**
+
+## The pattern
+
+| Dish | Friday SKU | Everyday | Difference |
+|---|---|---|---|
+| Crab legs | $39.99 | $55.00 like-for-like | **$15.01 cheaper** |
+| Lobster | $39.99 | $50.00 like-for-like | **$10.01 cheaper** |
+| Salmon | $21.99 | $22.00 | 1c cheaper |
+| Shrimp | $21.99 | $20.00 | **$1.99 DEARER** |
+
+## Why it reads as an artifact
+
+**The two suspect items share a price; their everyday twins do not.** Friday
+salmon and Friday shrimp are both $21.99, while the everyday dishes are $22.00
+and $20.00. That is what you get from a flyer written as "Friday seafood
+platters — $21.99" and entered against each dish, not from two separate pricing
+decisions. If someone had priced each Friday dish against its own weekday
+price, the two Friday numbers would differ.
+
+**A one-cent discount is not a discount.** $21.99 against $22.00 is charm
+pricing, not a promotion. Nobody sets out to take a penny off. It is the
+signature of a round promotional number chosen without reference to the
+everyday price at all — and once you accept that for the salmon, the shrimp
+follows from the same act.
+
+**The Friday version is the lesser dish.** Both Friday SKUs carry **no flavour
+group**, where the everyday salmon has four flavours and the everyday shrimp has
+six. Charging $1.99 more for a dish with fewer choices is not a plausible
+intent; it is what happens when the flat price lands on the one dish whose
+weekday price was already below it.
+
+## What I would ask the shop
+
+Just the shrimp: *"Friday shrimp rings $21.99 and the everyday shrimp rings
+$20.00 — should Friday be lower, or is the Friday platter a different portion?"*
+If it is genuinely a bigger plate the price is defensible and only the framing
+needed fixing, which it now has. The salmon's cent is not worth anyone's time
+either way.
+
+## What the app does in the meantime
+
+Neither appears in `FRIDAY_COMPARISON`, so **neither carries a saving claim** —
+and the helper refuses one even if someone adds it, because a comparison that is
+not a saving is a lie with a number on it. The section subtitle says which half
+of Seafood Fridays is a price and which half is simply a Friday-only dish, and
+the Friday banner names crab legs and lobster rather than implying a deal across
+the board.
+
+Both dishes are still listed and still orderable. Listing a dish and declining
+to call it a bargain is honest; hiding it — which is what the app did until
+today — is not.

@@ -957,7 +957,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 818 tests (+9 more with a test database)
+npm test            # 831 tests (+9 more with a test database)
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
@@ -990,6 +990,39 @@ which the item sheet prints on a chip — is treated as a timing claim; Wings
 reads "Made to order" at 15 minutes and that is accurate. And the day-word
 pattern matches whole words only, after `\b(fri)\w*\b` matched **"fried"** in
 Shrimp's flavour list and reported a day claim that was not there.
+
+### Comparisons a customer can check
+
+Two numbers on the menu card are claims about the outside world, and a customer
+can verify either in ten seconds. Both were wrong in the same way — a bare
+saving with nothing to anchor it — and both now name what is being compared and
+show the other price, or show nothing.
+
+**Uber Eats.** It was a teal `SAVE $4.00` pill beside `Med $20.00 · Lg $25.00`,
+which reads as a discount off our own price: the customer expects to pay $16. It
+also took the **cheaper** size while the card showed two, so on five of eight
+items the claim did not describe the larger one — and on Oxtail it advertised
+$4.00 off while our Large is a **dollar dearer** than Uber's.
+
+`UE` in the generator now takes either a flat number (valid only for a one-price
+dish) or `{ med, lg }`. `uberComparison` returns null rather than guessing, so
+those five show nothing until someone prices each size, and the generator
+reports them on every run. Every claim is listed in **docs/UBER-EATS-PRICES.md**
+for spot-checking — nobody had ever verified them.
+
+**Seafood Fridays.** The section is a real promotion on two dishes and simply a
+Friday-only dish on the rest. Crab legs are $39.99 against $55.00 like-for-like
+and lobster $39.99 against $50.00; the Friday **shrimp is $1.99 DEARER** than
+the everyday one and the Friday salmon is a cent under. `FRIDAY_COMPARISON`
+carries only the two real savings, with the basis stated (the everyday figure
+includes the $5.00 shrimp side, because the Friday platter includes shrimp), and
+`fridaySaving` refuses a comparison that is not a saving even if one is added to
+the map. The subtitle says which half is which.
+
+Whether those two Friday prices are a register error is answered in
+docs/FRIDAY-PRICING.md — briefly: both Friday SKUs share $21.99 while their
+weekday twins are $22.00 and $20.00, which is a flat flyer price entered against
+each dish rather than two pricing decisions.
 
 ## Audits worth reading before you trust a map
 

@@ -175,17 +175,80 @@ const STANDALONE_SIDE_GROUP = "Side";
 const MISATTACHED_SIDE_GROUP = {};
 
 
-// Uber Eats prices, verified by hand. Only used to show what ordering direct saves.
-// Re-check these occasionally; Uber changes them without telling anyone.
+/* ============================================================================
+   UBER EATS PRICES — a comparison, and it has to be checkable
+
+   Used for one thing: telling a customer what ordering direct saves them. Which
+   means a customer can check it, on Uber, in ten seconds — so a number that is
+   wrong or ambiguous costs more trust than the badge ever earned.
+
+   TWO SHAPES ARE ACCEPTED:
+
+     <id>: 24               a flat price. Only valid for a one-price dish.
+     <id>: { med, lg }      per size, for a dish sold in two sizes.
+
+   The flat form used to be applied to multi-size dishes and compared against
+   the CHEAPEST size, which produced claims that were false at the other one:
+
+     Oxtail         Med $20 · Lg $25   Uber $24.00   badge said SAVE $4.00
+                    — but our Large is a dollar DEARER than Uber's
+     Fried Chicken  Med $13 · Lg $16   Uber $15.60   badge said SAVE $2.60
+                    — our Large is 40c dearer
+     Curried Goat   Med $15 · Lg $18   Uber $18.00   badge said SAVE $3.00
+     Wings          Med $15 · Lg $18   Uber $18.00   badge said SAVE $3.00
+                    — both exactly level at the Large
+
+   A single Uber number cannot say which of our sizes it corresponds to, so for
+   a two-size dish it cannot support a claim at all. Those five now show
+   NOTHING until someone supplies `{ med, lg }`, and the generator says so on
+   every run. Showing nothing costs a badge; showing $4.00 off a plate that is
+   a dollar dearer costs the customer's belief in every other number here.
+
+   LAST CHECKED: never, by anyone. The original comment said "re-check these
+   occasionally" and nobody has. docs/UBER-EATS-PRICES.md lists every claim for
+   spot-checking. */
 const UE = {
-  "60KCQ1V22Q98M": 24,     // Oxtail
-  "7916EWVQFPGH8": 36,     // Lamb
-  "NEAR47KAE44HC": 18,     // Curried Goat
-  "C2RD25C1VXNN0": 18,     // Wings
-  "SJGN0N254K8KE": 16.8,   // Jerk Chicken
-  "QFNQ2XQB8SPN6": 15.6,   // Fried Chicken
-  "H9520PFNBT2NY": 24,     // Salmon
-  "VHHCS7EDV70HC": 24,     // Shrimp
+  /* One price, one Uber price: the comparison is unambiguous. */
+  "7916EWVQFPGH8": 36,     // Lamb        — ours $30
+  "H9520PFNBT2NY": 24,     // Salmon      — ours $22
+  "VHHCS7EDV70HC": 24,     // Shrimp      — ours $20
+
+  /* Two sizes, one Uber number: NOT ENOUGH to make a claim. Left here, and
+     deliberately left flat, so the generator keeps reporting them until someone
+     prices each size on Uber. Change to { med, lg } and the badge returns. */
+  "60KCQ1V22Q98M": 24,     // Oxtail        Med $20 · Lg $25
+  "NEAR47KAE44HC": 18,     // Curried Goat  Med $15 · Lg $18
+  "C2RD25C1VXNN0": 18,     // Wings         Med $15 · Lg $18
+  "SJGN0N254K8KE": 16.8,   // Jerk Chicken  Med $14 · Lg $16
+  "QFNQ2XQB8SPN6": 15.6,   // Fried Chicken Med $13 · Lg $16
+};
+
+/* ============================================================================
+   WHAT A FRIDAY PRICE IS ACTUALLY WORTH
+
+   Seafood Fridays is a real promotion on two dishes and simply a different
+   dish on the others, and the app should not imply otherwise. Numbers and
+   reasoning: docs/FRIDAY-PRICING.md.
+
+   The everyday figure is LIKE FOR LIKE, which is why it is declared rather than
+   read off the everyday item: the Friday crab legs platter includes shrimp and
+   two sides, so the honest comparison adds the $5.00 shrimp side to the $50.00
+   everyday plate. Comparing $39.99 against a bare $50.00 would understate the
+   saving; comparing it against nothing at all is what the app did before.
+
+   An item absent from this map gets no comparison. That is the case for the
+   two where Friday is not cheaper, and it is deliberate — see the note below. */
+const FRIDAY_COMPARISON = {
+  "BRMP82TR0Z45C": { everyday: 55.0, basis: "Crab Legs Platter $50.00 plus $5.00 for shrimp" },
+  "A1YZ2ZD5CA1SW": { everyday: 50.0, basis: "Lobster $45.00 plus $5.00 for shrimp" },
+
+  /* NOT HERE, ON PURPOSE:
+       Shrimp  CAFAH5FKPTRW8  $21.99 Friday against $20.00 everyday — DEARER
+       Salmon  0NQ5E11VABFDY  $21.99 Friday against $22.00 everyday — one cent
+     Both Friday SKUs also carry no flavour group where the everyday dishes have
+     four and six. A badge on either would be false or absurd, and a customer
+     who checks and finds the shrimp $1.99 above the weekday price trusts
+     nothing else on the screen. */
 };
 
 const EMOJI = {
@@ -212,7 +275,16 @@ const EMOJI = {
 const CATEGORY_ORDER = ["Lunch & Dinner", "Seafood Fridays", "Breakfast", "Drinks"];
 const CATEGORY_SUB = {
   "Lunch & Dinner": "Plates come with two sides",
-  "Seafood Fridays": "Fridays only",
+  /* "Fridays only" was true and said nothing about price, under a heading that
+     reads as a promotion. The Friday offer is NOT uniform: crab legs and
+     lobster are genuinely cheaper today, the fish/salmon/shrimp platters are
+     Friday-only dishes at their own price, and the Friday shrimp is $1.99 ABOVE
+     the everyday one. A customer who reads "Seafood Fridays" as a deal and then
+     finds the shrimp dearer trusts the app less than if it had framed nothing.
+     So the subtitle says which half is which. */
+  "Seafood Fridays":
+    "Fridays only. Crab legs and lobster are cheaper today — the rest are "
+    + "Friday-only dishes, not discounts.",
   "Breakfast": "Morning menu",
   "Drinks": "Refreshing beverages",
 };
@@ -291,19 +363,20 @@ const HIDDEN_ITEMS_IN_APP = {
      reason it was delisted under, which was wrong. */
   "YQH6NFFB34SVM": "taken off the app menu by the owner; still rings at the register",
 
-  /* THE THREE FRIDAY PLATTERS ARE GONE FROM HERE.
+  /* THE THREE FRIDAY PLATTERS ARE DELIBERATELY NOT HERE.
 
      They were hidden on the reason "no sides group; <twin> is the same price and
-     takes a flavour" — and the first half of that is no longer true. All nine
-     Seafood Fridays platters have `Side With Meal` attached at the register,
-     confirmed in the live API and in this morning's export. So the hide was not
-     an automatic check misfiring and not a stale export: it was this map, with
-     a reason that expired the moment the register was fixed.
+     takes a flavour", and the first half of that expired the moment the register
+     was fixed: all nine Seafood Fridays platters carry `Side With Meal`,
+     confirmed in the live API and in the export. So the hide was neither an
+     automatic check misfiring nor a stale export — it was this map, holding a
+     reason that had stopped being true.
 
-     The price comparisons in those reasons DO still hold — Friday Shrimp is
-     $21.99 against $20.00 for the everyday one — and that is a pricing question
-     for the register, not a reason to keep a dish the owner asked to be listed
-     out of the app. Flagged, not hidden. */
+     The price halves still stand, and are handled where they belong rather than
+     by hiding the dish: Friday shrimp is $1.99 DEARER than the everyday one and
+     Friday salmon is a cent under, so neither appears in FRIDAY_COMPARISON and
+     neither gets a saving claim. Listing a dish and declining to call it a
+     bargain is honest; hiding it is not. */
 };
 
 /* Empty, and worth keeping rather than deleting: it is the declared home for
@@ -897,6 +970,11 @@ js += `];
 
 export const UE = ${JSON.stringify(UE, null, 2)};
 
+/* Like-for-like everyday prices for the Friday platters, so a saving can be
+   stated with the number it is measured against. See FRIDAY_COMPARISON in the
+   generator, and docs/FRIDAY-PRICING.md for how each was worked out. */
+export const FRIDAY_VS = ${JSON.stringify(FRIDAY_COMPARISON, null, 2)};
+
 // Used for reward eligibility
 export const DRINK_ID = "D7MBX5PWRCGCE";
 export const SIDE_ID  = "6NX7XK602V0ZM";
@@ -923,6 +1001,46 @@ writeFileSync(OUT, js);
 
 console.log(`Wrote ${out.length} items to src/data/menu.data.js`);
 for (const cat of CATEGORY_ORDER) console.log(`  ${cat}: ${byCat.get(cat).length}`);
+
+/* An Uber price that cannot support a claim. A flat number against a two-size
+   dish was compared to the cheaper size and produced savings that were false at
+   the other one — so it is reported until someone prices both sizes. */
+{
+  const bySize = new Map(out.map((i) => [i.id, i]));
+  const ambiguous = [];
+  for (const [id, price] of Object.entries(UE)) {
+    const item = bySize.get(id);
+    if (!item) continue;
+    const multi = item.lo !== item.hi;
+    if (multi && typeof price === "number") {
+      ambiguous.push(`${item.name}: Uber $${price} against our $${item.lo} and $${item.hi}`);
+    }
+    if (!multi && typeof price === "object") {
+      issues.push(`${item.name}: one price, but the Uber entry is per size`);
+    }
+  }
+  if (ambiguous.length) {
+    console.warn(`\n  ${ambiguous.length} Uber price(s) cannot support a saving — one number, two sizes:`);
+    for (const a of ambiguous) console.warn(`    - ${a}`);
+    console.warn(
+      "    Which of our sizes is that Uber price? Until each size has its own\n" +
+      "    number these show no comparison at all. Change the UE entry to\n" +
+      "    { med, lg } and it comes back. See docs/UBER-EATS-PRICES.md."
+    );
+  }
+}
+
+/* A Friday comparison for an item that is not on Friday, or is not cheaper. */
+for (const [id, cmp] of Object.entries(FRIDAY_COMPARISON)) {
+  const item = out.find((i) => i.id === id);
+  if (!item) { console.warn(`  ! FRIDAY_COMPARISON set for ${id}, which is not on the menu`); continue; }
+  if (!(cmp.everyday > item.lo)) {
+    issues.push(
+      `${item.name}: Friday $${item.lo} is not below the everyday $${cmp.everyday} — ` +
+      `remove it from FRIDAY_COMPARISON rather than claiming a saving`
+    );
+  }
+}
 
 // Warn about UE entries pointing at items that no longer exist
 const ids = new Set(out.map((i) => i.id));

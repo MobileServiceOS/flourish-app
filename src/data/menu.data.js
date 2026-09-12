@@ -106,7 +106,7 @@ export const MENU = [
     { id: "JC6BRY4NX3A6E", name: "Festival", emoji: "🥖", desc: "Fried dough, slightly sweet", base: 1.5, lo: 1.5, hi: 1.5, prepMinutes: 15, search: "festival", groups: [
       ] },
   ]},
-  { cat: "Seafood Fridays", sub: "Fridays only", items: [
+  { cat: "Seafood Fridays", sub: "Fridays only. Crab legs and lobster are cheaper today — the rest are Friday-only dishes, not discounts.", items: [
     { id: "BRMP82TR0Z45C", name: "Crab Legs Platter (Shrimp & 2 Sides)", emoji: "🦀", desc: "Crab legs with shrimp and two sides", days: [5], base: 39.99, lo: 39.99, hi: 39.99, prepMinutes: 30, search: "crab legs platter shrimp 2 sides", groups: [
         { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0 }, { n: "Mac And Cheese", p: 0 }, { n: "Rice And Peas", p: 0 }, { n: "Fried Chicken", p: 6 }, { n: "Festival", p: 0 }, { n: "Pasta", p: 0 }, { n: "Shrimp", p: 5 }, { n: "Whiting Fish X1", p: 3 }, { n: "Mashed Potatoes", p: 0 }, { n: "Waffles", p: 0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0 }, { n: "Steam Veg.", p: 0 }, { n: "Plaintain", p: 0 }] }
       ] },
@@ -135,14 +135,28 @@ export const MENU = [
 ];
 
 export const UE = {
-  "60KCQ1V22Q98M": 24,
   "7916EWVQFPGH8": 36,
+  "H9520PFNBT2NY": 24,
+  "VHHCS7EDV70HC": 24,
+  "60KCQ1V22Q98M": 24,
   "NEAR47KAE44HC": 18,
   "C2RD25C1VXNN0": 18,
   "SJGN0N254K8KE": 16.8,
-  "QFNQ2XQB8SPN6": 15.6,
-  "H9520PFNBT2NY": 24,
-  "VHHCS7EDV70HC": 24
+  "QFNQ2XQB8SPN6": 15.6
+};
+
+/* Like-for-like everyday prices for the Friday platters, so a saving can be
+   stated with the number it is measured against. See FRIDAY_COMPARISON in the
+   generator, and docs/FRIDAY-PRICING.md for how each was worked out. */
+export const FRIDAY_VS = {
+  "BRMP82TR0Z45C": {
+    "everyday": 55,
+    "basis": "Crab Legs Platter $50.00 plus $5.00 for shrimp"
+  },
+  "A1YZ2ZD5CA1SW": {
+    "everyday": 50,
+    "basis": "Lobster $45.00 plus $5.00 for shrimp"
+  }
 };
 
 // Used for reward eligibility
