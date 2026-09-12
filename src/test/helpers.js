@@ -48,16 +48,30 @@ export const unpaidOrder = () => ({
   printed: true, manualReady: false, settled: false,
 });
 
+/* A 503 from the proxy, shaped the way lib/clover.js surfaces one. */
+class ApiUnavailable extends Error {
+  constructor() { super("Rewards aren't available right now."); this.code = "PETALS_UNAVAILABLE"; }
+}
+
 export function stubOnlineProxy({
   vi, order = {}, sandbox = true, quote = {},
   /* Called with the posted body before the stub answers. Throwing from it is
      how a test makes one order attempt fail — a dropped request, which is the
      case the idempotency key exists for. */
   onOrder = null,
+  /* The Petals balance the SERVER reports. `null` stands for a proxy with no
+     database — the endpoints 503 and the app must show the balance as
+     unavailable while still taking orders. */
+  petals = 0,
   payment = unpaidOrder(),
   loyalty = { configured: false, reason: "NO_PROGRAM", program: null, tiers: [], source: "in-app" },
 } = {}) {
-  const calls = { orders: [], quotes: [], status: [] };
+  const calls = { orders: [], quotes: [], status: [], petals: [] };
+  /* The server's balance, mutable so a test can do what the real server does:
+     move the number when a payment lands, and let the client find out by
+     asking again rather than by doing its own arithmetic. */
+  let balance = petals;
+  let claimed = false;
 
   /* The ready window and the bookable slots are the SERVER's answers now, so
      the stub works them out the way server/app.js does — from the same shared
@@ -109,6 +123,22 @@ export function stubOnlineProxy({
         ...order,
       };
     },
+    "POST /petals/balance": (body) => {
+      calls.petals.push({ op: "balance", body });
+      if (balance === null) throw new ApiUnavailable();
+      return { petals: balance, known: true };
+    },
+    "POST /petals/claim": (body) => {
+      calls.petals.push({ op: "claim", body });
+      if (balance === null) throw new ApiUnavailable();
+      /* The real server applies a device balance ONCE. Modelled, so a test can
+         catch a client that sends it on every read. */
+      if (typeof body?.deviceBalance === "number" && body.deviceBalance > 0 && !claimed) {
+        balance += body.deviceBalance;
+      }
+      claimed = true;
+      return { petals: balance, known: true };
+    },
     "POST /customers": () => ({ customerId: "CUST-TEST", existing: false }),
     "GET /loyalty": () => loyalty,
   };
@@ -130,11 +160,25 @@ export function stubOnlineProxy({
     const method = init.method || "GET";
     const handler = routes[`${method} ${path}`] ?? dynamic(method, path);
     if (!handler) throw new TypeError("Failed to fetch");
-    const body = handler(init.body ? JSON.parse(init.body) : undefined);
+    let body;
+    try {
+      body = handler(init.body ? JSON.parse(init.body) : undefined);
+    } catch (e) {
+      /* A handler that throws ApiUnavailable stands for a real 503, so the
+         client sees the status and code it would see in production rather than
+         a transport failure. */
+      if (e instanceof ApiUnavailable) {
+        return { ok: false, status: 503, json: async () => ({ error: e.message, code: e.code }) };
+      }
+      throw e;
+    }
     return { ok: true, status: 200, json: async () => body };
   }));
   /* Let a test change the register's answer mid-flight — the whole point of
      polling is that the answer changes while the customer is standing there. */
   calls.setPayment = (next) => Object.assign(payment, next);
+  /* And let a test move the balance the way a real settlement does. */
+  calls.setPetals = (n) => { balance = n; };
+  calls.petalsBalance = () => balance;
   return calls;
 }

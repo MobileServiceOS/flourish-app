@@ -145,11 +145,18 @@ describe("which orders are worth asking about", () => {
 /* ------------------------------------------------------------- the app path */
 
 describe("the launch sweep credits what was paid while the app was shut", () => {
-  it("awards an order the register settled overnight", async () => {
+  it("credits an order the register settled overnight", async () => {
+    /* The SERVER credits now: asking about a paid order is what makes it settle
+       and earn, so the sweep's job is to ask, and the client's job is to show
+       whatever the ledger then holds. The stub does what the real server does
+       and moves the number. The device no longer keeps a balance to check. */
     await seedAccount([storedOrder()]);
-    const { user } = await relaunch({ payment: { ...unpaidOrder(), paid: true, settled: true } });
+    const { user, calls } = await relaunch({
+      petals: 20,
+      payment: { ...unpaidOrder(), paid: true, settled: true },
+    });
 
-    await waitFor(async () => expect((await savedAccount())?.points).toBe(20));
+    await waitFor(() => expect(calls.status.length).toBeGreaterThan(0));
     expect(await balance(user)).toBe(20);
   });
 

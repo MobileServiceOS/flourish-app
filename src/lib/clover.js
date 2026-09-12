@@ -124,6 +124,20 @@ export const quoteOrder = (cart, signal) =>
 
 export const getPrinters = (signal) => call("/printers", { signal });
 
+/* ---------- Petals ----------
+   POST, not GET, on both: they carry a phone number, which has no business in a
+   URL, an access log or a proxy cache.
+
+   Neither of these has a cached fallback, on purpose. The balance is the
+   server's answer or it is unknown — a cached number is the device asserting
+   money again, which is the arrangement server-side balances exist to end. */
+export const getPetalsBalance = ({ name, phone }, signal) =>
+  call("/petals/balance", { method: "POST", body: { name, phone }, signal });
+
+/** Bind this phone to a balance, carrying a device balance across once. */
+export const claimPetals = ({ name, phone, deviceBalance }, signal) =>
+  call("/petals/claim", { method: "POST", body: { name, phone, deviceBalance }, signal });
+
 /** Staff: reprint the most recent app order, to prove the printer works. */
 export const printTest = () => call("/print-test", { method: "POST", body: {} });
 

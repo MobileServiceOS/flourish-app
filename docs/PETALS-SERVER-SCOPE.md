@@ -261,3 +261,158 @@ transition including the ones that must not double-count.
    loses access.
 
 Nothing here is built. Once those four are settled it is a single branch.
+
+
+---
+
+# Built — what changed from this scope
+
+The scope above is what was proposed. This is what exists, and where it differs.
+
+## One table, not two
+
+`reservation` became **`petals_order`: one row per app order, reward or not.**
+
+The scope missed that **earning needs server-side state too.** A reservation
+table only records holds, and the earnable — how many Petals a paid order is
+worth — has to survive from order creation until Clover confirms the payment.
+By then the cart it was computed from is long gone. The client used to hold
+that number, which is exactly the arrangement this work moves away from.
+
+So every app order gets a row carrying `hold` (0 when no reward) and
+`earnable`, and payment does both things at once: settle the hold, credit the
+earnable, each under its own idempotency key.
+
+`earnable` is computed **by the server**, from the re-priced cart less the
+server's own discount — `trustedSubtotal` in `server/app.js`, built on the same
+`trustedLine` the discount uses. A client that inflates its line prices earns
+nothing extra.
+
+## Earning requires having joined
+
+A phone with no customer row gets no order row and earns nothing. The server
+does not enrol someone because they gave a number for the ticket — joining is
+`POST /petals/claim`, which the app calls on sign-in.
+
+## States
+
+`open → settled` (paid), `open → released` (voided), `open → expired` (held
+past 24 hours). Expiry only touches rows that actually hold something; an
+unpaid order with no reward simply never earns, so there is nothing to release.
+
+## Time has one source
+
+A bug the tests caught, worth recording because the shape recurs: the store
+stamped `created_at` from its own `new Date()` while the expiry sweep measured
+age against an injected clock. Two clocks, so the sweep never fired and could
+not be tested. Now the **logic** owns time — every write passes its own `at`,
+and both stores *throw* rather than defaulting when it is missing, on the same
+reasoning as `hours.js` and `prep.js`.
+
+## Refusing is in front of the order, holding is behind it
+
+The balance check runs **before** the order reaches Clover and refuses the
+whole order with 409 if the balance cannot pay — the opposite of this project's
+usual "push the order first". A discount the customer has not got is money off
+the till no later step can claw back, and they are standing at the counter with
+the food. Refusing is recoverable: they order again without the reward.
+
+The hold itself is taken **after** the order exists, because it is keyed on the
+Clover order id. A failure there does not fail the order — the ticket is already
+on the register — it is logged loudly, and the cost is one reward unpaid-for,
+bounded by the reward's own cap.
+
+## What is tested, and what is not
+
+**52 tests.** The arithmetic and the state machine are covered against the
+in-memory store: credited once per order however many times payment is
+reported, a void returning the hold, a settled reward that cannot be released,
+two holds that cannot overdraw one balance, the migration applying once however
+often it is retried, earning on the net rather than the gross, and the awkward
+expired-then-paid case where the hold is already gone and settle must not
+re-deduct.
+
+**The Postgres SQL is written and unexercised.** There is no `DATABASE_URL` to
+run it against, so a green suite proves the logic and says nothing about the
+SQL. Run it once against a real database before trusting it.
+
+## Still to do
+
+- **the client half**: fetching the balance on launch and after each order,
+  showing it as unavailable when the server cannot be reached, and removing the
+  device balance as a source of truth
+- **provision the database** and set `DATABASE_URL`. Until then Petals are OFF:
+  the endpoints answer `503 PETALS_UNAVAILABLE`, ordering is untouched, and the
+  boot banner says so. There is deliberately no in-memory fallback — that would
+  lose balances on the next deploy, silently
+- run the suite once against a real Postgres
+
+
+---
+
+# Run against a real Postgres — what the SQL actually did
+
+Run against Postgres 17 locally (a throwaway cluster, never production). Seven
+of the eight checks behaved exactly as the in-memory store did. One did not,
+and it was the one the in-memory store is structurally incapable of catching.
+
+| | Result |
+|---|---|
+| schema applies, claim round-trips | as expected |
+| `ON CONFLICT (idem_key) DO NOTHING` makes a repeat credit a no-op | as expected — `RETURNING id` comes back empty, which the store reads correctly |
+| `SUM(delta)` | returns a **number**, not the string `pg` gives for some bigint aggregates |
+| NULL `idem_key` rows | do **not** collide — Postgres treats NULLs as distinct, so unkeyed rows are not deduped. Correct, and now asserted so nobody makes the column NOT NULL |
+| rollback after a mid-transaction write | discards it completely |
+| `created_at < $1` against a JS Date | compares correctly as timestamptz |
+| settle credits the earnable exactly once | as expected |
+| **two orders racing one balance** | **OVERDREW to −40** |
+
+## The overdraw
+
+`openOrder` checked the balance and then inserted, inside one transaction at
+READ COMMITTED. `SELECT SUM(delta)` takes no locks, so there is a window
+between the check and the insert. Two transactions interleaved so both read
+before either wrote, against a 200-Petal balance with a 120 hold each:
+
+```
+A reads balance: 200
+B reads balance: 200     <- both see the full balance
+each needs 120; each thinks it can afford it: true
+A committed: true   B committed: true
+final balance: -40
+```
+
+Two customers tapping "place order" in the same second is a lunch rush, not an
+edge case.
+
+**Fix:** `FOR UPDATE` on the customer lookup in `store.pg.js`. Every
+balance-changing path starts by finding the customer, so locking that row
+serialises those paths per customer — and only per customer, so two different
+people never wait on each other. Re-run: B blocks, then reads 80 once A
+commits, and correctly refuses. Final balance 80.
+
+## Why the in-memory store could not find it
+
+Its `tx` serialises: every transaction queues behind the last. I had called
+that "stricter than Postgres, the right direction for a test double". That was
+wrong in the way that mattered — **a serialised double cannot fail a
+concurrency test**, so it passed identically before and after the fix.
+
+## A test that nearly proved nothing
+
+My first version of the race test called `openOrder` twice inside
+`Promise.allSettled`. It passed. It also passed with `FOR UPDATE` removed,
+because two fast transactions do not interleave — the first finishes before the
+second starts.
+
+`src/test/petalsPg.test.js` now drives the interleaving through raw clients,
+replaying the statement sequence `openOrder` performs, and **runs it both
+ways**: it asserts the unlocked form reaches −40 and the locked form reaches 80.
+It cannot pass vacuously. A second, source-level test pins the store to the
+locking form, so the behaviour test and the code cannot drift apart.
+
+The suite skips all of it unless `PETALS_TEST_DATABASE_URL` is set:
+
+```bash
+PETALS_TEST_DATABASE_URL=postgres://user@127.0.0.1:5432/db npm test
+```

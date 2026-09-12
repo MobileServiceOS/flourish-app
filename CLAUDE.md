@@ -906,6 +906,40 @@ Push the order to Clover **first**, charge **second**. A charged customer with n
 ticket on the register is the one failure staff can't fix at the counter; an
 uncharged order that exists is just "pay at pickup".
 
+## Never print a secret value. Print the name.
+
+This has cost once already: `railway variables` prints every value in full, and
+running it put `CLOVER_PRIVATE_TOKEN` and `APP_KEY` into a transcript. Both had
+to be rotated. The token can create orders and charge cards.
+
+**The rule:** when you need to know what is configured, print key NAMES and
+never values.
+
+```bash
+# NO  — prints every value
+railway variables
+
+# YES — names only
+railway variables --json | node -e 'let s="";process.stdin.on("data",d=>s+=d)
+  .on("end",()=>console.log(Object.keys(JSON.parse(s)).sort().join("\n")))'
+```
+
+When a value genuinely has to be used, pipe it into the command that needs it
+without echoing it — and when you need to know whether a value matches
+something, compare and print the boolean, not the value.
+
+The same rule holds in code, and is already enforced there: `describeGuard()`
+reports the app key as `"set"` / `"unset"`, never the key; `maskPhone` reduces a
+number to `(***) ***-**13` before anything is logged, because phone numbers
+print on tickets; `__scrub` strips `Bearer` tokens out of Clover errors before
+they can reach a log or a client. A test asserts the private token never reaches
+`dist/`.
+
+**`APP_KEY` has a second hazard now that the app is live.** The published build
+carries one specific value baked into its bundle. Rotating `APP_KEY` on the host
+turns away every copy of the app already on a phone, and it stays broken until a
+new build clears review. Never rotate it without a build ready to ship.
+
 ## Environments
 
 `CLOVER_API_BASE` in `.env.local` decides everything:
@@ -923,7 +957,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 753 tests
+npm test            # 817 tests (+9 more with a test database)
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
@@ -1052,3 +1086,26 @@ or lose a customer, rather than on markup:
 
 Run `npm test` before committing. The suite is deterministic — if it's flaky,
 that's a bug worth fixing, not retrying.
+
+**The Petals store has a second suite that needs a real database.**
+`src/test/petalsPg.test.js` skips unless `PETALS_TEST_DATABASE_URL` points at
+one, and it earns its keep: it found an overdraw the in-memory store cannot
+catch, because that store serialises every transaction and so cannot fail a
+concurrency test. Run it against a throwaway cluster, never production:
+
+```bash
+PETALS_TEST_DATABASE_URL=postgres://user@127.0.0.1:5432/db npm test
+```
+
+The overdraw and the `FOR UPDATE` that fixes it are written up in
+docs/PETALS-SERVER-SCOPE.md. The short version: `SELECT SUM(delta)` takes no
+locks, so check-then-insert at READ COMMITTED let two concurrent orders both
+pass a balance check and the balance reached **-40**.
+
+**Test files run one at a time** (`fileParallelism: false`). `process.env` is
+shared by every file vitest runs concurrently, and three suites still mutate it,
+so a request in one file could see an `APP_KEY` another file had set for two
+assertions and get a 401 — one failure in roughly ten runs. Serialising is a
+workaround; the fix is to thread a config object through `server/guard.js` so no
+test touches the environment. Written up in **docs/TECH-DEBT.md #1**, along with
+the per-process idempotency and rate-limit stores.

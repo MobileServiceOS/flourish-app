@@ -22,7 +22,29 @@ try {
   process.exit(1);
 }
 
-createApp().listen(PORT, () => {
+/* Server-side Petals, if a database is configured.
+   Off is a supported state, not a degraded one: the endpoints answer 503 with a
+   code the app acts on, ordering is untouched, and no reward is redeemed
+   against a balance nobody can verify. There is deliberately no in-memory
+   fallback — that would lose balances on the next deploy, silently, which is
+   the failure this whole feature exists to end. */
+let petals = null;
+if (process.env.DATABASE_URL) {
+  try {
+    const { createPgStore } = await import("./petals/store.pg.js");
+    const { createPetals } = await import("./petals/ledger.js");
+    petals = createPetals({ store: await createPgStore() });
+  } catch (e) {
+    /* Refuse to boot. A proxy that came up with Petals silently off, when it
+       was configured to have them on, would take orders and quietly credit
+       nobody — and the first anyone would know is a customer whose balance
+       never moved. */
+    console.error(`\n  Petals are configured but unavailable: ${e.message}\n`);
+    process.exit(1);
+  }
+}
+
+createApp({ petals }).listen(PORT, () => {
   const d = describe();
   console.log(`\n  Flourish · Clover proxy on http://localhost:${PORT}`);
   console.log(`  API      ${d.apiBase}`);
@@ -31,6 +53,7 @@ createApp().listen(PORT, () => {
   console.log(`  Hours    ${HOURS_LINE}  (${process.env.TZ})`);
   const g = describeGuard();
   console.log(`  App key  ${g.appKey}`);
+  console.log(`  Petals   ${petals ? "server-side (DATABASE_URL set)" : "OFF — no DATABASE_URL, rewards unavailable"}`);
   console.log(`  Origins  ${g.origins}`);
   console.log(`  Max      ${g.maxCharge} per order`);
   /* These are warnings about a half-configured server, and a correctly deployed

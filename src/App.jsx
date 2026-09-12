@@ -4,13 +4,14 @@ import { ShoppingBag, Check, Home, Receipt, User, Award } from "lucide-react";
 import "./styles.css";
 import { MENU, UE, CAT_OF, PLATE_IDS, hasChoices } from "./data/menu.data.js";
 import { cents, withTax } from "./lib/money.js";
-import { rewardOf, discountFor, pointsFor } from "./lib/loyalty.js";
+import { rewardOf, discountFor, pointsFor, CURRENCY_MANY } from "./lib/loyalty.js";
 import { searchItems } from "./lib/search.js";
 import { loadAccount, saveAccount, deleteAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
 import { createOrder, syncCustomer, setStock } from "./lib/clover.js";
 import {
   useCloverHealth, useInventorySync, useReadyQuote, useLoyaltySource, useReconcileOnLaunch,
+  usePetalsBalance,
 } from "./hooks/clover.js";
 
 import Splash from "./components/Splash.jsx";
@@ -89,7 +90,11 @@ export default function App() {
   const [account, setAccount] = useState(null);   // null = signed out
   const [loadingAcct, setLoadingAcct] = useState(true);
   const [vouchers, setVouchers] = useState([]);   // redeemed, unused rewards
-  const [points, setPoints] = useState(0);
+  /* What the DEVICE still has, and the only thing it is used for: handing to
+     the server once, on the first claim, so a customer who had a balance before
+     balances moved server-side does not lose it. After that it is never read
+     again and never displayed. */
+  const [devicePetals, setDevicePetals] = useState(0);
   const [orders, setOrders] = useState([]);
   const [active, setActive] = useState(null); // active order being tracked
   const [toast, setToast] = useState(null);
@@ -135,7 +140,7 @@ export default function App() {
       if (!alive) return;
       if (a) {
         setAccount({ name: a.name, phone: a.phone, since: a.since });
-        setPoints(a.points || 0);
+        setDevicePetals(a.points || 0);
         setOrders(a.orders || []);
         setVouchers(a.vouchers || []);
       }
@@ -144,11 +149,26 @@ export default function App() {
     return () => { alive = false; };
   }, []);
 
-  // Persist whenever anything the customer owns changes
+  /* The balance is the SERVER's. Nothing on the device is truth.
+     `available: false` means we could not ask — the screens show it as
+     unavailable and refuse to redeem rather than guessing a number. */
+  const petals = usePetalsBalance({
+    name: account?.name,
+    phone: account?.phone,
+    deviceBalance: devicePetals,
+    enabled: Boolean(account) && !loadingAcct && clover.status === "online",
+  });
+  const points = petals.petals;                  // number, or null when unknown
+  const petalsAvailable = petals.available;
+
+  /* Persist the account, the orders and the vouchers — but NOT the balance.
+     `points` is still written so an older build reading this device does not
+     see a missing field, and so the one-time migration has something to send
+     if the server has never been reached; it is never read as truth again. */
   useEffect(() => {
     if (loadingAcct || !account) return;
-    saveAccount({ ...account, points, orders, vouchers });
-  }, [account, points, orders, vouchers, loadingAcct]);
+    saveAccount({ ...account, points: devicePetals, orders, vouchers });
+  }, [account, devicePetals, orders, vouchers, loadingAcct]);
 
   const signIn = async (name, phone) => {
     const acct = { name, phone, since: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }) };
@@ -165,7 +185,7 @@ export default function App() {
     } catch { /* non-fatal, the order just goes through without a customer id */ }
   };
   const signOut = () => {
-    setAccount(null); setPoints(0); setOrders([]); setVouchers([]);
+    setAccount(null); setDevicePetals(0); setOrders([]); setVouchers([]);
     saveAccount(null);
     setView("menu");
     flash("Signed out");
@@ -187,7 +207,7 @@ export default function App() {
      says so, because "delete my account" reasonably sounds like it might. */
   const deleteMyAccount = async () => {
     setAccount(null);
-    setPoints(0);
+    setDevicePetals(0);
     setOrders([]);
     setVouchers([]);
     setApplied(null);
@@ -197,12 +217,19 @@ export default function App() {
     setView("menu");
     flash("Your account and its data have been deleted from this device");
   };
+  /* Redeeming NO LONGER DEDUCTS ANYTHING. It records which reward the customer
+     wants; the Petals are held by the server when the order is created, spent
+     when Clover confirms the payment, and given back if the order is voided.
+
+     The old behaviour deducted here and consumed the voucher at order creation,
+     so an order voided at the register cost the customer the food AND the
+     Petals, with nothing anywhere to restore them. */
   const redeem = (r) => {
-    if (points < r.cost) return flash("Not enough points yet");
-    setPoints((p) => p - r.cost);
+    if (!petalsAvailable) return flash("Rewards aren't available right now");
+    if ((points ?? 0) < r.cost) return flash(`Not enough ${CURRENCY_MANY} yet`);
     setVouchers((v) => [...v, { rid: r.id, name: r.name, cost: r.cost,
       code: "FL" + Math.floor(1000 + Math.random() * 9000), got: "Today" }]);
-    flash(`${r.name} unlocked`);
+    flash(`${r.name} ready to use`);
   };
 
   const [applied, setApplied] = useState(null); // voucher code applied to this cart
@@ -349,23 +376,22 @@ export default function App() {
     return () => io.disconnect();
   }, [view, catKeys, menuMounted]);
 
-  /* ---------- earning the points ----------
-     Called by the tracking screen when Clover confirms the customer has paid at
-     the register. Never on order creation: at that moment the order is open and
-     owing, and the customer might never come back for it.
+  /* ---------- earning ----------
+     The SERVER credits Petals, when Clover confirms the payment. It records
+     what an order will earn at the moment the order is created — computed from
+     the re-priced cart, because the client's figure was never trustworthy — and
+     credits it under a key that makes a repeat a no-op.
 
-     Two guards, because one is not enough:
+     So there is nothing to add up here. `onPaid` marks the order locally, for
+     the tracking screen's copy, and re-reads the balance the server now holds.
+     The client doing its own arithmetic and hoping the two agreed is exactly
+     what produced a balance nobody could explain.
 
-       - `pointsAwarded`, persisted on the order, survives a relaunch, so
-         reopening a paid order's confirmation screen cannot pay it twice
-       - `awardedRef` catches the same-session case the flag cannot — two polls
-         landing in the same tick both read the old state, and React has not
-         re-rendered between them
-
-     The amount comes off the order itself. Re-deriving it from the cart would
-     read zero: the cart was emptied when the order was placed. */
+     `awardedRef` still exists because the LOCAL flag has the same
+     two-polls-in-one-tick problem it always had — React has not re-rendered
+     between them — and flipping it twice would be harmless but re-fetch twice. */
   /* Survives a retry of the same order, so a lost response cannot become two
-     orders. See placeOrder. */
+     orders on the register. See placeOrder. */
   const idemRef = useRef(null);
   const awardedRef = useRef(new Set());
   const awardPoints = useCallback((order) => {
@@ -373,13 +399,11 @@ export default function App() {
     if (!num || order.pointsAwarded || awardedRef.current.has(num)) return;
     awardedRef.current.add(num);
 
-    const earned = Math.max(0, Number(order.earnable) || 0);
     const settle = (o) => ({ ...o, pointsAwarded: true, paidBy: "paid" });
-
     setOrders((list) => list.map((o) => (o.num === num && !o.pointsAwarded ? settle(o) : o)));
     setActive((a) => (a && a.num === num && !a.pointsAwarded ? settle(a) : a));
-    if (earned > 0) setPoints((p) => p + earned);
-  }, []);
+    petals.refresh();
+  }, [petals]);
 
   /* Credit anything that was paid for at the counter while the app was shut.
      Gated on the account having loaded: awarding into state before the stored
@@ -567,7 +591,7 @@ export default function App() {
            test orders makes no sense when no order can be placed. */
         sandbox: clover.status === "online" && clover.sandbox }} />}
       {view === "rewards" && (account
-        ? <RewardsView {...{ account, points, vouchers, orders, redeem, signOut }}
+        ? <RewardsView {...{ account, points, petalsAvailable, vouchers, orders, redeem, signOut }}
             onReorder={reorder} onDeleteAccount={deleteMyAccount} />
         : <SignInView onSignIn={signIn} />)}
       {view === "orders" && <OrdersView orders={orders} active={active} onReorder={reorder}

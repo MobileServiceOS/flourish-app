@@ -115,6 +115,33 @@ function setBuildSetting(name, value) {
   /* Through the same add-if-missing path as everything else. This used to only
      replace, and warned "not found — nothing stamped" when the key was absent —
      which is precisely the regenerated-project case the stamping exists for. */
+  /* REFUSE TO STAMP A VERSION LOWER THAN THE PROJECT ALREADY CARRIES.
+
+     This nearly shipped. The live app was 1.0.2 while package.json still said
+     1.0.0, because the version had been bumped in Xcode — the one directory git
+     does not track — and package.json never caught up. The next sync would have
+     stamped 1.0.0 over it, and App Store Connect rejects a version that is not
+     higher than the last released one. The failure would have surfaced at
+     upload, after a full build, with nothing pointing at the cause.
+
+     A downgrade is always a mistake here, so it stops rather than warns. */
+  const current = /MARKETING_VERSION = ([^;]+);/.exec(readFileSync(PBXPROJ, "utf8"))?.[1]?.trim();
+  const parts = (v) => String(v).split(".").map((x) => Number(x) || 0);
+  const isLower = (a, b) => {
+    const [x, y] = [parts(a), parts(b)];
+    for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
+    return false;
+  };
+  if (current && isLower(version, current)) {
+    console.error(
+      `\n  package.json version ${version} is LOWER than the ${current} already in\n` +
+      `  the Xcode project. App Store Connect rejects a version that is not higher\n` +
+      `  than the last released one, and stamping this would hide that until upload.\n` +
+      `  Bump "version" in package.json past ${current}, then run this again.\n`
+    );
+    process.exit(1);
+  }
+
   const n = setBuildSetting("MARKETING_VERSION", version);
   console.log(`  version  ${version} stamped onto ${n} build configuration(s)`);
 }
