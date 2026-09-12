@@ -26,6 +26,15 @@ These two pull against each other by design, and rule 2 is the one that moves
 money. Do not "fix" a price mismatch by making the app charge its own total: the
 order in Clover would then disagree with the card, and the till goes out.
 
+**Rule 1 only ever raises.** An override that sets a price *below* Clover's
+makes the app quote less than the till takes, and that is the one direction a
+customer notices — they are told $24 and charged $25. The generator refuses to
+write a menu containing one: it exits non-zero and leaves `menu.data.js`
+untouched. Three have been caught this way (Whiting Fish X1 at $2.50 against a
+$3.00 register on 21 plates, Pasta Oxtail, Chicken & Waffles), so when the
+register is corrected for something, delete the override rather than leaving it
+to drag the app back.
+
 `src/data/menu.data.js` is generated and must never be hand-edited. A price that
 looks wrong is either wrong in Clover or missing from the printed-menu maps —
 fix it in one of those two places and regenerate. Menu copy, Popular ids and day-locks live in maps at the
@@ -957,7 +966,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 831 tests (+9 more with a test database)
+npm test            # 836 tests (+9 more with a test database)
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

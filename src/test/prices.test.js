@@ -24,13 +24,21 @@ describe("printed menu prices", () => {
   it("prices pasta from the menu", () => {
     const o = opts("Pasta");
     expect(o["Penne Alla Vodka"].p).toBe(18);
-    expect(o["Oxtail"].p).toBe(24);       // Clover had it a dollar dearer
+    /* $25, the REGISTER's price, not the printed menu's $24. The override that
+       forced $24 made the app quote a dollar under the till — the one direction
+       a customer notices — and the owner's call was that the register wins. The
+       generator now refuses to write a menu where any override quotes under
+       Clover at all. */
+    expect(o["Oxtail"].p).toBe(25);
   });
 
   it("rounds the odd-cent items to the menu's whole numbers", () => {
     expect(opts("Side")["Chicken Mac & Cheese"].p).toBe(7);
-    expect(item("Chicken & Waffles").base).toBe(15);
-    expect(item("Chicken & Waffles").lo).toBe(15);
+    /* Chicken & Waffles is no longer here to round. Its $15 menu price against a
+       $15.99 register was the other place the app quoted under the till, and the
+       owner took it off the app menu rather than picking a side — which retires
+       the divergence without a price decision. It still rings at the register. */
+    expect(item("Chicken & Waffles")).toBeUndefined();
     for (const n of ["Curried Chicken", "Fried Chicken", "Jerk Chicken", "Stew Chicken"]) {
       expect(opts("Lunch Specials")[n].p).toBe(8);
     }
@@ -178,7 +186,7 @@ describe("what the printed menu actually says", () => {
     expect(p["Chicken"].p).toBe(18);
     expect(p["Penne Alla Vodka"].p).toBe(18);
     expect(p["Shrimp"].p).toBe(20);
-    expect(p["Oxtail"].p).toBe(24);
+    expect(p["Oxtail"].p).toBe(25);   // the register's price; see above
     expect(p["Steak"].p).toBe(25);
     expect(item("Lobster").base).toBe(45);
     expect(item("Crab Legs Platter").base).toBe(50);

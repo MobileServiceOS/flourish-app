@@ -32,7 +32,7 @@ export const MENU = [
         { gid: "907Z8BF726CQ4", name: "Pork", kind: "variant", mods: [{ n: "Medium Stew", p: 20 }, { n: "Large Stew", p: 25 }, { n: "Medium Jerk", p: 20 }, { n: "Large Jerk", p: 25 }] }
       ] },
     { id: "JAD3BJK9BSTW8", name: "Pasta", emoji: "🍝", desc: "Plain, chicken, shrimp, steak, or oxtail", base: 0, lo: 15, hi: 25, prepMinutes: 15, search: "pasta plain chicken shrimp garlic penne alla vodka steak oxtail", groups: [
-        { gid: "D0F1SFXHWSQWT", name: "Pasta", kind: "variant", mods: [{ n: "Plain Pasta", p: 15 }, { n: "Chicken", p: 18 }, { n: "Shrimp", p: 20 }, { n: "Garlic", p: 15 }, { n: "Penne Alla Vodka", p: 18 }, { n: "Steak", p: 25 }, { n: "Oxtail", p: 24 }] }
+        { gid: "D0F1SFXHWSQWT", name: "Pasta", kind: "variant", mods: [{ n: "Plain Pasta", p: 15 }, { n: "Chicken", p: 18 }, { n: "Shrimp", p: 20 }, { n: "Garlic", p: 15 }, { n: "Penne Alla Vodka", p: 18 }, { n: "Steak", p: 25 }, { n: "Oxtail", p: 25 }] }
       ] },
     { id: "H9520PFNBT2NY", name: "Salmon", emoji: "🐟", desc: "Honey garlic, jerk, sweet chili, or grilled", base: 0, lo: 22, hi: 22, prepMinutes: 30, search: "salmon sweet chili grilled honey garlic jerk", groups: [
         { gid: "ZR29AF0E4JPXA", name: "Salmon", kind: "variant", mods: [{ n: "Sweet Chili", p: 22 }, { n: "Grilled", p: 22 }, { n: "Steamed", p: 22, oos: true }, { n: "Honey Garlic", p: 22 }, { n: "Jerk", p: 22 }] },
@@ -85,10 +85,6 @@ export const MENU = [
       ] },
     { id: "6NX7XK602V0ZM", name: "Side", emoji: "🍚", desc: "One side on its own", base: 0, lo: 1, hi: 15, prepMinutes: 15, noPrep: true, search: "side mac cheese seafood rice peas white fried chicken mashed potatoes steam veggies festival pasta shrimp x1 breast whiting fish waffles candied yams corn bread jerk plantain 1 piece pepper", groups: [
         { gid: "S032100JQ3P4T", name: "Side", kind: "variant", mods: [{ n: "Mac & Cheese", p: 6 }, { n: "Seafood Mac & Cheese", p: 8 }, { n: "Rice & Peas", p: 5 }, { n: "White Rice", p: 5 }, { n: "Fried Chicken", p: 6 }, { n: "Mashed Potatoes", p: 5 }, { n: "Steam Veggies", p: 3 }, { n: "Festival", p: 1 }, { n: "Pasta", p: 10 }, { n: "Shrimp X1", p: 2 }, { n: "Chicken Breast", p: 5 }, { n: "Shrimp", p: 5 }, { n: "Whiting Fish  X1", p: 3 }, { n: "Chicken Mac & Cheese", p: 7 }, { n: "Waffles", p: 8 }, { n: "Candied Yams", p: 5 }, { n: "Corn Bread", p: 1.5 }, { n: "Jerk Chicken", p: 6 }, { n: "Plantain", p: 3 }, { n: "Fried Chicken (1 Piece)", p: 2 }, { n: "Pepper Shrimp", p: 15 }] }
-      ] },
-    { id: "1PBGJ1BWC3Z52", name: "Chicken & Waffles", emoji: "🧇", desc: "Fried chicken over waffles, six flavors", base: 15, lo: 15, hi: 15, prepMinutes: 15, search: "chicken waffles red velvet strawberry easter bun cinnamin buttermilk coconut toto", groups: [
-        { gid: "YQWN3PKBKV9NG", name: "Side With Meal", kind: "side", mods: [{ n: "White Rice", p: 0 }, { n: "Mac And Cheese", p: 0 }, { n: "Rice And Peas", p: 0 }, { n: "Fried Chicken", p: 6 }, { n: "Festival", p: 0 }, { n: "Pasta", p: 0 }, { n: "Shrimp", p: 5 }, { n: "Whiting Fish X1", p: 3 }, { n: "Mashed Potatoes", p: 0 }, { n: "Waffles", p: 0 }, { n: "Seafood Mac", p: 3.5 }, { n: "Candied Yams", p: 0 }, { n: "Steam Veg.", p: 0 }, { n: "Plaintain", p: 0 }] },
-        { gid: "3VQCJ6J8Q465P", name: "Waffles Flavors", kind: "flavor", mods: [{ n: "Red Velvet", p: 0 }, { n: "Strawberry", p: 0 }, { n: "Easter Bun", p: 0 }, { n: "Cinnamin", p: 0 }, { n: "Buttermilk", p: 0 }, { n: "Coconut Toto", p: 0 }] }
       ] },
     { id: "49BD3KVSBHXRR", name: "Curry Chicken", emoji: "🍛", desc: "Curry chicken, medium or large", base: 0, lo: 13, hi: 15, prepMinutes: 15, search: "curry chicken medium large", groups: [
         { gid: "N4PVGZF59CYJ8", name: "Curry Chicken", kind: "variant", mods: [{ n: "Medium", p: 13 }, { n: "Large", p: 15 }] }

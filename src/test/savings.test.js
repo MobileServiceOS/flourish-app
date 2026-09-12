@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { MENU, UE, FRIDAY_VS } from "../data/menu.data.js";
 import { uberComparison, fridaySaving, sizePrices } from "../lib/restaurant.js";
 
@@ -130,5 +132,59 @@ describe("the Friday saving is claimed only where there is one", () => {
     const fri = MENU.find((c) => c.cat === "Seafood Fridays");
     expect(fri.sub).toMatch(/crab legs and lobster are cheaper today/i);
     expect(fri.sub).toMatch(/not discounts/i);
+  });
+});
+
+/* ============================================================================
+   THE APP MUST NEVER QUOTE BELOW THE REGISTER
+
+   Clover prices its own orders, so an override that sets a price BELOW Clover's
+   makes the app quote less than the till takes. It has happened three times —
+   Whiting Fish X1 at $2.50 against a $3.00 register on 21 plates, Pasta Oxtail
+   at $24 against $25, Chicken & Waffles at $15 against $15.99 — and it is the
+   one direction a customer notices.
+
+   Raising is the opposite and is the whole point of the printed-menu rule: the
+   shop absorbs the difference until the dashboard catches up, and nobody is
+   overcharged.
+   ============================================================================ */
+
+describe("no printed-menu override quotes under the till", () => {
+  const gen = readFileSync(resolve(process.cwd(), "scripts/generate-menu.mjs"), "utf8");
+
+  it("fails the generation rather than reporting it", () => {
+    /* A line somebody scrolls past is not a control. The run exits non-zero. */
+    expect(gen).toMatch(/override\(s\) would quote BELOW the register/);
+    expect(gen).toMatch(/process\.exit\(1\)/);
+  });
+
+  it("checks BEFORE writing the file, so a bad menu never reaches a build", () => {
+    /* This was wrong when first written: the guard sat after writeFileSync and
+       told the reader "Nothing was written" while the file was already on disk.
+       Order is the assertion. */
+    const guard = gen.indexOf("would quote BELOW the register");
+    const write = gen.indexOf("writeFileSync(OUT, js)");
+    expect(guard).toBeGreaterThan(-1);
+    expect(write).toBeGreaterThan(-1);
+    expect(guard, "the guard must precede the write").toBeLessThan(write);
+  });
+
+  it("has no lowering override left in the maps", () => {
+    /* The two that were: Pasta Oxtail ($24 over a $25 register) is deleted, and
+       Chicken & Waffles ($15 over $15.99) is hidden, which retires its
+       override without anyone having to pick a price. */
+    expect(gen).not.toMatch(/"D0F1SFXHWSQWT::Oxtail"/);
+    const hidden = gen.slice(gen.indexOf("const HIDDEN_ITEMS_IN_APP"));
+    expect(hidden.slice(0, hidden.indexOf("};"))).toMatch(/1PBGJ1BWC3Z52/);
+  });
+
+  it("shows the register's price for pasta oxtail", () => {
+    const pasta = items.find((i) => i.name === "Pasta");
+    const oxtail = pasta.groups.flatMap((g) => g.mods).find((m) => m.n === "Oxtail");
+    expect(oxtail.p).toBe(25);
+  });
+
+  it("keeps Chicken & Waffles off the menu entirely", () => {
+    expect(items.some((i) => i.id === "1PBGJ1BWC3Z52")).toBe(false);
   });
 });

@@ -278,3 +278,32 @@ harmful direction as Whiting, and both predate it. Either:
 
 Whichever, the app and the counter should stop disagreeing on two items where the
 customer notices.
+
+
+---
+
+## Both under-quoting overrides are gone (2026-09-12)
+
+The two rows above marked "app quotes BELOW the register — decide" are settled,
+and neither needed a price change at the register.
+
+| | Was | Decision |
+|---|---|---|
+| Pasta → Oxtail | app $24 / register $25 | **override deleted.** The app follows the register at $25 |
+| Chicken & Waffles | app $15 / register $15.99 | **hidden in the app.** Still rings at the register; the divergence retires without anyone picking a price |
+
+### Every remaining override now RAISES
+
+That is the property worth stating. All ten that still fire — Pork ×4, Pasta
+Penne, Chicken Mac & Cheese, Lunch Specials ×4 — set a price **above** Clover's,
+which is what the printed-menu rule is for: the shop absorbs the difference
+until the dashboard catches up and no customer is ever charged more than they
+were quoted.
+
+**The generator now enforces it.** An override that would set a price below
+Clover's fails the run with a non-zero exit and writes nothing, rather than
+printing a line for someone to scroll past. Verified by forcing it: re-adding
+the Pasta Oxtail override exits 1 and leaves `menu.data.js` untouched.
+
+It has caught three of these in total — Whiting Fish X1 at $2.50 against a $3.00
+register across 21 plates, and the two above — so it is not a hypothetical.

@@ -363,6 +363,17 @@ const HIDDEN_ITEMS_IN_APP = {
      reason it was delisted under, which was wrong. */
   "YQH6NFFB34SVM": "taken off the app menu by the owner; still rings at the register",
 
+  /* Off the app menu by the owner's decision, which also settles a pricing
+     divergence without touching a price: the printed menu says $15.00 and the
+     register rings $15.99, so the app was quoting a dollar under the till.
+     Hiding it removes the quote rather than picking a side.
+
+     Its ITEM_MENU_PRICE entry is deliberately LEFT IN PLACE. Nothing applies it
+     while the item is hidden, and removing it would be a price decision nobody
+     has made — but note that un-hiding without settling $15.00 vs $15.99 brings
+     the divergence straight back. */
+  "1PBGJ1BWC3Z52": "taken off the app menu by the owner; still rings at the register",
+
   /* THE THREE FRIDAY PLATTERS ARE DELIBERATELY NOT HERE.
 
      They were hidden on the reason "no sides group; <twin> is the same price and
@@ -439,7 +450,11 @@ const MENU_PRICE = {
   "907Z8BF726CQ4::Large Jerk": 25,
   // Pasta
   "D0F1SFXHWSQWT::Penne Alla Vodka": 18,
-  "D0F1SFXHWSQWT::Oxtail": 24,
+  /* Pasta Oxtail's override is GONE. It forced $24 against a register that
+     charges $25, so the app quoted a dollar under the till — the same class of
+     mistake as the Oxtail savings badge, and the direction a customer notices.
+     The printed menu says $24 and the register says $25; the owner's call is
+     that the register wins, so there is nothing here to win with. */
   // Sides
   "S032100JQ3P4T::Chicken Mac & Cheese": 7.0,
   // Lunch specials — the chicken plates are $8 on the menu
@@ -644,6 +659,11 @@ const PREP_MINUTES = {
      item with no entry here comes back at 30 if it is ever un-hidden, and a
      test enforces that every hidden item keeps a time to return to. */
   "YQH6NFFB34SVM": DEFAULT_PREP,      // BBQ Chicken — hidden by the owner's decision
+  /* Waffles are made to order, and the sibling dish (Shrimp & Waffles) is
+     already thirty. Stated explicitly because the item is hidden: without an
+     entry it would come back at 30 anyway, but by accident rather than by
+     decision, and a test requires every hidden item to keep a time. */
+  "1PBGJ1BWC3Z52": COOKED_TO_ORDER,   // Chicken & Waffles — hidden by the owner's decision
 };
 
 /* Handed over from the counter, so they never decide a cart's ready time. */
@@ -996,6 +1016,45 @@ MENU.forEach((c) => c.items.forEach((i) => {
 }));
 export const hasChoices = (i) => i.groups.length > 0;
 `;
+
+/* ============================================================================
+   NO OVERRIDE MAY QUOTE BELOW THE REGISTER
+
+   The invariant this whole exercise was about. Clover prices its own orders, so
+   an override that sets a price BELOW Clover's makes the app quote less than the
+   till takes — the customer is told $24 and charged $25. That is the direction
+   a customer notices and complains about, and it has happened three times:
+
+     Whiting Fish X1   $2.50 forced over a register at $3.00, on 21 plates
+     Pasta Oxtail      $24 forced over a register at $25
+     Chicken & Waffles $15 forced over a register at $15.99
+
+   An override that RAISES is the opposite and is the point of the printed-menu
+   rule: the shop absorbs the difference until the dashboard catches up, and
+   nobody is overcharged. Those are reported as pending register changes.
+
+   So a lowering override is an error, not a report. It fails the run rather
+   than printing a line somebody scrolls past — a generated file that quotes
+   under the till should never reach a build.
+   ============================================================================ */
+{
+  const under = priceEdits.filter((e) => e.menu < e.clover);
+  if (under.length) {
+    console.error(`\n  !! ${under.length} override(s) would quote BELOW the register !!\n`);
+    for (const e of under) {
+      console.error(
+        `    ${e.item} / ${e.group} / ${e.option}: ` +
+        `the app would say $${e.menu}, the register charges $${e.clover}`
+      );
+    }
+    console.error(
+      "\n    The customer is quoted less than they are charged, which is the one\n" +
+      "    direction they notice. Either correct the register, or delete the\n" +
+      "    override so the app follows it. Nothing was written.\n"
+    );
+    process.exit(1);
+  }
+}
 
 writeFileSync(OUT, js);
 
