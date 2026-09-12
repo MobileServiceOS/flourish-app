@@ -1052,3 +1052,11 @@ or lose a customer, rather than on markup:
 
 Run `npm test` before committing. The suite is deterministic — if it's flaky,
 that's a bug worth fixing, not retrying.
+
+**Test files run one at a time** (`fileParallelism: false`). `process.env` is
+shared by every file vitest runs concurrently, and three suites still mutate it,
+so a request in one file could see an `APP_KEY` another file had set for two
+assertions and get a 401 — one failure in roughly ten runs. Serialising is a
+workaround; the fix is to thread a config object through `server/guard.js` so no
+test touches the environment. Written up in **docs/TECH-DEBT.md #1**, along with
+the per-process idempotency and rate-limit stores.
