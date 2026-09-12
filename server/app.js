@@ -13,6 +13,7 @@
    - the modifier list resolving cleanly. Most plates are base $0 with the price
      in a size modifier, so an order with unresolved modifications rings up free.
      That is a hard failure, not a warning. */
+import { readFileSync } from "node:fs";
 import express from "express";
 import cors from "cors";
 import {
@@ -35,6 +36,33 @@ import { unavailableInCart, unavailableMessage, dayOfWeek } from "../src/lib/ava
 import { isValidName, isValidPhone, phoneDigits } from "../src/lib/phone.js";
 import { REWARDS, discountFor } from "../src/lib/loyalty.js";
 import { MENU, PLATE_IDS, DRINK_ID, SIDE_ID } from "../src/data/menu.data.js";
+
+/* What is actually running. Added because the app is live and the question
+   "is the deployed proxy newer or older than the published app" had no answer
+   — /health carried nothing to tell versions apart, and there is no safe way to
+   probe for it: every request that would reveal the new reward handling reaches
+   that check only AFTER the point where an old build would have created a real
+   order on the register.
+
+   That matters in one direction especially. A published app that sends
+   `rewardId` against a proxy predating the server-authoritative discount gets
+   no discount at all — the old proxy reads `reward`, which the new client no
+   longer sends — and the customer is charged full price at the counter having
+   been told a reward applied. Being able to read the deployed commit is how
+   that gets caught in seconds instead of at the till. */
+const BUILD = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    return {
+      version: pkg.version ?? null,
+      /* Railway sets this on every deploy. Null anywhere else, which is itself
+         informative: it means this is not a Railway deployment. */
+      commit: (process.env.RAILWAY_GIT_COMMIT_SHA ?? "").slice(0, 7) || null,
+    };
+  } catch {
+    return { version: null, commit: null };
+  }
+})();
 import { ADDRESS } from "../src/lib/restaurant.js";
 import {
   rateLimit, payRateLimit, checkOrigin, requireAppKey, requireAppKeyWith, capCharge,
@@ -293,7 +321,7 @@ export function createApp({
   const PROBE_TTL = 30_000;
 
   app.get("/api/clover/health", async (_req, res) => {
-    const base = { ok: true, ...describe(), sandbox: IS_SANDBOX };
+    const base = { ok: true, ...describe(), sandbox: IS_SANDBOX, build: BUILD };
     if (!CONFIGURED) return res.json({ ...base, configured: false, reason: "NO_CREDENTIALS" });
 
     const at = Date.now();

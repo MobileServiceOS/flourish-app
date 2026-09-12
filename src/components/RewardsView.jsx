@@ -11,15 +11,22 @@ import { SubHeader } from "./shared.jsx";
 
 /* ---------- REWARDS / ACCOUNT ---------- */
 export default function RewardsView({
-  account, points, vouchers, orders, redeem, signOut, onReorder, onDeleteAccount,
+  account, points, petalsAvailable = true, vouchers, orders, redeem, signOut, onReorder, onDeleteAccount,
 }) {
   const [shared, setShared] = useState(null);   // null | "shared" | "copied"
   /* Two taps, never one. Deleting an account is irreversible and the second tap
      is the only chance to say what that actually costs. */
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const tier = tierFor(points);
-  const next = nextTier(points);
-  const pct = next ? Math.min(100, ((points - tier.min) / (next.min - tier.min)) * 100) : 100;
+  /* `points` is null when the server could not be asked. Nothing here invents a
+     number in that case — the balance lives on the server now, and a screen
+     that guessed would be the device asserting money again, which is the whole
+     thing this moved away from. `null - tier.min` is NaN, and "NaN Petals to
+     Bloom" is what happens if this is not handled explicitly. */
+  const known = petalsAvailable && typeof points === "number";
+  const shown = known ? points : 0;
+  const tier = tierFor(shown);
+  const next = nextTier(shown);
+  const pct = known && next ? Math.min(100, ((shown - tier.min) / (next.min - tier.min)) * 100) : 0;
   const usual = orders[0];
   const spent = orders.reduce((t, o) => t + o.total, 0);
 
@@ -32,7 +39,9 @@ export default function RewardsView({
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, opacity: .9 }}>{account.name}</div>
-              <div className="serif" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.1 }}>{points}</div>
+              <div className="serif" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.1 }}>
+                {known ? points : "—"}
+              </div>
               <div style={{ fontSize: 12.5, opacity: .9, marginTop: -2 }}>{CURRENCY_MANY} available</div>
             </div>
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, background: "rgba(255,255,255,.22)",
@@ -40,15 +49,24 @@ export default function RewardsView({
           </div>
           <div className="progress" style={{ margin: "14px 0 8px" }}><span style={{ width: `${pct}%` }} /></div>
           <div style={{ fontSize: 12.5, opacity: .95 }}>
-            {next
-              ? `${currencyAmount(next.min - points)} to ${next.name}`
-              : "Top tier. Thank you for the love 🌺"}
+            {!known
+              ? "We can't reach your balance right now."
+              : next
+                ? `${currencyAmount(next.min - shown)} to ${next.name}`
+                : "Top tier. Thank you for the love 🌺"}
           </div>
         </div>
 
         {/* Two programmes run at once and this is the balance screen, so this is
             where the distinction has to be unmissable. A customer who reads
             nothing else reads the number above it. */}
+        {!known && (
+          <div className="notice" role="status" style={{ margin: "-8px 4px 14px" }}>
+            Your {CURRENCY_MANY} balance isn't available right now, so rewards
+            can't be redeemed. You can still order — nothing is lost.
+          </div>
+        )}
+
         <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, margin: "-8px 4px 18px" }}>
           {SEPARATE_FROM_PERKS}
         </p>
@@ -93,7 +111,10 @@ export default function RewardsView({
           {ONE_REWARD_PER_ORDER}
         </p>
         {REWARDS.map((r) => {
-          const can = points >= r.cost;
+          /* Unreachable balance means no redeeming. Never against a remembered
+             number: the server is the only thing that knows, and it is the one
+             that has to hold the Petals when the order is placed. */
+          const can = known && shown >= r.cost;
           return (
             <div key={r.id} className="card" style={{ padding: 14, marginBottom: 10, display: "flex", gap: 12,
               alignItems: "center", opacity: can ? 1 : .55 }}>
@@ -171,7 +192,7 @@ export default function RewardsView({
                   <li>your saved name and phone number</li>
                   <li>your order history in the app{orders.length ? ` (${orders.length} order${orders.length > 1 ? "s" : ""})` : ""}</li>
                   <li>
-                    your <strong>{currencyAmount(points)}</strong>
+                    your <strong>{known ? currencyAmount(points) : `${CURRENCY_MANY}`}</strong>
                     {vouchers.length > 0 && <> and {vouchers.length} unused reward{vouchers.length > 1 ? "s" : ""}</>}
                   </li>
                 </ul>

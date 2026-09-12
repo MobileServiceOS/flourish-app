@@ -7,6 +7,7 @@ import {
 } from "../lib/clover.js";
 import { trackingStage } from "../lib/cloverOrder.js";
 import { ordersToReconcile } from "../lib/reconcile.js";
+import { getPetalsBalance, claimPetals } from "../lib/clover.js";
 
 /**
  * Is ordering connected?
@@ -285,6 +286,69 @@ export function useReconcileOnLaunch(orders, { enabled = true, onPaid } = {}) {
 
     return () => { alive = false; ctrl.abort(); };
   }, [enabled, onPaid]);
+}
+
+/**
+ * The customer's Petals balance, from the server.
+ *
+ * NOTHING HERE IS CACHED, and that is the point. The balance used to live on the
+ * device, so a reinstall wiped it with no record and staff took the complaint.
+ * Now the server is the only answer: `petals` is a number when the server said
+ * so and `null` when it did not, and every screen has to handle null rather
+ * than falling back to a figure of its own. A remembered balance is the device
+ * asserting money again.
+ *
+ * The first call is a CLAIM rather than a read, once per install, carrying
+ * whatever the device still had so an existing customer does not lose it. The
+ * server applies that once — a unique key behind it, so a retry cannot double
+ * it — and after that `deviceBalance` is never sent again.
+ *
+ * `available: false` means "we could not ask". The rewards screen shows the
+ * balance as unavailable and refuses to redeem; ordering is untouched, because
+ * the app takes no money and an unreachable balance must never cost a sale.
+ */
+export function usePetalsBalance({ name, phone, deviceBalance = 0, enabled = true } = {}) {
+  const [state, setState] = useState({ petals: null, known: false, available: false, error: null });
+  const claimed = useRef(false);
+  /* Read through a ref so a changing device balance cannot re-trigger the
+     claim — the claim is once per install, not once per render. */
+  const pending = useRef(deviceBalance);
+  pending.current = deviceBalance;
+
+  const ask = useCallback(async (signal) => {
+    if (!name || !phone) return;
+    try {
+      const body = { name, phone };
+      const res = claimed.current
+        ? await getPetalsBalance(body, signal)
+        : await claimPetals({ ...body, deviceBalance: pending.current }, signal);
+      claimed.current = true;
+      setState({ petals: res.petals ?? 0, known: Boolean(res.known), available: true, error: null });
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      /* Every failure lands here, including PETALS_UNAVAILABLE from a proxy with
+         no database. The distinction the UI needs is only "can we ask or not",
+         so they are treated the same and the message is kept for the notice. */
+      setState({ petals: null, known: false, available: false, error: e?.message ?? "unavailable" });
+    }
+  }, [name, phone]);
+
+  useEffect(() => {
+    if (!enabled || !name || !phone) {
+      setState({ petals: null, known: false, available: false, error: null });
+      return;
+    }
+    const ctrl = new AbortController();
+    ask(ctrl.signal);
+    return () => ctrl.abort();
+  }, [enabled, name, phone, ask]);
+
+  /* Called after an order and after a payment is confirmed. The server moved
+     the balance; this is how the screen finds out, rather than the client
+     doing its own arithmetic and hoping the two agree. */
+  const refresh = useCallback(() => { ask(); }, [ask]);
+
+  return { ...state, refresh };
 }
 
 /**

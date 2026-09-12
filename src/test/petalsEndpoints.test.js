@@ -274,3 +274,58 @@ describe("with Petals switched off, ordering still works", () => {
     expect(clover.createOrder.mock.calls[0][0].orderCart.discounts[0].amount).toBe(-500);
   });
 });
+
+/* ============================================================================
+   THE 503 PATH, FROM THE APP'S SIDE
+
+   Petals are off in production until a DATABASE_URL exists, and that has to
+   degrade cleanly rather than cost a sale. The app takes no money, so an
+   unreachable balance must block the REWARD and never the food.
+   ============================================================================ */
+
+describe("the live shape today: no database", () => {
+  it("reports a build marker, so the deployed version is knowable", async () => {
+    /* Added because the app and the proxy ship separately and there was no way
+       to tell which version was deployed — and no request can safely probe for
+       it. See docs/TECH-DEBT.md #3. */
+    const { agent } = build({ withPetals: false });
+    const r = await agent.get("/api/clover/health").expect(200);
+    expect(r.body.build).toBeTruthy();
+    expect(r.body.build).toHaveProperty("version");
+    expect(r.body.build).toHaveProperty("commit");
+  });
+
+  it("answers both Petals routes with 503 and a code, not a crash", async () => {
+    const { agent } = build({ withPetals: false });
+    for (const path of ["/api/clover/petals/balance", "/api/clover/petals/claim"]) {
+      const r = await agent.post(path).send({ name: "A B", phone: "3478599413" }).expect(503);
+      expect(r.body.code, path).toBe("PETALS_UNAVAILABLE");
+    }
+  });
+
+  it("takes an order with a reward, at the server's own figure, with no ledger", async () => {
+    /* Documented behaviour for a deployment with no database: the cap is what
+       bounds it, and it is NOT a silent fallback to trusting the client for an
+       amount — the amount is still computed here. */
+    const { agent, clover } = build({ withPetals: false });
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER, rewardId: "r-5off" }).expect(200);
+    expect(r.body.discount).toEqual({ name: "$5 off", amount: 5 });
+    expect(r.body.petalsHeld).toBe(0);
+    expect(clover.createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("still refuses a client-named amount with no database in play", async () => {
+    const { agent, clover } = build({ withPetals: false });
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER, reward: { name: "x", amount: 250 } }).expect(400);
+    expect(r.body.code).toBe("REWARD_AMOUNT_NOT_ACCEPTED");
+    expect(clover.createOrder).not.toHaveBeenCalled();
+  });
+
+  it("settles nothing and throws nothing when the status is polled", async () => {
+    const { agent } = build({ withPetals: false });
+    await agent.post("/api/clover/orders").send({ cart: CART, customer: CUSTOMER }).expect(200);
+    await agent.get("/api/clover/orders/ORD-1/status").expect(200);
+  });
+});

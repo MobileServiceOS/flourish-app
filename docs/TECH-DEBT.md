@@ -96,3 +96,30 @@ is exactly the kind of change nobody remembers to check for. The fix is shared
 storage for all three; the Postgres added for Petals balances is the obvious
 home, and the idempotency table wants the same `unique` treatment the ledger
 gets.
+
+
+---
+
+## 3. `/health` gained a build marker because the deployed version was unknowable
+
+**Status: fixed. Recorded because the gap is the kind that recurs.**
+
+The app went live while the proxy and the app ship separately — the app through
+App Store review, the proxy on every push to main. So they can be different
+versions, and there was no way to tell which.
+
+`/health` returned the same key set before and after the
+server-authoritative-discount change, and **no request can safely probe for the
+difference**: every path that would reveal the new reward handling reaches it
+only after the point where an older build would already have created a real
+order on the live register.
+
+One direction is genuinely harmful. A published app that sends `rewardId`
+against a proxy predating that change gets **no discount at all** — the old
+proxy reads `reward`, which the new client no longer sends — and the customer is
+charged full price at the counter having been told a reward applied, with the
+voucher consumed.
+
+`/health` now carries `build: { version, commit }`, with `commit` from
+`RAILWAY_GIT_COMMIT_SHA`. Before shipping a build that changes the client/proxy
+contract, read it and confirm the proxy is the newer of the two.

@@ -102,8 +102,12 @@ describe("points are awarded when Clover confirms payment", () => {
     await placeOrder(user);
     expect(screen.queryByText(new RegExp(`${CURRENCY_MANY} earned!`))).not.toBeInTheDocument();
 
-    // The customer hands over a card at the counter.
+    /* The customer hands over a card at the counter. The SERVER credits the
+       Petals — the app has no arithmetic of its own any more — so the stub does
+       what the real server does and moves the number. The client's job is to
+       notice, by asking again. */
     calls.setPayment({ paid: true, paymentState: "PAID", amountPaid: 2000, settled: true });
+    calls.setPetals(20);
     await vi.advanceTimersByTimeAsync(30_000);
 
     expect(await screen.findByText(new RegExp(`${CURRENCY_MANY} earned!`))).toBeInTheDocument();
@@ -111,17 +115,28 @@ describe("points are awarded when Clover confirms payment", () => {
     expect(await pointsBalance(user)).toBe(20);
   });
 
-  it("awards them exactly once, however many times the poll comes back paid", async () => {
+  it("re-reads the balance once, not on every poll", async () => {
+    /* What "exactly once" means now that the server owns the arithmetic: the
+       client must not hammer the balance endpoint every thirty seconds for the
+       rest of the afternoon. Double-crediting is impossible at the source — the
+       ledger's keys see to that — so the guard worth testing here is the
+       refresh, not the sum. */
     const { user, calls } = await renderApp();
     await signIn(user);
     await placeOrder(user);
 
     calls.setPayment({ paid: true, paymentState: "PAID", amountPaid: 2000, settled: true });
+    calls.setPetals(20);
+    const before = calls.petals.length;
     await vi.advanceTimersByTimeAsync(30_000);
     await screen.findByText(new RegExp(`${CURRENCY_MANY} earned!`));
+    const afterFirst = calls.petals.length;
+
     // Several more polling intervals go by.
     await vi.advanceTimersByTimeAsync(120_000);
 
+    expect(afterFirst).toBeGreaterThan(before);        // it did ask
+    expect(calls.petals.length).toBe(afterFirst);      // and only once
     expect(await pointsBalance(user)).toBe(20);
   });
 
@@ -223,23 +238,30 @@ describe("the award happens exactly once", () => {
     await placeOrder(user);
 
     calls.setPayment({ paid: true, paymentState: "PAID", amountPaid: 2000, settled: true });
+    calls.setPetals(20);
     await vi.advanceTimersByTimeAsync(30_000);
     await screen.findByText(new RegExp(`${CURRENCY_MANY} earned!`));
     expect(await pointsBalance(user)).toBe(20);
 
-    /* The order is stored with pointsAwarded set, which is the guard that
-       matters across launches — the in-memory one dies with the session. */
-    // Read it back the way the app does — Capacitor Preferences owns the key.
+    /* The order is stored with pointsAwarded set, which is what stops the
+       tracking screen re-announcing it. The BALANCE is deliberately NOT stored
+       as truth any more — a reinstall used to wipe it with no record, so the
+       ledger on the server is the only answer and this device keeps no
+       competing copy. */
     const { loadAccount } = await import("../lib/storage.js");
     const saved = await loadAccount();
-    expect(saved.points).toBe(20);
     expect(saved.orders[0].pointsAwarded).toBe(true);
     expect(saved.orders[0].earnable).toBe(20);
 
-    // Cold start against that same stored account.
+    /* Cold start against that same stored account, with the server still
+       holding the 20 it credited — which is the whole point of the balance
+       living there. The order is paid, so the launch sweep asks about it again
+       and the server settles it again; the answer must still be 20 and never
+       40. Double-crediting is impossible at the source (the ledger's keys), and
+       this proves the client does not layer its own arithmetic on top. */
     cleanup();
     vi.resetModules();
-    stubOnlineProxy({ vi, payment: { ...unpaidOrder(), paid: true, settled: true } });
+    stubOnlineProxy({ vi, petals: 20, payment: { ...unpaidOrder(), paid: true, settled: true } });
     const { default: App2 } = await import("../App.jsx");
     render(<App2 />);
     await screen.findByRole("button", { name: /staff/i });
