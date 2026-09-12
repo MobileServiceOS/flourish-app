@@ -40,7 +40,7 @@ complaint.
 
 ## Description
 
-*(2536 characters — the limit is 4,000)*
+*(2647 characters — the limit is 4,000)*
 
 ```
 Real Caribbean food from Flourish, on Laconia Ave in the Bronx. Order ahead, skip
@@ -92,13 +92,20 @@ takes a payment.
 
 PETALS
 
-Earn a Petal for every dollar once you have paid. 100 Petals is $5 off, or turn
-them into a free drink, a free side, loaded seafood mac and cheese, or a free
-plate. Petals don't expire. Signing up takes a name and a phone number - no
-email, no password, no card on file.
+Earn a Petal for every dollar once you have paid.
 
-Petals are separate from the Perks you earn by texting the code on your receipt
-at the counter. Two programmes, two balances, and they don't combine.
+  70   Free drink - any soda, juice or water up to $3.50
+  100  $5 off any order
+  120  Free side - any side up to $6
+  160  Free seafood mac and cheese
+  350  Free plate - any regular plate up to $22
+
+Petals don't expire. Signing up takes a name and a phone number - no email, no
+password, no card on file.
+
+One reward per order. Petals are separate from the Perks you earn by texting the
+code on your receipt at the counter - two programmes, two balances, and they
+don't combine.
 
 REORDER IN ONE TAP
 
@@ -349,7 +356,10 @@ screenshot rejection, and the text is needed the moment 1.0.1 ships.*
 Petals. The rewards balance has a name of its own now, so it is never confused
 with the Perks you earn by texting your receipt code at the counter. Same maths
 either way: a Petal per dollar, 100 Petals for $5 off. The two balances are
-separate and don't combine.
+separate and don't combine, and it's one reward per order.
+
+New reward ladder: a free drink at 70 Petals, $5 off at 100, a free side at 120,
+seafood mac at 160 and a free plate at 350.
 
 Your Petals now land even if you close the app. They used to be credited only
 while the order screen was open, so paying at the counter with the app shut

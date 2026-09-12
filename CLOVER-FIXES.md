@@ -432,3 +432,23 @@ and "Coca Cola" for $3.00, with nothing on any of them saying what size it is.
 It reads as one product priced twice, and the customer picks $1.25. If the $3.00
 is a 20oz bottle it needs to say so — `Coca Cola (20oz)` and
 `Can Soda (12oz)` would settle it. If it is a duplicate, delete it.
+
+---
+
+## 14. Sales tax — verified matching, nothing to do
+
+Recorded here because it was an open divergence and is now closed, and because
+it is the one number that can drift without a line of code changing.
+
+Read from the live register: the default tax rate is **"Sales Tax", 8.875%**
+(Clover reports `rate: 887500`, `isDefault: true`). `TAX_RATE` in
+`src/lib/money.js` is `0.08875`. They agree.
+
+That matters more than it looks. The atomic order carries **no tax field** — by
+design, so Clover applies the merchant's own rules and the card follows the
+register. The app's rate is therefore only the estimate shown at checkout, and
+if the dashboard rate is ever changed the app will quietly quote the old one
+until someone notices. Re-read this after any dashboard change.
+
+8.875% is the combined New York City rate on prepared food: 4% state + 4.5%
+city + 0.375% MCTD.

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ShoppingBag, Plus, Minus, Sparkles, Ticket, Clock } from "lucide-react";
 import { money } from "../lib/money.js";
 import { cleanLineNote, LINE_NOTE_MAX } from "../lib/cloverOrder.js";
-import { rewardOf, discountFor, currencyAmount } from "../lib/loyalty.js";
+import { rewardOf, discountFor, currencyAmount, ONE_REWARD_PER_ORDER } from "../lib/loyalty.js";
 import { isOpen, nextOpening, describeOpening, HOURS_LINE } from "../lib/hours.js";
 import { cartPrepMinutes, isCookedToOrder, COOKED_TO_ORDER_MINUTES } from "../lib/prep.js";
 import { SubHeader, Empty } from "./shared.jsx";
@@ -131,7 +131,10 @@ export default function CartView({ cart, subtotal, saved, account, setQty, remov
           )}
           {vouchers && vouchers.length > 0 && (
             <>
-              <h3 className="serif" style={{ fontWeight: 700, fontSize: 16, margin: "20px 4px 10px" }}>Your rewards</h3>
+              <h3 className="serif" style={{ fontWeight: 700, fontSize: 16, margin: "20px 4px 4px" }}>Your rewards</h3>
+              <p style={{ color: "var(--muted)", fontSize: 11.5, lineHeight: 1.5, margin: "0 4px 10px" }}>
+                {ONE_REWARD_PER_ORDER}
+              </p>
               {vouchers.map((v) => {
                 const r = rewardOf(v);
                 const worth = discountFor(v, cart);

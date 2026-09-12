@@ -3,7 +3,7 @@ import { Gift, LogOut, Ticket, RotateCcw, Share2, AlertTriangle } from "lucide-r
 import { money } from "../lib/money.js";
 import {
   REWARDS, tierFor, nextTier,
-  CURRENCY_MANY, CURRENCY_RATE_LINE, SEPARATE_FROM_PERKS, currencyAmount,
+  CURRENCY_MANY, CURRENCY_RATE_LINE, SEPARATE_FROM_PERKS, currencyAmount, ONE_REWARD_PER_ORDER,
 } from "../lib/loyalty.js";
 import { formatPhone } from "../lib/phone.js";
 import { shareFlourish } from "../lib/share.js";
@@ -88,7 +88,10 @@ export default function RewardsView({
         )}
 
         {/* redeem */}
-        <h3 className="serif" style={{ fontWeight: 700, fontSize: 18, margin: "22px 4px 10px" }}>Redeem {CURRENCY_MANY}</h3>
+        <h3 className="serif" style={{ fontWeight: 700, fontSize: 18, margin: "22px 4px 4px" }}>Redeem {CURRENCY_MANY}</h3>
+        <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, margin: "0 4px 12px" }}>
+          {ONE_REWARD_PER_ORDER}
+        </p>
         {REWARDS.map((r) => {
           const can = points >= r.cost;
           return (

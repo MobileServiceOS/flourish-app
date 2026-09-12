@@ -140,6 +140,19 @@ export function resolveReward(body, pricedCart, cat) {
 
   if (!rewardId) return { reward: null };
 
+  /* One reward per order, enforced by shape as well as by intent: an array of
+     ids, or anything that is not a plain string, is refused rather than
+     coerced. Two rewards on one order is the stacking this forbids, and the
+     app cannot see the OTHER half — a customer using a Perks $5 off at the
+     counter on this same order is invisible to every API we have, which is why
+     the copy says one reward per order and staff hold the Perks side. */
+  if (typeof rewardId !== "string" || Array.isArray(body?.rewardIds)) {
+    return { error: { status: 400, body: {
+      error: "One reward per order.",
+      code: "ONE_REWARD_PER_ORDER",
+    } } };
+  }
+
   const r = REWARDS.find((x) => x.id === rewardId);
   if (!r) {
     return { error: { status: 400, body: {

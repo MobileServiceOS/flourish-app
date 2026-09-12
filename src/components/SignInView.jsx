@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { Gift, Award } from "lucide-react";
-import { REWARDS, CURRENCY_ONE, CURRENCY_MANY, SEPARATE_FROM_PERKS } from "../lib/loyalty.js";
+import {
+  REWARDS, CURRENCY_ONE, CURRENCY_MANY, SEPARATE_FROM_PERKS, ONE_REWARD_PER_ORDER,
+} from "../lib/loyalty.js";
 import { formatPhone, phoneDigits, isValidPhone, isValidName } from "../lib/phone.js";
 import { Hummingbird, SubHeader, Section } from "./shared.jsx";
 
@@ -77,7 +79,7 @@ export default function SignInView({ onSignIn }) {
             receipt code for Perks needs to know this is a second, separate
             balance before they start expecting one total. */}
         <p style={{ color: "var(--muted)", fontSize: 11.5, lineHeight: 1.5, margin: "12px 4px 0" }}>
-          {SEPARATE_FROM_PERKS}
+          {ONE_REWARD_PER_ORDER} {SEPARATE_FROM_PERKS}
         </p>
       </div>
     </>

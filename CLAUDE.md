@@ -159,6 +159,10 @@ Two things to know:
   deliberately carries no tax field; Clover applies the merchant tax rules when
   it prices the order. So `TAX_RATE` must match the rate configured in the
   Clover dashboard, or the checkout total and the till disagree.
+  **Verified live: the register's default "Sales Tax" is 8.875%** (Clover
+  reports `rate: 887500`, `isDefault: true`), so the two agree today. That is
+  worth re-checking after anyone touches the dashboard — it is the one number
+  here that can drift without a single line of code changing.
 - **The card is charged what Clover priced**, falling back to the local estimate
   only when Clover does not return a total. Clover is the register — if the two
   ever disagree, the card follows the order, not the app.
@@ -745,10 +749,47 @@ brand: the launch screen opens a ring of petals and the tiers are Seedling /
 Bloom / Flourish. ("Blooms" would have collided with a tier name.)
 
 The maths is deliberately identical to Perks — 1 Petal per $1, 100 Petals = $5
-off — so neither balance is the worse one to hold. `REWARDS` carries a plain
-`$5 off` at 100 alongside the item rewards, so "100 = $5" is literally true in
-the app rather than a slogan. `SEPARATE_FROM_PERKS` goes wherever a balance is
-shown and before anyone joins.
+off — so neither balance is the worse one to hold. `SEPARATE_FROM_PERKS` goes
+wherever a balance is shown and before anyone joins.
+
+### The ladder, and why these numbers
+
+| reward | cost | cap | cents per Petal |
+|---|---|---|---|
+| Free drink | 70 | $3.50 | 5.0 |
+| $5 off | 100 | $5.00 | 5.0 |
+| Free side | 120 | $6.00 | 5.0 |
+| Free seafood mac | 160 | $8.00 | 5.0 |
+| Free plate | 350 | $22.00 | **6.3** |
+
+Four tiers land on exactly the Perks rate. The plate is richer on purpose:
+$350 of spend is a long way to save, and the top of a ladder has to be worth
+the climb. **The old free drink at 60 Petals returned 9.2%**, which made every
+other tier pointless to save for — a customer maximising value took drinks
+forever and never touched the rest. Do not move a number without recomputing
+the rate; a test pins all five.
+
+**Two kinds of reward, because one rule cannot serve both.** `kind: "item"`
+makes a qualifying item free, and the cap decides what QUALIFIES: a $10 Pasta
+side is not a "free side up to $6", it is excluded. `kind: "money"` is a flat
+sum off the order, capped at the reward's value — `$5 off` has to work this way
+because every plate costs more than $5, so an item-style cap would exclude the
+whole menu.
+
+The old code capped the *discount* rather than the eligibility, which failed in
+the direction that looks safe: a $10 Pasta claimed as a free side quietly became
+$6 off, and the customer paid $4 for a side the reward never covered. The $8
+seafood mac sits over the free-side cap deliberately — it has its own tier, and
+letting the cheaper reward buy it would make the dearer one pointless.
+
+**Caps are enforced in the proxy**, not just greyed out in the sheet — see the
+discount section above. And it is **one reward per order**, refused by shape as
+well as by intent.
+
+The half the app cannot police: Perks balances are unreadable through every API,
+so a customer using a Perks $5 off at the counter on an order that already
+carries a Petals reward is invisible here. `ONE_REWARD_PER_ORDER` says so
+wherever a reward is offered, and staff hold the Perks side at the register.
 
 Every one of those strings lives in `src/lib/currency.js`, which imports
 nothing — the kitchen ticket needs the name too, and that file is shared with
@@ -882,7 +923,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 734 tests
+npm test            # 753 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
