@@ -32,7 +32,7 @@ const need = (at, where) => {
   return at;
 };
 
-export async function createPgStore({ connectionString, ssl } = {}) {
+export async function createPgStore({ connectionString, ssl, schema } = {}) {
   const url = connectionString ?? process.env.DATABASE_URL;
   if (!url) throw new Error("createPgStore needs a DATABASE_URL");
 
@@ -47,6 +47,13 @@ export async function createPgStore({ connectionString, ssl } = {}) {
   }
 
   const { Pool } = pg.default ?? pg;
+  /* A named schema, so the contract tests can run against a real database in a
+     namespace of their own and drop it afterwards. Production passes nothing
+     and gets `public`. Validated rather than interpolated blind — it goes into
+     DDL, where a parameter cannot. */
+  if (schema !== undefined && !/^[a-z_][a-z0-9_]{0,62}$/.test(schema)) {
+    throw new Error(`Unsafe schema name: ${schema}`);
+  }
   const pool = new Pool({
     connectionString: url,
     /* Railway's managed Postgres presents a certificate the default settings
@@ -55,7 +62,19 @@ export async function createPgStore({ connectionString, ssl } = {}) {
     max: 5,
   });
 
-  await pool.query(readFileSync(resolve(HERE, "schema.sql"), "utf8"));
+  if (schema) {
+    await pool.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
+    /* Every pooled connection, not just the first: the pool opens more on
+       demand and one that defaulted to `public` would read an empty database. */
+    pool.on("connect", (client) => { client.query(`SET search_path TO ${schema}`); });
+    const setup = await pool.connect();
+    try {
+      await setup.query(`SET search_path TO ${schema}`);
+      await setup.query(readFileSync(resolve(HERE, "schema.sql"), "utf8"));
+    } finally { setup.release(); }
+  } else {
+    await pool.query(readFileSync(resolve(HERE, "schema.sql"), "utf8"));
+  }
 
   const rowToCustomer = (r) => r && ({
     id: Number(r.id), phone: r.phone, name: r.name, createdAt: r.created_at,
@@ -67,8 +86,27 @@ export async function createPgStore({ connectionString, ssl } = {}) {
   });
 
   const bind = (q) => ({
+    /* `FOR UPDATE` is the whole of the concurrency control, and it is not
+       decoration.
+
+       Every balance-changing path starts by finding the customer, so locking
+       the customer row here serialises those paths PER CUSTOMER — and only per
+       customer, so two different people ordering at the same moment never wait
+       on each other.
+
+       Proved against a real Postgres 17 before this line existed. Two
+       transactions, interleaved so both read before either wrote, against a
+       200-Petal balance with a 120 hold each: both read 200, both decided they
+       could afford it, both committed, and the balance ended at **-40**. READ
+       COMMITTED does not stop that — `SELECT SUM(delta)` takes no locks, so
+       check-then-insert has a window between the check and the insert. The
+       in-memory store cannot catch it because it serialises every transaction,
+       which is exactly why this needed a real database to find.
+
+       Two customers tapping "place order" in the same second is not a rare
+       event in a lunch rush. */
     async findCustomerByPhone(phone) {
-      const { rows } = await q("SELECT * FROM petals_customer WHERE phone = $1", [phone]);
+      const { rows } = await q("SELECT * FROM petals_customer WHERE phone = $1 FOR UPDATE", [phone]);
       return rowToCustomer(rows[0]) ?? null;
     },
 
@@ -166,5 +204,11 @@ export async function createPgStore({ connectionString, ssl } = {}) {
       }
     },
     async close() { await pool.end(); },
+    /* Tests only: tear the namespace down. Refuses without one, so this can
+       never drop `public` on a real database. */
+    async dropSchema() {
+      if (!schema) throw new Error("dropSchema needs a named schema");
+      await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    },
   };
 }

@@ -32,12 +32,24 @@ const DELISTED = new Set([
   "NH99VMKKGJ572",   // Baked Chicken — no longer offered
   // Not on the printed menu. Seafood Fridays, both drinks, Ackee & Shrimp and
   // Seafood Stew Peas are deliberately kept even though the trifold omits them.
-  /* These two stay hidden for a PRICING reason, not a menu one — both are
-     $0.00 in Clover, so selling them through the app would give the plate away.
-     Curry Chicken's old reason ("sold only as the $8 lunch special") was simply
-     wrong: the item sold 15 times in its own right. See CLOVER-FIXES #8. */
-  "YQH6NFFB34SVM",   // BBQ Chicken — $0.00 in Clover, would ring free
-  "49BD3KVSBHXRR",   // Curry Chicken — $0.00 in Clover, would ring free (sells 15x at the counter)
+  /* NEITHER CHICKEN PLATE WAS EVER MISPRICED, and both were delisted here on
+     that false reading. Checked against the live register:
+
+       Curry Chicken  49BD3KVSBHXRR  base $0 + group: Medium $13, Large $15
+       BBQ Chicken    YQH6NFFB34SVM  base $0 + group: Medium $13, Large $16
+
+     Base-$0-with-a-priced-size-group is the NORMAL shape here — Oxtail, Salmon,
+     Wings and fifteen others are built identically — so "$0.00 in Clover, would
+     ring free" was a price column read without the modifier-group column beside
+     it. The same mistake, a third time, in a row of findings that also wrongly
+     called twelve Breakfast items $0.00. A value read in isolation from the
+     structure that gives it meaning.
+
+     Curry Chicken is therefore un-delisted: it sells 15 times in its own right
+     and there was never a reason to hide it. BBQ Chicken moves to
+     HIDDEN_ITEMS_IN_APP, because the owner has taken it off the app menu — a
+     decision, not a pricing fault, and the distinction is the whole point of
+     keeping these maps separate. */
   "PEB98GZ1MBF6P",   // Lobster Tail (No Meal)
   "K7EX5APPAXPEJ",   // Lobster Roll & Fries
   "S0GK9MD2NE414",   // Salmon (1 Piece)
@@ -270,6 +282,11 @@ const ITEM_DAYS = {
 
    Nothing here is deleted at the register. Staff can still ring all of it. */
 const HIDDEN_ITEMS_IN_APP = {
+  /* Off the app menu by the owner's decision. Priced correctly at the register
+     (Medium $13, Large $16) and still sellable there — this is NOT the pricing
+     reason it was delisted under, which was wrong. */
+  "YQH6NFFB34SVM": "taken off the app menu by the owner; still rings at the register",
+
   /* The three Friday platters with no modifier groups. Their NAME and their
      copy both promise "Shrimp & 2 Sides" and the SKU cannot record a side, so
      ordering one tells the kitchen nothing about what comes with it. Each is
@@ -547,6 +564,12 @@ const PREP_MINUTES = {
   "06Z80836S0GZR": COOKED_TO_ORDER,   // Fish Platter (Shrimp & 2 Sides)
   "CAFAH5FKPTRW8": COOKED_TO_ORDER,   // Shrimp (Seafood Fridays)
   "0NQ5E11VABFDY": COOKED_TO_ORDER,   // Salmon (Shrimp & 2 Sides)
+
+  /* Off the steam table like the other chicken plates, so fifteen — but stated
+     explicitly rather than left to the default, because it is HIDDEN. A hidden
+     item with no entry here comes back at 30 if it is ever un-hidden, and a
+     test enforces that every hidden item keeps a time to return to. */
+  "YQH6NFFB34SVM": DEFAULT_PREP,      // BBQ Chicken — hidden by the owner's decision
 };
 
 /* Handed over from the counter, so they never decide a cart's ready time. */

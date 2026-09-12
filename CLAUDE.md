@@ -957,7 +957,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 817 tests
+npm test            # 817 tests (+9 more with a test database)
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
@@ -1086,6 +1086,21 @@ or lose a customer, rather than on markup:
 
 Run `npm test` before committing. The suite is deterministic — if it's flaky,
 that's a bug worth fixing, not retrying.
+
+**The Petals store has a second suite that needs a real database.**
+`src/test/petalsPg.test.js` skips unless `PETALS_TEST_DATABASE_URL` points at
+one, and it earns its keep: it found an overdraw the in-memory store cannot
+catch, because that store serialises every transaction and so cannot fail a
+concurrency test. Run it against a throwaway cluster, never production:
+
+```bash
+PETALS_TEST_DATABASE_URL=postgres://user@127.0.0.1:5432/db npm test
+```
+
+The overdraw and the `FOR UPDATE` that fixes it are written up in
+docs/PETALS-SERVER-SCOPE.md. The short version: `SELECT SUM(delta)` takes no
+locks, so check-then-insert at READ COMMITTED let two concurrent orders both
+pass a balance check and the balance reached **-40**.
 
 **Test files run one at a time** (`fileParallelism: false`). `process.env` is
 shared by every file vitest runs concurrently, and three suites still mutate it,

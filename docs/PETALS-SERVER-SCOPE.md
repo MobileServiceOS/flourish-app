@@ -346,3 +346,73 @@ SQL. Run it once against a real database before trusting it.
   boot banner says so. There is deliberately no in-memory fallback — that would
   lose balances on the next deploy, silently
 - run the suite once against a real Postgres
+
+
+---
+
+# Run against a real Postgres — what the SQL actually did
+
+Run against Postgres 17 locally (a throwaway cluster, never production). Seven
+of the eight checks behaved exactly as the in-memory store did. One did not,
+and it was the one the in-memory store is structurally incapable of catching.
+
+| | Result |
+|---|---|
+| schema applies, claim round-trips | as expected |
+| `ON CONFLICT (idem_key) DO NOTHING` makes a repeat credit a no-op | as expected — `RETURNING id` comes back empty, which the store reads correctly |
+| `SUM(delta)` | returns a **number**, not the string `pg` gives for some bigint aggregates |
+| NULL `idem_key` rows | do **not** collide — Postgres treats NULLs as distinct, so unkeyed rows are not deduped. Correct, and now asserted so nobody makes the column NOT NULL |
+| rollback after a mid-transaction write | discards it completely |
+| `created_at < $1` against a JS Date | compares correctly as timestamptz |
+| settle credits the earnable exactly once | as expected |
+| **two orders racing one balance** | **OVERDREW to −40** |
+
+## The overdraw
+
+`openOrder` checked the balance and then inserted, inside one transaction at
+READ COMMITTED. `SELECT SUM(delta)` takes no locks, so there is a window
+between the check and the insert. Two transactions interleaved so both read
+before either wrote, against a 200-Petal balance with a 120 hold each:
+
+```
+A reads balance: 200
+B reads balance: 200     <- both see the full balance
+each needs 120; each thinks it can afford it: true
+A committed: true   B committed: true
+final balance: -40
+```
+
+Two customers tapping "place order" in the same second is a lunch rush, not an
+edge case.
+
+**Fix:** `FOR UPDATE` on the customer lookup in `store.pg.js`. Every
+balance-changing path starts by finding the customer, so locking that row
+serialises those paths per customer — and only per customer, so two different
+people never wait on each other. Re-run: B blocks, then reads 80 once A
+commits, and correctly refuses. Final balance 80.
+
+## Why the in-memory store could not find it
+
+Its `tx` serialises: every transaction queues behind the last. I had called
+that "stricter than Postgres, the right direction for a test double". That was
+wrong in the way that mattered — **a serialised double cannot fail a
+concurrency test**, so it passed identically before and after the fix.
+
+## A test that nearly proved nothing
+
+My first version of the race test called `openOrder` twice inside
+`Promise.allSettled`. It passed. It also passed with `FOR UPDATE` removed,
+because two fast transactions do not interleave — the first finishes before the
+second starts.
+
+`src/test/petalsPg.test.js` now drives the interleaving through raw clients,
+replaying the statement sequence `openOrder` performs, and **runs it both
+ways**: it asserts the unlocked form reaches −40 and the locked form reaches 80.
+It cannot pass vacuously. A second, source-level test pins the store to the
+locking form, so the behaviour test and the code cannot drift apart.
+
+The suite skips all of it unless `PETALS_TEST_DATABASE_URL` is set:
+
+```bash
+PETALS_TEST_DATABASE_URL=postgres://user@127.0.0.1:5432/db npm test
+```
