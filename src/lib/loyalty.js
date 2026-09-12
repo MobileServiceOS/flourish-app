@@ -11,39 +11,109 @@ import { CURRENCY_ONE, CURRENCY_MANY } from "./currency.js";
 /* ---------- LOYALTY ---------- */
 export const TIERS = [
   { name: "Seedling", min: 0,   perk: `1 ${CURRENCY_ONE} per $1 spent` },
-  { name: "Bloom",    min: 250, perk: `Free side every 100 ${CURRENCY_MANY}` },
+  { name: "Bloom",    min: 250, perk: `Free side every 120 ${CURRENCY_MANY}` },
   { name: "Flourish", min: 750, perk: "Priority pickup + birthday plate" },
 ];
 
-/* $5 off for 100, which is exactly the Perks rate. It is first in the list
-   because it is the one a customer can check against their receipt: the other
-   rewards are worth more than $5 at 100-250, and a ladder with no plain
-   equivalence in it makes "same as Perks" unverifiable.
+/* One reward per order, and the app cannot police the other half of that.
+   Perks balances are unreadable through any API, so if a customer uses a Perks
+   $5 off at the counter on an order that already carries a Petals reward,
+   nothing here can see it. Said outright wherever a reward is offered; staff
+   enforce the Perks side at the register. */
+export const ONE_REWARD_PER_ORDER =
+  `One reward per order — ${CURRENCY_MANY} or Perks, not both. Staff apply Perks at the register.`;
 
-   `cap: 5` with a match on every line is what makes it $5 rather than $5-or-
-   the-item: `discountFor` takes the highest eligible line and caps it. */
+/* ============================================================================
+   THE LADDER, AND WHY THESE NUMBERS
+
+   Four tiers land at exactly 5 cents per Petal, which is the Perks baseline —
+   100 points for $5 off. Holding one balance should never feel like holding the
+   worse one. The plate is deliberately richer at 6.3%, because $350 of spend is
+   a long way to save and the top of a ladder has to be worth the climb.
+
+   The old free drink at 60 Petals was 9.2% and made every other tier pointless
+   to save for: a customer maximising value took drinks forever and never
+   touched the rest. That is the mistake these numbers exist to correct, so do
+   not move one without recomputing the rate.
+
+     reward             cost   cap    cents per Petal
+     Free drink          70   $3.50   5.0
+     $5 off             100   $5.00   5.0
+     Free side          120   $6.00   5.0
+     Free seafood mac   160   $8.00   5.0
+     Free plate         350  $22.00   6.3   <- deliberately richer
+
+   TWO KINDS OF REWARD, because one rule cannot serve both.
+
+   `kind: "item"` makes one qualifying item free, and the cap decides which
+   items QUALIFY. A $10 Pasta side is not a "free side up to $6" — it is
+   excluded, not discounted by six. Same for the $5.50 juices and the $6
+   coconut water against the $3.50 drink: they are not what the reward is.
+
+   `kind: "money"` is a flat amount off the order, capped at the reward's
+   value. $5 off has to work this way — every plate on the menu costs more than
+   $5, so an item-style cap would exclude the entire menu and the reward would
+   never apply to anything.
+
+   Getting this wrong in the safe-looking direction is what the old code did: it
+   capped the DISCOUNT rather than the eligibility, so a $10 Pasta claimed as a
+   free side quietly became $6 off and the customer paid $4 for a side the
+   reward did not cover.
+   ============================================================================ */
 export const REWARDS = [
-  { id: "r-5off",  cost: 100, name: "$5 off",           desc: "Five dollars off any order.", cap: 5,
-    needs: "anything",             match: () => true },
-  { id: "r-drink", cost: 60,  name: "Free drink",       desc: "Any drink on the menu.",   cap: 6,
-    needs: "a drink",              match: (l) => l.itemId === DRINK_ID },
-  { id: "r-side",  cost: 100, name: "Free side",        desc: "Any side up to $6.",       cap: 6,
-    needs: "a side",               match: (l) => l.itemId === SIDE_ID },
-  { id: "r-mac",   cost: 150, name: "Free seafood mac", desc: "Loaded seafood mac and cheese.", cap: 8,
+  { id: "r-drink", cost: 70,  kind: "item",  cap: 3.5,
+    name: "Free drink",       desc: "Any soda, juice or water up to $3.50.",
+    needs: "a drink under $3.50",
+    match: (l) => l.itemId === DRINK_ID },
+
+  { id: "r-5off",  cost: 100, kind: "money", cap: 5,
+    name: "$5 off",           desc: "Five dollars off any order.",
+    needs: "anything",
+    match: () => true },
+
+  { id: "r-side",  cost: 120, kind: "item",  cap: 6,
+    name: "Free side",        desc: "Any side up to $6.",
+    needs: "a side under $6",
+    match: (l) => l.itemId === SIDE_ID },
+
+  /* The $8 seafood mac is over the free-side cap on purpose — it has its own
+     tier, and letting the cheaper reward cover it would make this one pointless. */
+  { id: "r-mac",   cost: 160, kind: "item",  cap: 8,
+    name: "Free seafood mac", desc: "Loaded seafood mac and cheese.",
     needs: "seafood mac & cheese",
     match: (l) => l.itemId === SIDE_ID && /seafood mac/i.test(l.meta || "") },
-  { id: "r-plate", cost: 250, name: "Free plate",       desc: "Any regular plate up to $22.", cap: 22,
-    needs: "a plate",              match: (l) => l.plate },
+
+  { id: "r-plate", cost: 350, kind: "item",  cap: 22,
+    name: "Free plate",       desc: "Any regular plate up to $22.",
+    needs: "a plate under $22",
+    match: (l) => l.plate },
 ];
+
+/** Cents per Petal a reward returns. Used by a test to pin the ladder. */
+export const rateOf = (r) => r.cap / r.cost;
 export const rewardOf = (v) => (v ? REWARDS.find((r) => r.id === v.rid) : null);
 
-// Discount = the single highest-priced eligible line, capped at the reward's value.
+/**
+ * What a reward takes off this cart. 0 means it does not apply at all.
+ *
+ * "item" — the dearest qualifying line, free. The cap filters which lines
+ *          qualify, so an over-cap item is excluded rather than part-paid.
+ * "money" — a flat sum, capped at the reward's value and at the cart, so a
+ *          $3 order cannot take $5 off and end up owing nothing.
+ */
 export function discountFor(voucher, cart) {
   const r = rewardOf(voucher);
   if (!r) return 0;
-  const elig = cart.filter(r.match);
+  const lines = Array.isArray(cart) ? cart : [];
+
+  if (r.kind === "money") {
+    const total = lines.reduce((n, l) => n + (Number(l.price) || 0), 0);
+    return Math.min(r.cap, Math.max(0, total));
+  }
+
+  const elig = lines.filter((l) => r.match(l) && (Number(l.price) || 0) <= r.cap);
   if (!elig.length) return 0;
-  return Math.min(Math.max(...elig.map((l) => l.price)), r.cap);
+  return Math.max(...elig.map((l) => Number(l.price) || 0));
 }
 export const tierFor = (pts) => TIERS.reduce((t, x) => (pts >= x.min ? x : t), TIERS[0]);
 export const nextTier = (pts) => TIERS.find((t) => pts < t.min) || null;

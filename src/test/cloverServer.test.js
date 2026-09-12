@@ -231,6 +231,66 @@ describe("order push", () => {
       .toBe("$5 off (FL12SCRIPT34)");
   });
 
+  /* ---- the caps are enforced here, not just in the sheet ---- */
+
+  it("refuses a free side against a side that costs more than the cap", async () => {
+    /* Pasta is $10 as a standalone side and the free-side reward covers $6. The
+       UI greys it out; this is what stops a crafted request taking a $10 side
+       for nothing. */
+    const pastaSide = [{
+      name: "Side", itemId: "6NX7XK602V0ZM", qty: 1, price: 10,
+      modifiers: [{ gid: "S032100JQ3P4T", name: "Pasta", price: 10 }],
+    }];
+    const { agent, clover } = app(fakeClover(), {
+      catalog: async () => ({ ...CATALOG, "S032100JQ3P4T": { "Pasta": { id: "MOD-PASTA", price: 10 } } }),
+    });
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: pastaSide, customer: CUSTOMER, rewardId: "r-side" }).expect(400);
+    expect(r.body.code).toBe("REWARD_NOT_APPLICABLE");
+    expect(clover.createOrder).not.toHaveBeenCalled();
+  });
+
+  it("refuses a free drink against a drink over the $3.50 cap", async () => {
+    const coconut = [{
+      name: "Drink", itemId: "D7MBX5PWRCGCE", qty: 1, price: 6,
+      modifiers: [{ gid: "FT5JBR312DVTA", name: "Coconut Water", price: 6 }],
+    }];
+    const { agent, clover } = app(fakeClover(), {
+      catalog: async () => ({ ...CATALOG, "FT5JBR312DVTA": { "Coconut Water": { id: "MOD-CW", price: 6 } } }),
+    });
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: coconut, customer: CUSTOMER, rewardId: "r-drink" }).expect(400);
+    expect(r.body.code).toBe("REWARD_NOT_APPLICABLE");
+    expect(clover.createOrder).not.toHaveBeenCalled();
+  });
+
+  it("refuses a free plate against a plate over $22", async () => {
+    // Oxtail Large is $25. Medium, at $20, is what the reward covers.
+    const large = [{ ...CART[0], modifiers: [{ gid: "45KGD3ZDMT2ZY", name: "Large", price: 25 }] }];
+    const { agent, clover } = app();
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: large, customer: CUSTOMER, rewardId: "r-plate" }).expect(400);
+    expect(r.body.code).toBe("REWARD_NOT_APPLICABLE");
+    expect(clover.createOrder).not.toHaveBeenCalled();
+  });
+
+  it("allows the free plate on a plate inside the cap", async () => {
+    const { agent, clover } = app();
+    await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER, rewardId: "r-plate" }).expect(200);
+    expect(clover.createOrder.mock.calls[0][0].orderCart.discounts[0].amount).toBe(-2000);
+  });
+
+  it("takes one reward per order and refuses a list of them", async () => {
+    const { agent, clover } = app();
+    for (const body of [{ rewardId: ["r-5off", "r-plate"] }, { rewardId: "r-5off", rewardIds: ["r-plate"] }]) {
+      const r = await agent.post("/api/clover/orders")
+        .send({ cart: CART, customer: CUSTOMER, ...body }).expect(400);
+      expect(r.body.code).toBe("ONE_REWARD_PER_ORDER");
+    }
+    expect(clover.createOrder).not.toHaveBeenCalled();
+  });
+
   /* ---- replaying the same order ---- */
 
   it("creates one order when the same attempt is sent twice", async () => {

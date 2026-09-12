@@ -89,7 +89,7 @@ describe("order confirmation", () => {
 });
 
 describe("tax shown to the customer", () => {
-  it("names the rate and totals correctly at 8.5%", async () => {
+  it("names the rate and totals correctly at 8.875%", async () => {
     const { user } = await renderApp();
     // Ackee & Shrimp is $20.00 flat, two included sides
     await addItem(user);

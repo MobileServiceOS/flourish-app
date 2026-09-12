@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import {
   CURRENCY_ONE, CURRENCY_MANY, CURRENCY_RATE_LINE, SEPARATE_FROM_PERKS, currencyAmount,
 } from "../lib/currency.js";
-import { REWARDS, discountFor, pointsFor, IN_APP_POINTS_PER_DOLLAR } from "../lib/loyalty.js";
+import {
+  REWARDS, discountFor, pointsFor, IN_APP_POINTS_PER_DOLLAR, rateOf, ONE_REWARD_PER_ORDER,
+} from "../lib/loyalty.js";
+import { DRINK_ID, SIDE_ID } from "../data/menu.data.js";
 import { kitchenNote } from "../lib/cloverOrder.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -173,5 +176,115 @@ describe("no screen says points to a customer", () => {
         expect(src, `${f.split("/").pop()} hardcodes the name`).toMatch(/from "\.\.\/lib\/(loyalty|currency)\.js"/);
       }
     }
+  });
+});
+
+/* ============================================================================
+   THE LADDER
+
+   Four tiers at exactly 5 cents per Petal, which is the Perks baseline, so
+   neither balance is the worse one to hold. The plate is richer on purpose.
+   The old free drink at 60 Petals was 9.2% and made every other tier pointless
+   to save for — a customer maximising value took drinks forever. These numbers
+   exist to correct that, so they are pinned here rather than left to drift.
+   ============================================================================ */
+
+describe("the reward ladder holds its rate", () => {
+  const by = (id) => REWARDS.find((r) => r.id === id);
+
+  it("is the agreed five tiers at the agreed costs", () => {
+    expect(REWARDS.map((r) => [r.id, r.cost, r.cap])).toEqual([
+      ["r-drink", 70, 3.5],
+      ["r-5off", 100, 5],
+      ["r-side", 120, 6],
+      ["r-mac", 160, 8],
+      ["r-plate", 350, 22],
+    ]);
+  });
+
+  it("prices four of the five at exactly the Perks rate", () => {
+    for (const id of ["r-drink", "r-5off", "r-side", "r-mac"]) {
+      expect(rateOf(by(id)), id).toBeCloseTo(0.05, 10);
+    }
+  });
+
+  it("makes the plate richer, because $350 of spend has to be worth it", () => {
+    const plate = rateOf(by("r-plate"));
+    expect(plate).toBeGreaterThan(0.05);
+    expect(plate).toBeCloseTo(0.063, 3);
+  });
+
+  it("never lets a cheaper tier beat a dearer one on rate", () => {
+    /* The failure the old ladder had: a 60-Petal drink returning 9.2% meant
+       saving for anything else was irrational. */
+    const rates = REWARDS.map(rateOf);
+    expect(Math.max(...rates.slice(0, 4))).toBeCloseTo(0.05, 10);
+  });
+});
+
+describe("an item reward's cap decides what qualifies, not what it pays", () => {
+  const DRINK = (price) => ({ itemId: DRINK_ID, price });
+  const SIDE = (price, meta = "") => ({ itemId: SIDE_ID, price, meta });
+
+  it("gives a $2.50 soda away free", () => {
+    expect(discountFor({ rid: "r-drink" }, [DRINK(2.5)])).toBe(2.5);
+  });
+
+  it("excludes the $5.50 juices and the $6 coconut water", () => {
+    /* Not "$3.50 off a $6 drink" — the reward is a free drink up to $3.50, and
+       a $6 coconut water is not what it is. Part-paying it would have the
+       customer handing over $2.50 for a drink they think is free. */
+    expect(discountFor({ rid: "r-drink" }, [DRINK(5.5)])).toBe(0);
+    expect(discountFor({ rid: "r-drink" }, [DRINK(6)])).toBe(0);
+  });
+
+  it("blocks Pasta at $10 and seafood mac at $8 as a free side", () => {
+    expect(discountFor({ rid: "r-side" }, [SIDE(10)])).toBe(0);
+    expect(discountFor({ rid: "r-side" }, [SIDE(8, "Seafood Mac & Cheese")])).toBe(0);
+    expect(discountFor({ rid: "r-side" }, [SIDE(6)])).toBe(6);
+  });
+
+  it("still covers the $8 seafood mac under its own tier", () => {
+    // Over the free-side cap on purpose; the dearer reward is what buys it.
+    expect(discountFor({ rid: "r-mac" }, [SIDE(8, "Seafood Mac & Cheese")])).toBe(8);
+  });
+
+  it("takes the dearest line that qualifies, and ignores the ones that don't", () => {
+    const cart = [SIDE(10), SIDE(6), SIDE(3)];
+    expect(discountFor({ rid: "r-side" }, cart)).toBe(6);
+  });
+
+  it("excludes a plate over $22", () => {
+    expect(discountFor({ rid: "r-plate" }, [{ plate: true, price: 25 }])).toBe(0);
+    expect(discountFor({ rid: "r-plate" }, [{ plate: true, price: 22 }])).toBe(22);
+  });
+});
+
+describe("the money reward is a flat sum, not an item", () => {
+  it("takes $5 off an order of any size", () => {
+    /* It has to work this way: every plate on the menu costs more than $5, so
+       an item-style cap would exclude the whole menu. */
+    expect(discountFor({ rid: "r-5off" }, [{ plate: true, price: 25 }])).toBe(5);
+    expect(discountFor({ rid: "r-5off" }, [{ price: 20 }, { price: 6 }])).toBe(5);
+  });
+
+  it("never exceeds the cart, so a $3 order cannot end up owing nothing", () => {
+    expect(discountFor({ rid: "r-5off" }, [{ price: 3 }])).toBe(3);
+  });
+});
+
+describe("one reward per order, and the half the app cannot see", () => {
+  it("says so wherever a reward is offered", () => {
+    for (const f of ["RewardsView.jsx", "SignInView.jsx", "CartView.jsx"]) {
+      expect(readFileSync(resolve(ROOT, "src/components", f), "utf8"), f)
+        .toMatch(/ONE_REWARD_PER_ORDER/);
+    }
+  });
+
+  it("names Perks and tells the customer staff hold that side", () => {
+    expect(ONE_REWARD_PER_ORDER).toMatch(/one reward per order/i);
+    expect(ONE_REWARD_PER_ORDER).toMatch(/perks/i);
+    expect(ONE_REWARD_PER_ORDER).toMatch(/not both/i);
+    expect(ONE_REWARD_PER_ORDER).toMatch(/register|staff/i);
   });
 });
