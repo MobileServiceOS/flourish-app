@@ -75,7 +75,7 @@ flourish-app/
    │  ├─ CartView.jsx          lines, rewards, totals
    │  ├─ CheckoutView.jsx      details, pickup time, tip, pay
    │  ├─ TrackView.jsx         order confirmation and live status
-   │  ├─ RewardsView.jsx       points, redemption, account, share
+   │  ├─ RewardsView.jsx       Petals, redemption, account, share
    │  ├─ SignInView.jsx        join Flourish Rewards
    │  ├─ OrdersView.jsx        history and one-tap reorder
    │  ├─ StaffSheet.jsx        86 control
@@ -90,6 +90,8 @@ flourish-app/
    │  ├─ cloverOrder.js        cart -> Clover order, pure and tested
    │  ├─ money.js              cent-accurate rounding
    │  ├─ loyalty.js            tiers, rewards, discount rules
+   │  ├─ currency.js           what Petals are called, and the Perks disclaimer
+   │  ├─ reconcile.js          which unpaid orders to re-check on launch
    │  ├─ hours.js              opening hours and pickup slots
    │  ├─ prep.js               per-item prep times and the ready window
    │  ├─ phone.js              phone formatting and validation
@@ -133,7 +135,7 @@ npm test          # once
 npm run test:watch
 ```
 
-563 tests. They cover the things that cost money if they break: pickup-slot
+718 tests. They cover the things that cost money if they break: pickup-slot
 boundaries around closing time, reorder keeping its modifiers and notes,
 special instructions reaching the kitchen ticket, and a WCAG contrast check
 that recomputes every text colour pairing straight out of `styles.css`. On the
@@ -284,16 +286,20 @@ You'll need Xcode and an Apple Developer account to put it on the App Store.
 - Special instructions per item, carried through to the cart, the confirmation
   and the order history
 - **Delete your account** from the Rewards tab, with a confirmation naming what
-  goes: saved details, in-app order history, and the points balance including
+  goes: saved details, in-app order history, and the Petals balance including
   unredeemed rewards. Apple guideline 5.1.1(v) requires this in any app that
   supports account creation, and a phone number does not satisfy it. It is
   entirely local, so it works offline — and it deliberately leaves the
   restaurant's own order records alone, which the confirmation explains
-- Customer accounts with points that persist across launches. **Points are
-  earned at the register**, not when the order is placed: the app takes no money,
-  so the tracking screen polls Clover every 30 seconds and credits the points
-  once the payment is confirmed. Close the app before paying and nothing is
-  awarded — it had not been earned
+- Customer accounts with **Petals** that persist across launches — named so they
+  are never confused with the Clover Perks the shop runs at the register, which
+  no API can read. Same maths either way: a Petal per dollar, 100 Petals = $5
+  off, and the app says plainly that the two balances do not combine
+- **Petals are earned at the register**, not when the order is placed: the app
+  takes no money, so the tracking screen polls Clover every 30 seconds and
+  credits them once the payment is confirmed. Close the app before paying and
+  the next launch picks it up — the recent unpaid orders are re-checked when the
+  app opens, which is the ordinary case and used to lose the Petals silently
 - Reward redemption that applies a real discount to the cart
 - Savings badges showing what ordering direct beats Uber Eats by
 - Staff 86 control — tap the lock icon on the menu to mark items sold out

@@ -3,6 +3,7 @@ import request from "supertest";
 import { buildAtomicOrder, kitchenNote } from "../lib/cloverOrder.js";
 import { createApp } from "../../server/app.js";
 import { __resetRateLimit } from "../../server/guard.js";
+import { CURRENCY_MANY } from "../lib/currency.js";
 
 const CATALOG = { "45KGD3ZDMT2ZY": { Medium: { id: "MOD-MED", price: 20 } } };
 const CART = [{
@@ -47,7 +48,7 @@ describe("the kitchen ticket says money is still owed", () => {
       orderNumber: "FL-4821", customer: CUSTOMER, pickupLabel: WINDOW,
       reward: { name: "Free side", code: "FL1234", amount: 6 },
     });
-    expect(note).toContain("Reward: Free side");
+    expect(note).toContain(`${CURRENCY_MANY} reward: Free side`);
   });
 
   it("attaches no payment at all — that is what leaves it owing", () => {

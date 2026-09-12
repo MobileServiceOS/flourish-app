@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { addItem, stubOnlineProxy, unpaidOrder } from "./helpers.js";
+import { CURRENCY_MANY } from "../lib/currency.js";
 
 /* ============================================================================
    POINTS ARE EARNED AT THE REGISTER
@@ -35,7 +36,7 @@ async function signIn(user) {
   await user.type(await screen.findByLabelText("Full name"), "Nevaeh Reid");
   await user.type(screen.getByLabelText("Phone number"), "3478599413");
   await user.click(screen.getByRole("button", { name: /Create my account/ }));
-  await screen.findByText("points available");
+  await screen.findByText(`${CURRENCY_MANY} available`);
 }
 
 async function placeOrder(user) {
@@ -57,7 +58,7 @@ async function pointsBalance(user) {
   const done = screen.queryByRole("button", { name: /Done, back to menu/ });
   if (done) await user.click(done);
   await user.click(screen.getByRole("button", { name: /^Rewards/ }));
-  const label = await screen.findByText("points available");
+  const label = await screen.findByText(`${CURRENCY_MANY} available`);
   return Number(label.previousElementSibling.textContent);
 }
 
@@ -80,8 +81,8 @@ describe("points are not awarded when the order is placed", () => {
     await signIn(user);
     await placeOrder(user);
 
-    expect(screen.getByText(/You'll earn 20 points when you pay/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Points earned!/)).not.toBeInTheDocument();
+    expect(screen.getByText(/You'll earn 20 Petals when you pay/i)).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(`${CURRENCY_MANY} earned!`))).not.toBeInTheDocument();
   });
 
   it("asks the register whether it has been paid for", async () => {
@@ -99,14 +100,14 @@ describe("points are awarded when Clover confirms payment", () => {
     const { user, calls } = await renderApp();
     await signIn(user);
     await placeOrder(user);
-    expect(screen.queryByText(/Points earned!/)).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(`${CURRENCY_MANY} earned!`))).not.toBeInTheDocument();
 
     // The customer hands over a card at the counter.
     calls.setPayment({ paid: true, paymentState: "PAID", amountPaid: 2000, settled: true });
     await vi.advanceTimersByTimeAsync(30_000);
 
-    expect(await screen.findByText(/Points earned!/)).toBeInTheDocument();
-    expect(screen.getByText(/\+20 points added for this order/)).toBeInTheDocument();
+    expect(await screen.findByText(new RegExp(`${CURRENCY_MANY} earned!`))).toBeInTheDocument();
+    expect(screen.getByText(/\+20 Petals added for this order/)).toBeInTheDocument();
     expect(await pointsBalance(user)).toBe(20);
   });
 
@@ -117,7 +118,7 @@ describe("points are awarded when Clover confirms payment", () => {
 
     calls.setPayment({ paid: true, paymentState: "PAID", amountPaid: 2000, settled: true });
     await vi.advanceTimersByTimeAsync(30_000);
-    await screen.findByText(/Points earned!/);
+    await screen.findByText(new RegExp(`${CURRENCY_MANY} earned!`));
     // Several more polling intervals go by.
     await vi.advanceTimersByTimeAsync(120_000);
 
@@ -133,7 +134,7 @@ describe("points are awarded when Clover confirms payment", () => {
     calls.setPayment({ paid: true, paymentState: "OPEN", amountPaid: 2000, settled: true });
     await vi.advanceTimersByTimeAsync(30_000);
 
-    expect(await screen.findByText(/Points earned!/)).toBeInTheDocument();
+    expect(await screen.findByText(new RegExp(`${CURRENCY_MANY} earned!`))).toBeInTheDocument();
   });
 });
 
@@ -145,7 +146,7 @@ describe("polling stops once the answer is final", () => {
 
     calls.setPayment({ paid: true, paymentState: "PAID", amountPaid: 2000, settled: true });
     await vi.advanceTimersByTimeAsync(30_000);
-    await screen.findByText(/Points earned!/);
+    await screen.findByText(new RegExp(`${CURRENCY_MANY} earned!`));
 
     const afterPaid = calls.status.length;
     await vi.advanceTimersByTimeAsync(5 * 60_000);   // ten more intervals
@@ -186,7 +187,7 @@ describe("a voided order earns nothing", () => {
     await placeOrder(user);
 
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(screen.queryByText(/Points earned!/)).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(`${CURRENCY_MANY} earned!`))).not.toBeInTheDocument();
     expect(await pointsBalance(user)).toBe(0);
     expect(calls.status.length).toBeGreaterThan(0);
   });
@@ -198,7 +199,7 @@ describe("a voided order earns nothing", () => {
     await signIn(user);
     await placeOrder(user);
 
-    expect(await screen.findByText(/cancelled at the register, so no points/i))
+    expect(await screen.findByText(/cancelled at the register, so no Petals/i))
       .toBeInTheDocument();
   });
 
@@ -223,7 +224,7 @@ describe("the award happens exactly once", () => {
 
     calls.setPayment({ paid: true, paymentState: "PAID", amountPaid: 2000, settled: true });
     await vi.advanceTimersByTimeAsync(30_000);
-    await screen.findByText(/Points earned!/);
+    await screen.findByText(new RegExp(`${CURRENCY_MANY} earned!`));
     expect(await pointsBalance(user)).toBe(20);
 
     /* The order is stored with pointsAwarded set, which is the guard that
@@ -255,6 +256,6 @@ describe("a guest earns nothing at all", () => {
     await placeOrder(user);           // never signed in
 
     expect(screen.queryByText(/You'll earn/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Points earned!/)).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(`${CURRENCY_MANY} earned!`))).not.toBeInTheDocument();
   });
 });

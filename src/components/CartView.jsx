@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ShoppingBag, Plus, Minus, Sparkles, Ticket, Clock } from "lucide-react";
 import { money } from "../lib/money.js";
 import { cleanLineNote, LINE_NOTE_MAX } from "../lib/cloverOrder.js";
-import { rewardOf, discountFor } from "../lib/loyalty.js";
+import { rewardOf, discountFor, currencyAmount } from "../lib/loyalty.js";
 import { isOpen, nextOpening, describeOpening, HOURS_LINE } from "../lib/hours.js";
 import { cartPrepMinutes, isCookedToOrder, COOKED_TO_ORDER_MINUTES } from "../lib/prep.js";
 import { SubHeader, Empty } from "./shared.jsx";
@@ -116,7 +116,7 @@ export default function CartView({ cart, subtotal, saved, account, setQty, remov
             )}
             {account && (
               <div className="rowline"><span style={{ color: "var(--muted)" }}>You'll earn when you pay</span>
-                <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>+{Math.round(subtotal)} pts</span></div>
+                <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>+{currencyAmount(Math.round(subtotal))}</span></div>
             )}
           </div>
           {saved > 0 && (

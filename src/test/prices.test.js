@@ -110,19 +110,15 @@ describe("every advertised range matches what can actually be bought", () => {
 
 /* Straight off the printed trifold. */
 describe("what the printed menu actually says", () => {
-  it("no longer prices goat head soup, because the app no longer sells it", () => {
-    /* This used to override Clover's $0 with the printed-menu $5/$10 so the app
-       could sell it. The shop has since decided goat soup is a counter-only
-       dish, so it is hidden here instead — and with nothing for a customer to
-       see, there is no reason for the app to paper over the $0.
-
-       The $0 at the register is real and still wrong; it stays a Clover
-       dashboard job (CLOVER-FIXES #2), not something the app works around. */
+  it("has no goat head soup left to price", () => {
+    /* Three states in sequence, and the reason matters more than the result.
+       It was priced here ($5/$10 over Clover's $0) so the app could sell a dish
+       the register gave away; then hidden, when the shop decided it was a
+       counter-only dish and the app stopped papering over the $0; and now the
+       two sizes have been DELETED from the Soup group at the register, so there
+       is neither a price to override nor an option to hide. */
     const o = opts("Soup");
-    expect(o["Medium Goat"].oos).toBe(true);
-    expect(o["Large Goat"].oos).toBe(true);
-    expect(o["Medium Goat"].p).toBe(0);   // Clover's own price, unmodified
-    expect(o["Large Goat"].p).toBe(0);
+    expect(Object.keys(o).filter((n) => /goat/i.test(n))).toEqual([]);
   });
 
   it("sells the salmon flavours people actually order", () => {

@@ -15,6 +15,7 @@
       safe failure. */
 
 import { formatPhone } from "./phone.js";
+import { CURRENCY_MANY } from "./currency.js";
 
 /* Newline as a named constant so the note's shape survives a careless edit to
    this file's escaping. */
@@ -169,7 +170,12 @@ export function kitchenNote({ orderNumber, customer, pickupLabel, reward, curbsi
   if (vehicle) lines.push(`CURBSIDE — BRING OUT TO: ${vehicle}`);
 
   lines.push(`Pickup: ${pickupLabel}`);
-  if (reward?.name) lines.push(`Reward: ${reward.name}`);
+  /* Named as a PETALS reward, not a bare "Reward". The shop also runs Clover
+     Perks at the register, and a ticket saying only "Reward: Free drink" gives
+     staff no way to tell which scheme paid for it — the wrong guess is either a
+     free drink rung against a Perks balance that was never debited, or a
+     customer asked to hand over a receipt code they never had. */
+  if (reward?.name) lines.push(`${CURRENCY_MANY} reward: ${reward.name}`);
 
   /* Trim from the bottom if it will not fit. Everything above `keep` has to
      survive: who it is for, where they are sitting, and when it is due. Only

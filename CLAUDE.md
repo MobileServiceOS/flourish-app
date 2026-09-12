@@ -402,7 +402,6 @@ different soups, and the kitchen makes them on different days.
 |---|---|
 | Soup — Medium/Large **Seafood** | Fri, Sat |
 | Soup — Medium/Large **Chicken** | Sun–Thu |
-| Soup — Medium/Large **Goat** | every day, no lock |
 | Seafood Stew Peas (item) | **Fri only** — was Fri+Sat, corrected |
 | Seafood Fridays (category) | Fri |
 
@@ -439,13 +438,22 @@ hours.
 `daysLabel` collapses runs: `[0,1,2,3,4]` reads "Sun–Thu only", not
 "Sun & Mon & Tue & Wed & Thu only".
 
-**Goat soup is hidden, not repriced.** Sold at the counter, not orderable in
-the app: `HIDDEN_IN_APP` in the generator marks `VXX7556SJGA38` /
-`BA4HKW7B2FDY4` oos, so they never render and never reach the search index.
+**Goat soup is gone from the register.** It went through three states and the
+sequence is the point: priced here ($5/$10 over Clover's $0) so the app could
+sell a dish the counter gave away; then hidden via `HIDDEN_IN_APP` once the shop
+decided it was counter-only; and now both sizes have been **deleted** from the
+Soup group in Clover, so there is neither a price to override nor an option to
+hide. `HIDDEN_IN_APP` is empty and kept — it is the declared home for "the
+register sells this, the app does not", and the next such decision belongs there
+rather than improvised. The generator warns about any key naming a modifier the
+export no longer carries, which is how the two dangling entries were caught.
+
 Three distinct reasons an option gets hidden, kept separate so the reason
 survives — `NOT_ON_PRINTED_MENU` (on the register, not on the menu),
 `MISFILED_AS_SIZE` (a dish in another item's size group), `HIDDEN_IN_APP`
-(deliberate app-only exclusion).
+(deliberate app-only exclusion). A test asserts every `oos` modifier is
+accounted for by one of those three or by one of the generator's two automatic
+rules — $0 inside a size group, and an option named after its own item.
 
 The old `MENU_PRICE` override that put $5/$10 on those sizes is **gone**. It
 existed so the app could sell a dish Clover prices at $0; with the dish hidden
@@ -454,7 +462,9 @@ over a dashboard problem for no benefit. The $0 at the register is real and
 still wrong, and stays CLOVER-FIXES #2.
 
 That leaves Soup as chicken (Sun–Thu) and seafood (Fri–Sat), which between them
-cover all seven days — **two selectable sizes every day, no dead row.** Both the
+cover all seven days — **two selectable sizes every day, no dead row.** Goat was
+the unlocked third soup padding this out, so the property now rests entirely on
+the two locked pairs. Both the
 generator and a test check that property across the whole menu rather than
 trusting it: hiding options and locking others by day could otherwise leave a
 row a customer can tap with nothing behind it. If it ever happens the item wants
@@ -501,27 +511,69 @@ charged $0 too, so the shop was losing the money and no customer was surprised.
 
 Three sets, declared outright in `scripts/generate-menu.mjs`:
 
-- `SIDE_UPCHARGE` — priced with a plate. Shrimp $5 and Seafood Mac $3.50 are
-  already right in Clover; **Fried Chicken $6 and Whiting Fish $2.50 are not**,
-  and are applied by decision from the standalone prices.
+- `SIDE_UPCHARGE` — priced with a plate. **All four now match Clover**, so the
+  map is an assertion rather than an override: Shrimp $5, Seafood Mac $3.50, and
+  Fried Chicken $6 and Whiting Fish X1 $2.50, which were $0.00 until the
+  register was corrected.
 - `SIDE_FREE_WITH_MEAL` — Festival and Pasta: $0 with a plate, own price alone.
   Declared to be *asserted*, not applied; the data already behaves this way.
 - everything else — included, and asserted to be $0. A price appearing on one is
   reported as an issue rather than silently charged.
 
-**THE TWO OVERRIDDEN SIDES MAKE THE APP QUOTE MORE THAN THE TILL TAKES, TODAY.**
-Queued at the Clover dashboard: `W63ZR0Q92XER4` → $6.00 and `WHGNBP3G67PJP` →
-$2.50 in Side With Meal. Until those land this is live on all 19 plates sharing
-the group. See PRINTED-MENU-PRICES.md, where it is the largest entry. Clover
-prices its own orders and has them at $0, so until the dashboard is corrected the
-customer pays *less* at the counter than the app said. That is the rule-1 /
-rule-2 divergence again, but in the opposite direction from the nine items in
-PRINTED-MENU-PRICES.md — worth knowing before someone "fixes" it. See
-CLOVER-FIXES.md §6.
+**Those two are fixed at the source now**, which closes the largest entry in
+PRINTED-MENU-PRICES.md. It was the rule-1 / rule-2 divergence running the other
+way: $0.00 in the register against an upcharge in the app, so the customer paid
+*less* than they were quoted, nobody complained, and the shop absorbed it on
+every order across 19 plates.
+
+One thing did not land where it was meant to. Whiting Fish X1 was intended to go
+to $3.00 **in the meal group**; the $3.00 went to the standalone `Side` group
+instead (`Whiting Fish  X1`, two spaces), and the meal group was set to $2.50.
+The app follows Clover on both, so nothing is mischarged — but the app quotes
+$2.50 with a plate. If $3.00 is the intent it is one field at the register and
+the number follows on the next regeneration. See CLOVER-FIXES.md §11.
 
 Pepper Shrimp is deliberately absent: it is a standalone side only and is not in
 the meal group at all, so it cannot be offered with a plate without a Clover
 change.
+
+### The wrong side group is attached to ten items
+
+`Side With Meal` (`YQWN3PKBKV9NG`, 14 options, $0 for the ones a plate includes)
+and the standalone `Side` (`S032100JQ3P4T`, 21 options at standalone prices) are
+two different Clover objects with the same word on the dashboard. Ten items —
+all of Seafood Fridays — got the standalone one.
+
+Clover ADDS a modifier to the base price, so the register now rings a $39.99
+platter at **$44.99** with white rice, on a flyer that says two sides are
+included. And on the app's side a base price plus a priced group is the
+double-ring shape the generator zeroes, so the first regeneration produced Crab
+Legs Platter as base $0 advertised **"from $1"**, priced off its corn bread.
+Wrong in both directions from one mistake.
+
+`MISATTACHED_SIDE_GROUP` in the generator drops that group from those items, so
+they keep the shape they had before — real base price, no side picker — until
+the right group is attached. That is not the generator inventing data; it is
+refusing to quote a plate at a price neither side believes. The run shouts about
+it every time, and tests assert each id still has the wrong group so the map
+cannot outlive the problem. See CLOVER-FIXES.md §10.
+
+**Lunch Specials did not get a side group either**, and was on the same list.
+
+### A category is never inherited from the row above
+
+Clover blanks most columns on the continuation rows of a multi-group item, so
+the parser carries values forward. It used to carry them **across item
+boundaries** as well, which is a data corruption rather than an untidiness: an
+item whose own Categories cell is empty inherited whichever item sat above it in
+the sheet.
+
+The current export has 15 uncategorised items — the breakfast dishes — and they
+arrived in the app filed under Lunch & Dinner, at $0.00, with fifteen-minute
+prep defaults and no descriptions, because the row above the first porridge was
+a beef patty. Sheet order is not data. A new `Clover ID` now resets the carry,
+so an item with no category of its own has none and is dropped, which is what
+"leave Breakfast omitted" is supposed to mean. The same leak applied to `Price`.
 
 ### Special instructions
 
@@ -616,7 +668,41 @@ With no `APP_KEY` set the proxy serves localhost and **refuses remote callers
 outright**, rather than sitting open. Set `APP_KEY`, `ALLOWED_ORIGINS` and
 `MAX_CHARGE_DOLLARS` before deploying.
 
-### Points are earned at the register, not in the app
+### Petals, and why they are not called points
+
+The shop runs **Clover Perks** at the register: text the code off the receipt,
+1 point per $1, 100 points = $5 off. Perks balances are not readable through any
+API — every loyalty path answers 405 — and are not exportable from the dashboard
+either, so this app cannot read one, write one, or migrate anybody across.
+
+Both schemes were called "points". A customer holding two balances under one
+word will reasonably try to spend one at the other, and nothing in either system
+can honour that. So naming is the whole of the defence, and the app's currency
+is **Petals** — not the word Perks uses, not "points", and already part of the
+brand: the launch screen opens a ring of petals and the tiers are Seedling /
+Bloom / Flourish. ("Blooms" would have collided with a tier name.)
+
+The maths is deliberately identical to Perks — 1 Petal per $1, 100 Petals = $5
+off — so neither balance is the worse one to hold. `REWARDS` carries a plain
+`$5 off` at 100 alongside the item rewards, so "100 = $5" is literally true in
+the app rather than a slogan. `SEPARATE_FROM_PERKS` goes wherever a balance is
+shown and before anyone joins.
+
+Every one of those strings lives in `src/lib/currency.js`, which imports
+nothing — the kitchen ticket needs the name too, and that file is shared with
+the server, so importing it from `loyalty.js` would drag the whole generated
+menu into the order-building path for one word. The ticket says
+`Petals reward: Free drink` rather than a bare `Reward:`, because staff
+otherwise cannot tell which of two schemes paid for it.
+
+**The internal names are deliberately unchanged.** `points` is a key inside
+every already-persisted customer account; renaming it would read as absent on
+the next launch and zero every existing balance. `pointsAwarded`, `earnable` and
+`awardPoints` keep their names for the same reason — the rename is of what a
+customer is shown, and a test scans the components for any visible "points" or
+"pts" that is not one of those identifiers.
+
+### Petals are earned at the register, not in the app
 
 The app takes no money. An order leaves here **open and owing**, and the
 customer pays at the counter — or walks out and never collects it. Points used
@@ -632,8 +718,29 @@ They are awarded on one thing only now: Clover confirming the payment.
 - on `paid`, `App.awardPoints` credits the order's `earnable` and the screen
   says **"Points earned!"**
 
-If the app is closed before the customer pays, no points are awarded. They had
-not been earned, so nothing was lost.
+**And if the app is closed before they pay, the launch sweep catches it.** That
+used to be the end of the story — "no points awarded, they had not been earned"
+— and it was wrong about the ordinary case. The customer orders, locks the
+phone, drives over, pays at the counter and takes the food home. The app is not
+running at the moment of the only event it is waiting for, so Petals that WERE
+earned were never credited, silently, for everyone who did the normal thing.
+
+`useReconcileOnLaunch` re-asks about the recent unpaid orders when the app
+opens. `ordersToReconcile` in `src/lib/reconcile.js` decides which are worth a
+request: has a Clover id, not already credited, would earn something, has a
+usable timestamp, within 24 hours — newest first, at most five, so a long
+history does not fire a request per order while the first screen is rendering.
+Orders carry `placedAt` now; ones stored before that field existed fall back to
+`readyAt`, because those are exactly the customers whose Petals went missing.
+
+It runs once per launch, latched, since awarding rewrites the orders array and a
+dependency on it would loop. Failures are swallowed — somebody opening the app
+to read the menu with no signal must not see an error about a settlement sweep
+they did not ask for. It awards on `paid` and not on `settled`, which is also
+true of a void.
+
+Both paths call the same `awardPoints`, so its two guards make the award happen
+exactly once however many times a payment is noticed.
 
 **Never award on order creation.** Two guards keep the award to exactly once:
 `pointsAwarded` is persisted on the order and survives a relaunch, and an
@@ -713,7 +820,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 563 tests
+npm test            # 718 tests
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

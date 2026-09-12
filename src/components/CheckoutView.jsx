@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { MapPin, Check, Clock, Award, ChevronRight, Store, AlertCircle, Car } from "lucide-react";
 import { cents, money, taxOn, TAX_LABEL } from "../lib/money.js";
+import { currencyAmount } from "../lib/loyalty.js";
 import {
   isOpen, nextOpening, formatTime, describeOpening, closingOn, HOURS_LINE,
 } from "../lib/hours.js";
@@ -245,7 +246,7 @@ export default function CheckoutView({
           {account && (
             <div className="rowline" style={{ marginTop: 4 }}>
               <span style={{ color: "var(--muted)" }}>You'll earn when you pay</span>
-              <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>+{Math.round(subtotal)} pts</span>
+              <span style={{ color: "var(--leaf-ink)", fontWeight: 700 }}>+{currencyAmount(Math.round(subtotal))}</span>
             </div>
           )}
         </div>
@@ -256,7 +257,7 @@ export default function CheckoutView({
               textAlign: "left", border: "1px dashed var(--leaf)", cursor: "pointer", font: "inherit" }}>
             <Award size={20} color="var(--teal-ink)" style={{ flex: "0 0 auto" }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Earn {Math.round(subtotal)} points on this order</div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Earn {currencyAmount(Math.round(subtotal))} on this order</div>
               <div style={{ color: "var(--muted)", fontSize: 12 }}>Join free. Takes a few seconds.</div>
             </div>
             <ChevronRight size={17} color="var(--muted)" />

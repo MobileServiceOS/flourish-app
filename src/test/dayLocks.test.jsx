@@ -106,22 +106,18 @@ describe("the soup windows", () => {
     }
   });
 
-  it("leaves goat unlocked, every day", () => {
-    for (const n of ["Medium Goat", "Large Goat"]) {
-      expect(modifierDays(SOUP_GROUP, n)).toBeNull();
-      for (const d of [MON, FRI, SAT, SUN]) {
-        expect(isModifierAvailable(SOUP_GROUP, n, d)).toBe(true);
-      }
-    }
-  });
-
   it("covers every day of the week between chicken and seafood", () => {
-    // No day where the only soups are goat by accident rather than by design.
+    /* Chicken Sun-Thu and seafood Fri-Sat between them cover all seven days.
+       Goat used to be the unlocked third soup padding this out; it has been
+       deleted at the register, so the two locked pairs are now the whole group
+       and the property they have to satisfy is the same one that matters —
+       never a day where the row can be tapped and nothing inside it can be
+       ordered. */
     for (let d = 0; d <= 6; d++) {
       const day = new Date(2026, 8, 6 + d, 12, 0);   // Sun 6th onwards
       const open = soup.groups.find((g) => g.gid === SOUP_GROUP).mods
         .filter((m) => isModifierAvailable(SOUP_GROUP, m.n, day));
-      expect(open.length, `day ${dayOfWeek(day)}`).toBe(4);   // 2 goat + 2 of the other
+      expect(open.length, `day ${dayOfWeek(day)}`).toBe(2);   // one size pair, every day
     }
   });
 });
@@ -398,20 +394,22 @@ describe("the proxy refuses what the kitchen is not making today", () => {
    deliberately does NOT paper over it with a price override any more. Hiding it
    is the whole of the app's involvement.
    ============================================================================ */
-describe("goat soup is hidden from the app", () => {
+describe("goat soup is gone from the register, not hidden here", () => {
   const soupMods = soup.groups.find((g) => g.gid === SOUP_GROUP).mods;
-  const goat = soupMods.filter((m) => /goat/i.test(m.n));
 
-  it("marks both sizes unsellable", () => {
-    expect(goat).toHaveLength(2);
-    for (const m of goat) expect(m.oos, m.n).toBe(true);
+  it("carries no goat size at all", () => {
+    /* The two goat sizes were hidden in the app while they still existed in
+       Clover. They have since been DELETED from the Soup group at the
+       register, so there is nothing left to hide — and the generator now warns
+       about any HIDDEN_IN_APP key naming a modifier the export does not carry,
+       which is how the dangling entries were caught. */
+    expect(soupMods.filter((m) => /goat/i.test(m.n))).toHaveLength(0);
   });
 
-  it("keeps Clover's own $0 rather than overriding it", () => {
-    /* An override would make the app show a price the register does not take —
-       the app working around a dashboard problem. The $0 stays visible as a
-       CLOVER-FIXES item instead. */
-    for (const m of goat) expect(m.p, m.n).toBe(0);
+  it("leaves exactly the four chicken and seafood sizes", () => {
+    expect(soupMods.map((m) => m.n).sort()).toEqual(
+      ["Large Chicken", "Large Seafood", "Medium Chicken", "Medium Seafood"]
+    );
   });
 
   it("never reaches the sheet at all", () => {
@@ -425,7 +423,6 @@ describe("goat soup is hidden from the app", () => {
   });
 
   it("is not findable by searching for it", () => {
-    // Surfacing a plate through something we will not sell is the oos rule.
     expect(soup.search).not.toMatch(/goat/);
     expect(soup.search).toBe("soup medium chicken large seafood");
   });
@@ -516,10 +513,19 @@ describe("the locks in the data match the generator", () => {
   });
 
   it("hides exactly what HIDDEN_IN_APP declares, and nothing more", () => {
+    /* The map is empty today: its only two entries were the goat soup sizes,
+       and those were deleted at the register rather than hidden. An empty map
+       is a legitimate state, so this no longer asserts the map has entries —
+       that assertion existed to prove the slice parser found something, and it
+       would now fail for the one reason that is not a bug.
+
+       What is still worth checking is the direction that can actually go
+       wrong: anything named here must exist and be marked oos. The reverse
+       direction — an oos modifier nobody declared — is covered by
+       "every oos modifier has a stated reason" below. */
     const declared = new Set(
       [...slice("const HIDDEN_IN_APP = {", "};").matchAll(/"([^"]+)":/g)].map((m) => m[1])
     );
-    expect(declared.size).toBeGreaterThan(0);
     for (const key of declared) {
       const [gid, name] = key.split("::");
       const mod = MENU.flatMap((c) => c.items)
@@ -530,6 +536,33 @@ describe("the locks in the data match the generator", () => {
       expect(mod, key).toBeTruthy();
       expect(mod.oos, key).toBe(true);
     }
+  });
+
+  it("every oos modifier has a stated reason in one of the three maps", () => {
+    /* The point of keeping three separate maps is that the REASON survives.
+       An oos flag with no entry anywhere is the thing the hide-reasons audit
+       found 8 of, and this is what stops a ninth appearing. */
+    const declared = new Set([
+      ...[...slice("const HIDDEN_IN_APP = {", "};").matchAll(/"([^"]+)":/g)].map((m) => m[1]),
+      ...[...slice("const MISFILED_AS_SIZE = {", "};").matchAll(/"([^"]+)":/g)].map((m) => m[1]),
+      ...[...slice("const NOT_ON_PRINTED_MENU = new Set([", "]);").matchAll(/"([^"]+)"/g)].map((m) => m[1]),
+    ]);
+    /* Two rules in the generator hide a modifier without naming it in a map,
+       and both state their reason in the run's issue list instead: an option
+       priced $0 inside a size group (it would ring the plate up free), and an
+       option named after its own item sitting in that item's size group (it
+       reads to a customer as a size — the Wings case). Those are derived from
+       the data rather than decided by a human, which is why they are not
+       declarations. Anything else with an oos flag is an undocumented hide. */
+    const selfNamed = (item, mod) => mod.trim().toLowerCase() === item.trim().toLowerCase();
+
+    const undeclared = MENU.flatMap((c) => c.items)
+      .flatMap((i) => (i.groups ?? []).flatMap((g) =>
+        g.mods.map((m) => ({ key: `${g.gid}::${m.n}`, oos: m.oos, auto: m.p === 0 || selfNamed(i.name, m.n) }))
+      ))
+      .filter((m) => m.oos && !m.auto && !declared.has(m.key))
+      .map((m) => m.key);
+    expect([...new Set(undeclared)]).toEqual([]);
   });
 
   it("no longer overrides the goat prices it used to paper over", () => {

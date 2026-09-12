@@ -6,6 +6,7 @@ import {
   health, getInventory, getOrder, quoteOrder, getOrderStatus, getLoyalty,
 } from "../lib/clover.js";
 import { trackingStage } from "../lib/cloverOrder.js";
+import { ordersToReconcile } from "../lib/reconcile.js";
 
 /**
  * Is ordering connected?
@@ -182,8 +183,11 @@ export function useReadyQuote(cart, { enabled = true, intervalMs = 60_000 } = {}
  * confirmation screen should not sit there asking all afternoon. It also stops
  * at `maxMs`, for a customer who never came back for their food.
  *
- * If the app is closed before the customer pays, no points are awarded. They
- * had not been earned.
+ * This is not the only place a payment can be noticed any more. Closing the
+ * app before paying used to mean the Petals were never credited at all; the
+ * launch sweep in `useReconcileOnLaunch` picks those up the next time the app
+ * opens. This hook is the live path, that one is the catch-up, and they share
+ * the award guards so an order settled by both is credited once.
  */
 export function useOrderPayment(cloverOrderId, {
   intervalMs = 30_000,
@@ -232,6 +236,55 @@ export function useOrderPayment(cloverOrderId, {
     voided: Boolean(status?.voided),
     settled: Boolean(status?.settled),
   };
+}
+
+/**
+ * Credit anything that was paid for while the app was closed.
+ *
+ * `useOrderPayment` only polls while the tracking screen is mounted, so the
+ * ordinary case — order, close the app, pay at the counter — never reached the
+ * award at all. This runs once per launch over the recent unpaid orders and
+ * calls `onPaid` for each one Clover says is paid.
+ *
+ * Once per launch, not once per render: `ran` latches, so a state update from
+ * the very first award cannot restart the sweep it came from. And `orders` is
+ * read through a ref rather than depended on, because awarding rewrites the
+ * array and a dependency on it would loop.
+ *
+ * Every failure is swallowed. A customer opening the app to look at the menu
+ * with no signal must not be shown an error about a settlement sweep they did
+ * not ask for; the tracking screen's own poll and the next launch both get
+ * another go.
+ */
+export function useReconcileOnLaunch(orders, { enabled = true, onPaid } = {}) {
+  const latest = useRef(orders);
+  const ran = useRef(false);
+  latest.current = orders;
+
+  useEffect(() => {
+    if (!enabled || ran.current) return;
+    const due = ordersToReconcile(latest.current ?? []);
+    ran.current = true;
+    if (!due.length) return;
+
+    let alive = true;
+    const ctrl = new AbortController();
+    (async () => {
+      for (const order of due) {
+        if (!alive) return;
+        try {
+          const s = await getOrderStatus(order.cloverOrderId, ctrl.signal);
+          /* Paid only. A voided order is settled too, and awarding on
+             `settled` would credit food that was cancelled at the register. */
+          if (alive && s?.paid && !s?.voided) onPaid?.(order);
+        } catch {
+          /* offline, proxy down, or a 500 — try again next launch */
+        }
+      }
+    })();
+
+    return () => { alive = false; ctrl.abort(); };
+  }, [enabled, onPaid]);
 }
 
 /**

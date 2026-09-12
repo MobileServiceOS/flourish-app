@@ -148,3 +148,32 @@ The first version of the extraction script reported
 comment explaining why it was **removed**, and the regex matched the quoted
 string without its context. Same error class as the audit's subject, so the
 script strips block comments before matching.
+
+
+---
+
+## Update — acted on, and one reversal (2026-09-11)
+
+**The $20 Blue Crab is back.** `PSGB77QNZR2WM` was delisted on the reading that
+Blue Crab was duplicated in Clover and the flyer's $15 settled it. Confirmed
+with the owner: it is not a duplicate. `DH0P3NGRN9RNE` at $15 is the **Friday**
+price, in Seafood Fridays with the Friday lock; `PSGB77QNZR2WM` at $20 is the
+**everyday** one in Lunch & Dinner with no lock. Both are live and both are
+correct — two prices for two different days, which is the one shape the app can
+express without day-dependent pricing.
+
+Worth recording how this went wrong twice in opposite directions. First the $15
+was delisted as a stray, then the $20 was. Neither was ever a duplicate. Both
+guesses came from reading two rows with one name as an error rather than asking
+which it was — the same root cause this whole audit was written about.
+
+The everyday Blue Crab also has `Side With Meal` correctly attached, which the
+Friday one does not (CLOVER-FIXES.md §10).
+
+**Goat soup**: the two sizes are no longer hidden, they are deleted at the
+register. The `HIDDEN_IN_APP` entries for them dangled after the regeneration
+and the generator's stale-key warning caught both.
+
+**Still hidden for a pricing reason, unchanged**: BBQ Chicken
+(`YQH6NFFB34SVM`) and Curry Chicken (`49BD3KVSBHXRR`), both $0.00 in Clover and
+both would ring free.

@@ -313,3 +313,122 @@ Garlic, Jerk; the printed menu lists Pepper, Garlic, and Curry instead of Steame
   item with "(Catering" in its name, so these never reach customers even though they sit in
   the same Clover inventory.
 - **Gift card, Boil Food** — no price set in Clover.
+
+---
+
+## 10. The wrong side group is attached to ten items  ← do this first
+
+`Side With Meal` was meant to go onto the Seafood Fridays items and the Lunch
+Specials. What actually got attached is the **standalone `Side` group**. Same
+word on the dashboard, different object, and the two price the same food
+differently on purpose:
+
+| | Group id | White Rice | Mac & Cheese | Options |
+|---|---|---|---|---|
+| **Side With Meal** | `YQWN3PKBKV9NG` | $0.00 | $0.00 | 14 |
+| **Side** (standalone) | `S032100JQ3P4T` | $5.00 | $6.00 | 21 |
+
+Clover **adds** a modifier to the item's base price. So on the register today:
+
+> Crab Legs Platter (Shrimp & 2 Sides) — $39.99 + White Rice $5.00 = **$44.99**
+
+on a flyer that says two sides are included. The standalone group also puts
+Pepper Shrimp ($15), Jerk Chicken ($6) and Chicken Breast ($5) in front of a
+customer as "sides" on a seafood platter.
+
+**Affected items** — all ten carry `Side` and none carries `Side With Meal`:
+
+| Clover id | Item | In the app? |
+|---|---|---|
+| `BRMP82TR0Z45C` | Crab Legs Platter (Shrimp & 2 Sides) | yes |
+| `A1YZ2ZD5CA1SW` | Lobster Platter (Shrimp & 2 Sides) | yes |
+| `32VDQ4G5J131P` | Seafood Stew Peas | yes |
+| `DH0P3NGRN9RNE` | Blue Crab ($15, Friday) | yes |
+| `PH221AJ7W66EA` | Pepper Shrimp & Mussels | yes |
+| `21RNMJ880YCMC` | Crab Legs & Shrimp | delisted |
+| `K7EX5APPAXPEJ` | Lobster Roll & Fries | delisted |
+| `06Z80836S0GZR` | Fish Platter (Shrimp & 2 Sides) | hidden |
+| `CAFAH5FKPTRW8` | Shrimp (Friday) | hidden |
+| `0NQ5E11VABFDY` | Salmon (Shrimp & 2 Sides) | hidden |
+
+### What the app does in the meantime
+
+It drops the group. Those five rendered items keep their real base price and
+offer **no sides at all** — exactly the shape they had before — because the
+alternative was worse in both directions: a base price plus a priced group is
+the double-ring shape the generator zeroes, so Crab Legs Platter came out of the
+first regeneration as base $0 advertised **"from $1"**, priced off its corn
+bread. `MISATTACHED_SIDE_GROUP` in `scripts/generate-menu.mjs` holds the list,
+the generator shouts about it on every run, and tests assert the ids are still
+wrong so the map cannot outlive the problem.
+
+### The fix
+
+On each of the ten: **remove `Side`, add `Side With Meal`.** Then delete the id
+from `MISATTACHED_SIDE_GROUP` and regenerate. Order matters — attach first,
+regenerate second; regenerating first just re-reports the same thing.
+
+**Lunch Specials (`KW21XBQ6XVTGA`) has no side group either.** It was on the same
+list and did not get one. It does have an `Extra Side` modifier at $2.00 inside
+its own group, which may be what was meant — if a lunch special is supposed to
+come with a choice of side, `Side With Meal` still needs attaching.
+
+---
+
+## 11. Whiting Fish X1 went to the standalone group, not the meal group
+
+Intended: Side With Meal → Whiting Fish X1 → $3.00.
+Actual: the standalone `Side` group's "Whiting Fish  X1" (two spaces in the
+name) went $2.50 → $3.00, and Side With Meal's "Whiting Fish X1" was set to
+$2.50.
+
+Nothing is mischarged — the app follows Clover on both — but if $3.00 with a
+plate is the intent it is one field, and the app picks it up on the next
+regeneration. See PRINTED-MENU-PRICES.md.
+
+Worth tidying while you are there: the double space in `Whiting Fish  X1`. The
+export carries no modifier ids, so the server resolves modifiers **by name**
+against Clover at order time. The name matches today, so it works; it is the
+kind of difference that stops matching after someone "fixes the typo" in one
+place only.
+
+---
+
+## 12. Clover has no Drinks category any more
+
+Live Clover files both drink items — `Drink` (`D7MBX5PWRCGCE`) and
+`Pina Colada` (`EWT1J5Q9K7KX0`) — under **Lunch & Dinner**, and there is no
+Drinks category at all. The app therefore has no Drinks section: the two items
+appear in Lunch & Dinner.
+
+Per the earlier decision this is left alone, because the half that actually
+matters is `noPrep` — a Coke must never be the thing that decides when an order
+is ready — and that is keyed by item id in `NO_PREP_IDS`, independent of
+category. Both drinks keep it.
+
+The generator deliberately will not pin an item to a category Clover does not
+have: a pin like that is a fiction, and the app would show a heading the
+register disagrees with. Create the category at the register and the section
+comes back on the next regeneration.
+
+---
+
+## 13. Coca Cola $3.00 sits next to Large Can Soda $1.50
+
+In the `Drink` group (`FT5JBR312DVTA`), three rows are the same kind of thing at
+three prices:
+
+| Option | Price |
+|---|---|
+| Can Soda | $1.25 |
+| Large Can Soda | $1.50 |
+| Coca Cola | $3.00 |
+
+All three render in the app, in that group's order — Large Can Soda is 14th in
+the list and Coca Cola is 17th, three rows apart on the same sheet. A customer
+scrolling the drink options sees a can of Coke for $1.25, a large can for $1.50,
+and "Coca Cola" for $3.00, with nothing on any of them saying what size it is.
+
+It reads as one product priced twice, and the customer picks $1.25. If the $3.00
+is a 20oz bottle it needs to say so — `Coca Cola (20oz)` and
+`Can Soda (12oz)` would settle it. If it is a duplicate, delete it.

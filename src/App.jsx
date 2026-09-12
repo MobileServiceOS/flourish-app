@@ -10,7 +10,7 @@ import { loadAccount, saveAccount, deleteAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
 import { createOrder, syncCustomer, setStock } from "./lib/clover.js";
 import {
-  useCloverHealth, useInventorySync, useReadyQuote, useLoyaltySource,
+  useCloverHealth, useInventorySync, useReadyQuote, useLoyaltySource, useReconcileOnLaunch,
 } from "./hooks/clover.js";
 
 import Splash from "./components/Splash.jsx";
@@ -378,6 +378,16 @@ export default function App() {
     if (earned > 0) setPoints((p) => p + earned);
   }, []);
 
+  /* Credit anything that was paid for at the counter while the app was shut.
+     Gated on the account having loaded: awarding into state before the stored
+     balance arrives would be overwritten by it, and the Petals would vanish a
+     second time. Gated on being signed in because a guest earns nothing, and on
+     the proxy being up because there is nobody to ask otherwise. */
+  useReconcileOnLaunch(orders, {
+    enabled: !loadingAcct && Boolean(account) && clover.status === "online",
+    onPaid: awardPoints,
+  });
+
   /* ---------- placing the order ----------
      Order of operations matters here:
        1. push the order to Clover first, so the kitchen has it
@@ -440,6 +450,10 @@ export default function App() {
 
       const order = {
         num, cloverOrderId, when: "Today", total: localTotal, status: "preparing",
+        /* A real timestamp, because `when` is the frozen string "Today" and is
+           wrong by the next morning. The launch sweep needs to know whether an
+           unpaid order is recent enough to still be worth asking about. */
+        placedAt: new Date().toISOString(),
         pickup: pickupLabel,
         scheduled: Boolean(pickup.iso),
         readyWindow,
@@ -462,10 +476,11 @@ export default function App() {
 
       setActive(order);
       setOrders((o) => [order, ...o]);
-      /* NO POINTS HERE. The order has just been pushed to Clover unpaid — the
+      /* NO PETALS HERE. The order has just been pushed to Clover unpaid — the
          customer owes for food they have not paid for and might never collect.
-         Points are awarded from the tracking screen once Clover confirms the
-         payment; see awardPoints below. */
+         They are awarded once Clover confirms the payment: from the tracking
+         screen while the app is open, and from the launch sweep above for the
+         customer who closed it and paid at the counter. See awardPoints. */
       if (appliedVoucher) {
         setVouchers((v) => v.filter((x) => x.code !== appliedVoucher.code));
         setApplied(null);

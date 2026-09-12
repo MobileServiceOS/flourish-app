@@ -130,3 +130,40 @@ the better design, because the drift cannot happen. The prerequisite is that
 every intentional exclusion lives in the generator where it can be read, rather
 than in whatever the last export happened to contain. `docs/HIDE-REASONS-AUDIT.md`
 is the start of that: 8 of 21 current exclusions carry no stated reason.
+
+
+---
+
+## Update — the export now IS the live shape (2026-09-11)
+
+The gap this document described has closed from the wrong end. The fresh export
+is no longer a curated subset: it carries what the register carries, including
+everything the old export was quietly filtering.
+
+What that means in practice, all confirmed against `inventory-export-v2.xlsx`:
+
+| | Old export | This export |
+|---|---|---|
+| Categories present | Lunch & Dinner, Seafood Fridays, Drinks, Breakfast | **Lunch & Dinner, Seafood Fridays, Catering Orders** |
+| Drinks category | yes | **gone** — both drink items are in Lunch & Dinner |
+| Breakfast items | absent | **15 present, with no category at all** |
+| Items in the file | curated | 124 |
+
+**The Breakfast items have no category, not a Breakfast one.** That matters more
+than it sounds, because the generator used to carry a blank Categories cell
+forward from the row above — so all 15 arrived filed under Lunch & Dinner, at
+$0.00, with default prep times and no descriptions. Twelve free porridges on the
+menu. Fixed in the parser: a new Clover ID resets the carry, and an item with no
+category of its own is dropped. See CLAUDE.md, "A category is never inherited
+from the row above".
+
+**The Drinks section is therefore gone from the app**, and that is left alone
+deliberately. The important half was always `noPrep` — a Coke must never decide
+when an order is ready — and that is keyed by item id, independent of category.
+Both drinks keep it. The generator will not pin an item to a category Clover
+does not have, because the app would then show a heading the register disagrees
+with. Create the category and the section returns on the next regeneration.
+See CLOVER-FIXES.md §12.
+
+So the filtering the old export was doing is now done in the generator, where it
+is written down and tested, rather than in whatever produced that file.

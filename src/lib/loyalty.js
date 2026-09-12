@@ -1,12 +1,30 @@
 import { DRINK_ID, SIDE_ID } from "../data/menu.data.js";
 
+/* The currency name and the Perks disclaimer live in their own module so the
+   kitchen ticket can have them without importing the menu. Re-exported here
+   because this is where callers reasonably look for them. */
+export {
+  CURRENCY_ONE, CURRENCY_MANY, CURRENCY_RATE_LINE, SEPARATE_FROM_PERKS, currencyAmount,
+} from "./currency.js";
+import { CURRENCY_ONE, CURRENCY_MANY } from "./currency.js";
+
 /* ---------- LOYALTY ---------- */
 export const TIERS = [
-  { name: "Seedling", min: 0,   perk: "1 pt per $1 spent" },
-  { name: "Bloom",    min: 250, perk: "Free side every 100 pts" },
+  { name: "Seedling", min: 0,   perk: `1 ${CURRENCY_ONE} per $1 spent` },
+  { name: "Bloom",    min: 250, perk: `Free side every 100 ${CURRENCY_MANY}` },
   { name: "Flourish", min: 750, perk: "Priority pickup + birthday plate" },
 ];
+
+/* $5 off for 100, which is exactly the Perks rate. It is first in the list
+   because it is the one a customer can check against their receipt: the other
+   rewards are worth more than $5 at 100-250, and a ladder with no plain
+   equivalence in it makes "same as Perks" unverifiable.
+
+   `cap: 5` with a match on every line is what makes it $5 rather than $5-or-
+   the-item: `discountFor` takes the highest eligible line and caps it. */
 export const REWARDS = [
+  { id: "r-5off",  cost: 100, name: "$5 off",           desc: "Five dollars off any order.", cap: 5,
+    needs: "anything",             match: () => true },
   { id: "r-drink", cost: 60,  name: "Free drink",       desc: "Any drink on the menu.",   cap: 6,
     needs: "a drink",              match: (l) => l.itemId === DRINK_ID },
   { id: "r-side",  cost: 100, name: "Free side",        desc: "Any side up to $6.",       cap: 6,
