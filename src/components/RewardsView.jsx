@@ -8,11 +8,15 @@ import {
 import { formatPhone } from "../lib/phone.js";
 import { shareFlourish } from "../lib/share.js";
 import { SubHeader } from "./shared.jsx";
+import AddPastOrder from "./AddPastOrder.jsx";
 import { buildLabel, buildDetail } from "../lib/build.js";
 
 /* ---------- REWARDS / ACCOUNT ---------- */
 export default function RewardsView({
   account, points, petalsAvailable = true, vouchers, orders, redeem, signOut, onReorder, onDeleteAccount,
+  /* Claiming a counter receipt. Absent when the customer has no account — you
+     cannot add orders to a balance that does not exist yet. */
+  onClaimReceipt,
   /* The ladder comes from the server so the cap shown is the cap enforced.
      `ladderFromServer` false means we are rendering the bundled copy. */
   rewards = REWARDS, ladderFromServer = false,
@@ -109,6 +113,13 @@ export default function RewardsView({
         <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, margin: "-8px 4px 18px" }}>
           {SEPARATE_FROM_PERKS}
         </p>
+
+        {/* Sits directly under the balance, because the customer this is for is
+            one who just looked at their number and found it lower than they
+            expected — they ordered at the counter and earned nothing. */}
+        {account && onClaimReceipt && (
+          <AddPastOrder onClaim={onClaimReceipt} disabled={!known} />
+        )}
         <div className="card" style={{ padding: 16, marginBottom: 18, borderRadius: 22, border: "1px solid var(--line)", background: "#fff" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
             <Share2 size={20} color="var(--leaf-ink)" aria-hidden="true" />

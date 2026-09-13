@@ -138,9 +138,31 @@ export const getPrinters = (signal) => call("/printers", { signal });
 export const getPetalsBalance = ({ name, phone }, signal) =>
   call("/petals/balance", { method: "POST", body: { name, phone }, signal });
 
-/** Bind this phone to a balance, carrying a device balance across once. */
-export const claimPetals = ({ name, phone, deviceBalance }, signal) =>
-  call("/petals/claim", { method: "POST", body: { name, phone, deviceBalance }, signal });
+/** Bind this phone to a balance, carrying a device balance across once.
+    `birthday` and `referralCode` are optional and only mean anything the first
+    time a number is seen — see server/petals/ledger.js. */
+export const claimPetals = ({ name, phone, deviceBalance, birthday, referralCode }, signal) =>
+  call("/petals/claim", {
+    method: "POST",
+    body: { name, phone, deviceBalance, birthday, referralCode },
+    signal,
+  });
+
+/**
+ * Claim a counter order from its receipt.
+ *
+ * `orderRef` is the last few characters of the Clover id printed on it. The
+ * SERVER does every check — that the order exists, is paid, is inside the
+ * window, and that the characters identify exactly one order. This sends what
+ * was typed and renders whatever comes back.
+ */
+export const claimReceipt = ({ name, phone, orderRef }, signal) =>
+  call("/petals/receipt", { method: "POST", body: { name, phone, orderRef }, signal });
+
+/** Ask whether a birthday reward is due. Safe to call whenever; the server
+    answers `credited: 0` with a reason in every case that is not a payout. */
+export const claimBirthday = ({ name, phone }, signal) =>
+  call("/petals/birthday", { method: "POST", body: { name, phone }, signal });
 
 /** Staff: reprint the most recent app order, to prove the printer works. */
 export const printTest = () => call("/print-test", { method: "POST", body: {} });

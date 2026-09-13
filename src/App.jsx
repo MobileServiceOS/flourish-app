@@ -8,7 +8,7 @@ import { rewardOf, discountFor, pointsFor, CURRENCY_MANY } from "./lib/loyalty.j
 import { searchItems } from "./lib/search.js";
 import { loadAccount, saveAccount, deleteAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
-import { createOrder, syncCustomer, setStock } from "./lib/clover.js";
+import { createOrder, syncCustomer, setStock, claimReceipt } from "./lib/clover.js";
 import {
   useCloverHealth, useInventorySync, useReadyQuote, useLoyaltySource, useReconcileOnLaunch,
   usePetalsBalance, useRewardLadder,
@@ -160,6 +160,22 @@ export default function App() {
   /* The balance is the SERVER's. Nothing on the device is truth.
      `available: false` means we could not ask — the screens show it as
      unavailable and refuse to redeem rather than guessing a number. */
+  /**
+   * Claim a counter order from its receipt.
+   *
+   * Refreshes the balance on success rather than adding the credited figure to
+   * a local number: the server's total is the only one that counts, and a
+   * referral bonus can land in the same request, which arithmetic here would
+   * miss. The error is re-thrown so the form can show the server's own wording.
+   */
+  const addPastOrder = async (orderRef) => {
+    const r = await claimReceipt({
+      name: account.name, phone: account.phone, orderRef,
+    });
+    petals.refresh?.();
+    return r;
+  };
+
   const petals = usePetalsBalance({
     name: account?.name,
     phone: account?.phone,
@@ -640,7 +656,8 @@ export default function App() {
       {view === "rewards" && (account
         ? <RewardsView {...{ account, points, petalsAvailable, vouchers, orders, redeem, signOut }}
             rewards={ladder.rewards} ladderFromServer={ladder.fromServer}
-            onReorder={reorder} onDeleteAccount={deleteMyAccount} />
+            onReorder={reorder} onDeleteAccount={deleteMyAccount}
+            onClaimReceipt={addPastOrder} />
         : <SignInView onSignIn={signIn} rewards={ladder.rewards} />)}
       {view === "orderDetail" && detailOrder && (
         <OrderDetail
