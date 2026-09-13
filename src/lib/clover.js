@@ -159,6 +159,13 @@ export const claimPetals = ({ name, phone, deviceBalance, birthday, referralCode
 export const claimReceipt = ({ name, phone, orderRef }, signal) =>
   call("/petals/receipt", { method: "POST", body: { name, phone, orderRef }, signal });
 
+/**
+ * Is a friend's referral code usable? Read-only, and called BEFORE an account
+ * exists so a typo can be fixed while the customer is still on the form.
+ */
+export const checkReferralCode = ({ phone, code }, signal) =>
+  call("/petals/referral-check", { method: "POST", body: { phone, code }, signal });
+
 /** Ask whether a birthday reward is due. Safe to call whenever; the server
     answers `credited: 0` with a reason in every case that is not a payout. */
 export const claimBirthday = ({ name, phone }, signal) =>

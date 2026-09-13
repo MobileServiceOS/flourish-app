@@ -356,11 +356,11 @@ describe("referral codes over the wire", () => {
   it("hands the customer a code and accepts a friend's", async () => {
     const { agent } = build();
     const mine = await join(agent);
-    expect(mine.body.referralCode).toMatch(/^[0-9BCDFGHJKMNPQRSTVWXYZ]{6}$/);
+    expect(mine.body.referral.code).toMatch(/^[0-9BCDFGHJKMNPQRSTVWXYZ]{6}$/);
 
     const friend = { name: "A Friend", phone: "9175551234" };
     const r = await agent.post("/api/clover/petals/claim")
-      .send({ ...friend, referralCode: mine.body.referralCode }).expect(200);
+      .send({ ...friend, referralCode: mine.body.referral.code }).expect(200);
     expect(r.body.referralAccepted).toBe(true);
   });
 

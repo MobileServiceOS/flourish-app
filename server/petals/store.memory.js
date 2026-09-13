@@ -112,6 +112,12 @@ export function createMemoryStore() {
       return customers.slice().sort((a, b) => a.id - b.id).map((c) => ({ ...c }));
     },
 
+    /* Everyone this customer referred. Used to count referrals that have not
+       paid out yet, which is what the pending state on their screen shows. */
+    async customersReferredBy(id) {
+      return customers.filter((c) => c.referredBy === id).map((c) => ({ ...c }));
+    },
+
     async findCustomerById(id) {
       const c = customers.find((x) => x.id === id);
       return c ? { ...c } : null;

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Gift, Award } from "lucide-react";
+import { Gift, Award, Receipt } from "lucide-react";
 import {
   REWARDS, capLabel, CURRENCY_ONE, CURRENCY_MANY, SEPARATE_FROM_PERKS, ONE_REWARD_PER_ORDER,
 } from "../lib/loyalty.js";
@@ -22,7 +22,17 @@ function birthdayValue(v) {
   return `${m}-${d}`;
 }
 
-export default function SignInView({ onSignIn, rewards = REWARDS }) {
+/* A refusal a customer can act on, rather than a silent shrug. The first
+   version of this screen accepted anything and told them they were all set. */
+const CODE_PROBLEM = {
+  UNKNOWN_CODE: "We don't recognise that code. Check it with your friend.",
+  OWN_CODE: "That's your own code — you can't refer yourself.",
+  ALREADY_REFERRED: "There's already a friend's code on this number.",
+  WINDOW_CLOSED: "Codes can only be added before your first order.",
+  EMPTY: "Enter the code your friend gave you.",
+};
+
+export default function SignInView({ onSignIn, rewards = REWARDS, onCheckCode }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   /* Both optional, and both only mean anything the first time a number is seen.
@@ -30,12 +40,37 @@ export default function SignInView({ onSignIn, rewards = REWARDS }) {
      abandoning the form over — so nothing below blocks the button. */
   const [birthday, setBirthday] = useState("");
   const [referralCode, setReferralCode] = useState("");
+  /* null = not checked, or the server's verdict on the code as typed. Checked
+     BEFORE the account is created, so a typo is fixable here rather than
+     discovered never — once an account exists and has ordered, the window for
+     applying a code has genuinely closed and nothing in the app can reopen
+     it. */
+  const [codeState, setCodeState] = useState(null);   // null | "checking" | {valid, reason}
   // Only complain about a field the customer has actually left.
   const [touched, setTouched] = useState({});
   const clean = phoneDigits(phone);
   const nameOk = isValidName(name);
   const phoneOk = isValidPhone(phone);
   const ok = nameOk && phoneOk;
+
+  /* Checked on blur and again before submitting. It never BLOCKS the signup —
+     an optional field must not stop someone joining — but a wrong code is
+     reported before the account exists, which is the only moment it can still
+     be corrected. */
+  const checkCode = async () => {
+    if (!referralCode || !onCheckCode) return null;
+    setCodeState("checking");
+    try {
+      const r = await onCheckCode({ phone: clean, code: referralCode });
+      setCodeState(r);
+      return r;
+    } catch {
+      /* Unreachable server: say nothing rather than accuse the code. It is
+         sent anyway and the claim will decide. */
+      setCodeState(null);
+      return null;
+    }
+  };
   return (
     <>
       <SubHeader title="Sign in" />
@@ -46,6 +81,38 @@ export default function SignInView({ onSignIn, rewards = REWARDS }) {
           <div className="serif" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.2 }}>Join Flourish Rewards</div>
           <div style={{ fontSize: 13, opacity: .95, marginTop: 6, lineHeight: 1.45 }}>
             Earn a {CURRENCY_ONE} for every dollar. Free sides, free drinks, free plates.
+          </div>
+          {/* 50 {CURRENCY_MANY} FOR JOINING, SAID BEFORE THEY JOIN. It was
+              being paid and never mentioned, which is a reason to sign up
+              thrown away — and then 50 Petals landing unexplained. */}
+          <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 999,
+            background: "rgba(255,255,255,.22)", display: "inline-block",
+            fontSize: 13, fontWeight: 700 }}>
+            50 {CURRENCY_MANY} just for joining
+          </div>
+        </div>
+
+        {/* THE CONVERSION MOMENT.
+
+            A walk-in holding a receipt is who the claim feature is FOR, and
+            they could not see it: "Add a past order" lives on the Rewards
+            screen, which only renders once an account exists. So the one
+            person the feature was built for met a signup form that never
+            mentioned the receipt in their hand.
+
+            It is stated here, before the form, because it is the strongest
+            reason on this screen to bother signing up at all — money already
+            spent, waiting to be claimed. */}
+        <div className="card" style={{ padding: 14, margin: "14px 0 4px",
+          display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <Receipt size={18} color="var(--teal-ink)" aria-hidden="true"
+            style={{ marginTop: 1, flex: "0 0 auto" }} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>Ordered at the counter?</div>
+            <div style={{ color: "var(--muted)", fontSize: 12.5, lineHeight: 1.45, marginTop: 3 }}>
+              Your receipt is worth {CURRENCY_MANY}. Join, then add any order from
+              the last 7 days using the Clover ID printed on it.
+            </div>
           </div>
         </div>
 
@@ -115,12 +182,20 @@ export default function SignInView({ onSignIn, rewards = REWARDS }) {
             placeholder="Referral code" aria-label="Referral code from a friend"
             autoCapitalize="characters" autoCorrect="off" spellCheck={false}
             value={referralCode}
-            onChange={(e) => setReferralCode(
-              e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 6))}
+            onChange={(e) => {
+              setReferralCode(
+                e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 6));
+              setCodeState(null);
+            }}
+            onBlur={checkCode}
+            aria-invalid={codeState?.valid === false ? "true" : undefined}
             aria-describedby="referral-hint" />
-          <div id="referral-hint" className="field-hint">
-            Got a code from a friend? You both earn 100 {CURRENCY_MANY} when you
-            pay for your first order.
+          <div id="referral-hint"
+            className={`field-hint${codeState?.valid === false ? " bad" : ""}`}>
+            {codeState === "checking" ? "Checking that code…"
+              : codeState?.valid === true ? `Code looks good — you'll both earn 100 ${CURRENCY_MANY}.`
+              : codeState?.valid === false ? (CODE_PROBLEM[codeState.reason] ?? "That code didn't work.")
+              : `Got a code from a friend? You both earn 100 ${CURRENCY_MANY} when you pay for your first order.`}
           </div>
         </Section>
 

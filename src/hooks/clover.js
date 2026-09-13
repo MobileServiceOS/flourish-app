@@ -3,7 +3,14 @@
    order. Nothing here holds a secret. */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
-  health, getInventory, getOrder, quoteOrder, getOrderStatus, getLoyalty, getRewards,
+  health,
+  getInventory,
+  getOrder,
+  quoteOrder,
+  getOrderStatus,
+  getLoyalty,
+  getRewards,
+  claimBirthday,
 } from "../lib/clover.js";
 import { trackingStage } from "../lib/cloverOrder.js";
 import { ordersToReconcile } from "../lib/reconcile.js";
@@ -361,7 +368,7 @@ export function usePetalsBalance({
 } = {}) {
   const [state, setState] = useState({
     petals: null, known: false, available: false, error: null,
-    referralCode: null, birthday: null,
+    referral: null, birthday: null, signupBonus: 0, birthdayPetals: 0,
   });
   const claimed = useRef(false);
   /* Read through a ref so a changing device balance cannot re-trigger the
@@ -372,6 +379,8 @@ export function usePetalsBalance({
   pending.current = deviceBalance;
   const extras = useRef({ birthday, referralCode });
   extras.current = { birthday, referralCode };
+  /* Once per mount, not once per balance read. */
+  const birthdayAsked = useRef(false);
 
   const ask = useCallback(async (signal) => {
     if (!name || !phone) return;
@@ -386,16 +395,53 @@ export function usePetalsBalance({
             referralCode: extras.current.referralCode ?? undefined,
           }, signal);
       claimed.current = true;
+
+      /* THE BIRTHDAY REWARD, CLAIMED AUTOMATICALLY.
+
+         Three ways this could have worked: a card on Rewards to tap, an
+         applicable reward at checkout, or this. A card is the one most
+         customers never see — the Rewards screen is not a daily visit — and
+         checkout makes a gift look like a discount they have to earn. So it
+         lands on its own, the first time the app opens in their birth month,
+         and the screen ACKNOWLEDGES it rather than letting 350 Petals appear
+         unexplained.
+
+         Asked at most once per launch, and only when the server has already
+         told us their birth month matches — the endpoint is cheap and
+         idempotent (keyed `birthday:<phone>:<year>`), but a request that can
+         be skipped should be. The server decides regardless; this only avoids
+         asking on the other eleven months. */
+      const born = res.birthday ?? null;
+      let birthdayPetals = 0;
+      if (born && !birthdayAsked.current) {
+        birthdayAsked.current = true;
+        if (born.month === new Date().getMonth() + 1) {
+          try {
+            const b = await claimBirthday({ name, phone }, signal);
+            birthdayPetals = b?.credited ?? 0;
+          } catch { /* a birthday is never worth failing a balance read over */ }
+        }
+      }
+
       setState((prev) => ({
         petals: res.petals ?? 0,
         known: Boolean(res.known),
         available: true,
         error: null,
-        /* The balance read does not carry these, so the values from the claim
-           are kept rather than blanked on every later refresh. */
-        referralCode: res.referralCode ?? prev.referralCode ?? null,
+        /* Both reads carry these now, so the last known values survive a
+           failure rather than the cards vanishing. */
+        referral: res.referral ?? prev.referral ?? null,
         birthday: res.birthday ?? prev.birthday ?? null,
+        /* What just landed, for the screen to announce once. */
+        signupBonus: res.signupBonus || prev.signupBonus || 0,
+        birthdayPetals: birthdayPetals || prev.birthdayPetals || 0,
       }));
+      if (birthdayPetals > 0) {
+        /* The balance we just set predates the birthday credit, so re-read
+           rather than adding it here — the server's number is the one that
+           counts, and it may also have paid a referral in the same window. */
+        setTimeout(() => { ask(); }, 0);
+      }
     } catch (e) {
       if (e?.name === "AbortError") return;
       /* Every failure lands here, including PETALS_UNAVAILABLE from a proxy with
@@ -403,7 +449,12 @@ export function usePetalsBalance({
          so they are treated the same and the message is kept for the notice. */
       setState((prev) => ({
         petals: null, known: false, available: false, error: e?.message ?? "unavailable",
-        referralCode: prev.referralCode, birthday: prev.birthday,
+        /* KEPT, not cleared. The referral code is the customer's own and does
+           not change; blanking it made the card disappear the moment the
+           server was unreachable, which is the same mistake the balance
+           already had a notice for. */
+        referral: prev.referral, birthday: prev.birthday,
+        signupBonus: prev.signupBonus, birthdayPetals: prev.birthdayPetals,
       }));
     }
   }, [name, phone]);
@@ -412,7 +463,7 @@ export function usePetalsBalance({
     if (!enabled || !name || !phone) {
       setState({
         petals: null, known: false, available: false, error: null,
-        referralCode: null, birthday: null,
+        referral: null, birthday: null, signupBonus: 0, birthdayPetals: 0,
       });
       return;
     }

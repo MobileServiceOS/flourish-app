@@ -205,6 +205,13 @@ export async function createPgStore({ connectionString, ssl, schema } = {}) {
       return rows.map(rowToCustomer);
     },
 
+    /* Everyone this customer referred, for the pending count. */
+    async customersReferredBy(id) {
+      const { rows } = await q(
+        "SELECT * FROM petals_customer WHERE referred_by = $1 ORDER BY id", [id]);
+      return rows.map(rowToCustomer);
+    },
+
     async findCustomerById(id) {
       const { rows } = await q("SELECT * FROM petals_customer WHERE id = $1", [id]);
       return rowToCustomer(rows[0]) ?? null;

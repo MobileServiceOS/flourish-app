@@ -261,7 +261,17 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
         throw new PetalsError("NAME_MISMATCH", "That name doesn't match the one on this number.");
       }
       await expireHeld(tx, customer.id);
-      return { petals: await tx.balanceOf(customer.id), known: true };
+      /* The referral shape rides on the BALANCE read, not only on the claim.
+         It used to come back from `claim` alone, so the code card vanished
+         from the Rewards screen on every later refresh and whenever the
+         server was unreachable at launch. */
+      return {
+        petals: await tx.balanceOf(customer.id),
+        known: true,
+        referral: await referralStatus(tx, customer),
+        birthday: customer.birthMonth
+          ? { month: customer.birthMonth, day: customer.birthDay } : null,
+      };
     });
   }
 
@@ -317,16 +327,38 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
       if (!customer.referralCode) patch.referralCode = await mintCode(tx);
 
       /* ---- who referred them ----
-         ONLY on a genuinely new customer, and never overwritten. An existing
-         customer entering a code later would let two people who already eat
-         here pay each other, which is not what the scheme is for. */
+
+         THE WINDOW IS OPEN UNTIL THEIR FIRST PAID ORDER, not just at signup.
+         It used to be `isNewCustomer`, so somebody who signed up in a hurry
+         and remembered the code an hour later lost it permanently, with no way
+         to fix it in the app and nothing to tell them it had happened.
+
+         After a first paid order the window has genuinely closed: the scheme
+         rewards bringing someone NEW, and by then they are not. That also
+         keeps the original protection — two people who already eat here cannot
+         start paying each other, because both have ordered.
+
+         `referralRejected` says WHY when a code does not take, so the screen
+         can tell a typo from a code that is the customer's own. Silently
+         ignoring it is what shipped first, and it told a customer with a
+         mistyped code that they were all set. */
       let referralAccepted = false;
+      let referralRejected = null;
       const code = String(referralCode ?? "").trim().toUpperCase();
-      if (code && isNewCustomer && !customer.referredBy) {
-        const referrer = await tx.findCustomerByReferralCode(code);
-        if (referrer && referrer.id !== customer.id && referrer.phone !== p) {
-          patch.referredBy = referrer.id;
-          referralAccepted = true;
+      if (code) {
+        if (customer.referredBy) {
+          referralRejected = "ALREADY_REFERRED";
+        } else if (!isNewCustomer && await hasOrdered(tx, customer.id)) {
+          referralRejected = "WINDOW_CLOSED";
+        } else {
+          const referrer = await tx.findCustomerByReferralCode(code);
+          if (!referrer) referralRejected = "UNKNOWN_CODE";
+          else if (referrer.id === customer.id || referrer.phone === p) {
+            referralRejected = "OWN_CODE";
+          } else {
+            patch.referredBy = referrer.id;
+            referralAccepted = true;
+          }
         }
       }
       if (Object.keys(patch).length) {
@@ -349,7 +381,8 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
         known: true,
         signupBonus: gotSignup,
         referralAccepted,
-        referralCode: customer.referralCode ?? null,
+        referralRejected,
+        referral: await referralStatus(tx, customer),
         birthday: customer.birthMonth
           ? { month: customer.birthMonth, day: customer.birthDay } : null,
       };
@@ -588,6 +621,58 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
   /* ========================================================================
      EARNING WITHOUT AN APP ORDER
      ======================================================================== */
+
+  /**
+   * Has this customer ever paid for anything?
+   *
+   * Both reasons count: `earned` is an app order the register confirmed, and
+   * `receipt` is a counter order they claimed. Either is a first paid order,
+   * which is what closes the window for entering a referral code.
+   */
+  async function hasOrdered(tx, customerId) {
+    const app = await tx.countLedgerByReason(customerId, REASONS.EARNED);
+    if (app > 0) return true;
+    return (await tx.countLedgerByReason(customerId, REASONS.RECEIPT)) > 0;
+  }
+
+  /**
+   * Everything the Rewards screen needs to say about referrals, in one shape
+   * returned by BOTH `balance` and `claim`.
+   *
+   * It lives here rather than being assembled in the client because three of
+   * the four answers are only knowable server-side, and because the screen had
+   * been showing a code that arrived from `claim` alone — so the card vanished
+   * the moment the balance was read instead, or the server was unreachable.
+   *
+   *   code          this customer's own code, to hand out
+   *   referred      somebody's code is already on this account
+   *   canBeReferred the window for entering one is still open: never referred,
+   *                 and has never paid for anything
+   *   pendingIn     they were referred and their own first order has not paid
+   *                 out yet — 100 Petals waiting on them
+   *   pendingOut    friends they referred who have not paid for a first order
+   *                 yet, so nothing has been credited for them
+   */
+  async function referralStatus(tx, customer) {
+    const referredIn = Boolean(customer.referredBy);
+    const paidInAlready = referredIn
+      ? Boolean(await tx.findLedgerByIdemKey(`referral-referee:${customer.phone}`))
+      : false;
+
+    let pendingOut = 0;
+    for (const friend of await tx.customersReferredBy(customer.id)) {
+      const paid = await tx.findLedgerByIdemKey(`referral-referrer:${friend.phone}`);
+      if (!paid) pendingOut += 1;
+    }
+
+    return {
+      code: customer.referralCode ?? null,
+      referred: referredIn,
+      canBeReferred: !referredIn && !(await hasOrdered(tx, customer.id)),
+      pendingIn: referredIn && !paidInAlready,
+      pendingOut,
+    };
+  }
 
   /**
    * The signup bonus, on FIRST SERVER-SIDE APPEARANCE of a phone number.
@@ -900,11 +985,46 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
     };
   }
 
+  /**
+   * Is this referral code usable by this phone number? Writes nothing.
+   *
+   * Exists so a mistyped code is CORRECTABLE on the signup screen, before an
+   * account is created. Validating as part of the claim would mean the customer
+   * row, the signup bonus and the account all existed by the time they were
+   * told the code was wrong.
+   *
+   * It reveals only whether the code resolves, never whose it is — no name, no
+   * phone, no id. Brute-forcing 729 million codes to find a live one buys the
+   * ability to credit a stranger 100 Petals for an order the attacker paid for
+   * themselves, which is not worth mounting, and guard.js rate-limits per IP
+   * like everywhere else.
+   */
+  async function referralCheck({ phone, code }) {
+    const clean = String(code ?? "").trim().toUpperCase();
+    if (!clean) return { valid: false, reason: "EMPTY" };
+    const p = normalisePhone(phone);
+
+    return store.tx(async (tx) => {
+      const referrer = await tx.findCustomerByReferralCode(clean);
+      if (!referrer) return { valid: false, reason: "UNKNOWN_CODE" };
+      if (p && referrer.phone === p) return { valid: false, reason: "OWN_CODE" };
+      if (p) {
+        const me = await tx.findCustomerByPhone(p);
+        if (me) {
+          if (me.referredBy) return { valid: false, reason: "ALREADY_REFERRED" };
+          if (await hasOrdered(tx, me.id)) return { valid: false, reason: "WINDOW_CLOSED" };
+        }
+      }
+      return { valid: true };
+    });
+  }
+
   /** For a caller that wants the sweep without reading a balance. */
   async function expire(customerId = null) {
     return store.tx(async (tx) => ({ released: await expireHeld(tx, customerId) }));
   }
 
   return { balance, claim, credit, openOrder, settle, release, expire, adjust,
-           claimReceipt, birthdayReward, perksMatch, backfillSignupBonus };
+           claimReceipt, birthdayReward, perksMatch, backfillSignupBonus,
+           referralCheck };
 }

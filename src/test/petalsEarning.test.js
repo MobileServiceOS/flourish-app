@@ -378,7 +378,7 @@ describe("the birthday reward", () => {
 });
 
 describe("referrals", () => {
-  const codeOf = async (petals) => (await join(petals)).referralCode;
+  const codeOf = async (petals) => (await join(petals)).referral.code;
 
   it("pays both sides when the friend's first order is PAID", async () => {
     const ctx = setup();
@@ -454,25 +454,67 @@ describe("referrals", () => {
     expect(me.petals).toBe(SIGNUP_BONUS + 10);
   });
 
-  it("cannot be applied to a customer who already exists", async () => {
-    /* Two people who already eat here cannot start paying each other. The code
-       is only read on a genuinely new customer row. */
+  it("can be added AFTER signing up, until the first paid order", async () => {
+    /* Somebody who signs up in a hurry and remembers the code an hour later
+       used to lose it permanently — the window was `isNewCustomer`, there was
+       no field to enter one afterwards, and nothing told them it had happened.
+       The window is now open until their first paid order. */
     const ctx = setup();
     const code = await codeOf(ctx.petals);
     await ctx.petals.claim({ name: "A Friend", phone: FRIEND });        // joins with no code
     const later = await ctx.petals.claim({
-      name: "A Friend", phone: FRIEND, referralCode: code });           // tries after the fact
-    expect(later.referralAccepted).toBe(false);
+      name: "A Friend", phone: FRIEND, referralCode: code });           // remembers
+    expect(later.referralAccepted).toBe(true);
 
     await ctx.petals.credit({ name: "A Friend", phone: FRIEND, orderId: "O1", petals: 10 });
     const me = await ctx.petals.balance({ name: NAME, phone: PHONE });
+    expect(me.petals, "both sides paid on the friend's first order")
+      .toBe(SIGNUP_BONUS + REFERRAL_BONUS);
+  });
+
+  it("refuses a code once the customer has already paid for something", async () => {
+    /* The window genuinely closes here. The scheme rewards bringing someone
+       NEW, and after a paid order they are not — which also keeps the original
+       protection: two people who both already eat here cannot start paying
+       each other. */
+    const ctx = setup();
+    const code = await codeOf(ctx.petals);
+    await ctx.petals.claim({ name: "A Friend", phone: FRIEND });
+    await ctx.petals.credit({ name: "A Friend", phone: FRIEND, orderId: "O1", petals: 10 });
+
+    const late = await ctx.petals.claim({
+      name: "A Friend", phone: FRIEND, referralCode: code });
+    expect(late.referralAccepted).toBe(false);
+    expect(late.referralRejected).toBe("WINDOW_CLOSED");
+
+    const me = await ctx.petals.balance({ name: NAME, phone: PHONE });
     expect(me.petals).toBe(SIGNUP_BONUS);
+  });
+
+  it("says WHY a code was refused, rather than swallowing it", async () => {
+    /* The first version accepted anything and told the customer they were all
+       set, so a typo was discovered never. Each refusal now has a code the
+       screen turns into a sentence they can act on. */
+    const ctx = setup();
+    const mine = await codeOf(ctx.petals);
+
+    const unknown = await ctx.petals.claim({
+      name: "A Friend", phone: FRIEND, referralCode: "ZZZZZZ" });
+    expect(unknown.referralRejected).toBe("UNKNOWN_CODE");
+
+    const own = await ctx.petals.claim({ name: NAME, phone: PHONE, referralCode: mine });
+    expect(own.referralRejected).toBe("OWN_CODE");
+
+    await ctx.petals.claim({ name: "Third", phone: STRANGER, referralCode: mine });
+    const twice = await ctx.petals.claim({
+      name: "Third", phone: STRANGER, referralCode: mine });
+    expect(twice.referralRejected).toBe("ALREADY_REFERRED");
   });
 
   it("can only be referred once, ever", async () => {
     const ctx = setup();
     const mine = await codeOf(ctx.petals);
-    const theirs = (await ctx.petals.claim({ name: "Third Party", phone: STRANGER })).referralCode;
+    const theirs = (await ctx.petals.claim({ name: "Third Party", phone: STRANGER })).referral.code;
 
     await ctx.petals.claim({ name: "A Friend", phone: FRIEND, referralCode: mine });
     const second = await ctx.petals.claim({
@@ -526,7 +568,7 @@ describe("referrals", () => {
        those. Caught while writing the cap, not after. */
     const ctx = setup();
     const sponsor = (await ctx.petals.claim({
-      name: "Sponsor", phone: "9995551111" })).referralCode;
+      name: "Sponsor", phone: "9995551111" })).referral.code;
 
     // NAME joins via Sponsor's code and pays for an order: one `referee` row.
     await ctx.petals.claim({ name: NAME, phone: PHONE, referralCode: sponsor });
@@ -535,7 +577,7 @@ describe("referrals", () => {
     expect(mine.petals).toBe(SIGNUP_BONUS + 10 + REFERRAL_BONUS);
 
     // Now NAME refers the full five, and must be paid for all five.
-    const code = (await ctx.petals.claim({ name: NAME, phone: PHONE })).referralCode;
+    const code = (await ctx.petals.claim({ name: NAME, phone: PHONE })).referral.code;
     for (let i = 0; i < REFERRALS_PER_YEAR; i++) {
       const ph = `212555${String(3000 + i)}`;
       await ctx.petals.claim({ name: `F${i}`, phone: ph, referralCode: code });
@@ -660,7 +702,7 @@ describe("every credit is explainable afterwards", () => {
     /* The whole argument for a ledger instead of a column: "why is my balance
        this number" has to be answerable at a counter, months later. */
     const ctx = setup(JULY_2026);
-    const code = (await join(ctx.petals, { birthday: "1990-07-04" })).referralCode;
+    const code = (await join(ctx.petals, { birthday: "1990-07-04" })).referral.code;
     await ctx.petals.claimReceipt({ name: NAME, phone: PHONE, orderId: "R1", petals: 22 });
     await ctx.petals.birthdayReward({ name: NAME, phone: PHONE });
     await ctx.petals.perksMatch({ name: NAME, phone: PHONE, petals: 200 });
