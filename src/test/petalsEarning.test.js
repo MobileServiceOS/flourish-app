@@ -3,7 +3,7 @@ import { createMemoryStore } from "../../server/petals/store.memory.js";
 import {
   createPetals, PetalsError, normaliseOrderRef, parseBirthday,
   SIGNUP_BONUS, REFERRAL_BONUS, PERKS_MATCH_CAP, BIRTHDAY_PETALS,
-  RECEIPT_CLAIMS_PER_DAY,
+  RECEIPT_CLAIMS_PER_DAY, REFERRALS_PER_YEAR,
 } from "../../server/petals/ledger.js";
 
 /* ============================================================================
@@ -205,16 +205,21 @@ describe("the retroactive backfill", () => {
     expect((await ctx.petals.backfillSignupBonus({ dryRun: false })).credited).toBe(1);
   });
 
-  it("uses the same reason as a live signup, not a second word for it", async () => {
-    /* A balance read out at a counter should not show "signup bonus" for one
-       customer and "signup bonus (retroactive)" for the next — they are the
-       same entitlement, and which run wrote it is in created_at. */
+  it("labels a backfilled row as retroactive, on the SAME key", async () => {
+    /* The label differs so a ledger read months later shows who was swept up
+       by the retroactive run. The KEY does not, and that is the part that
+       matters: a key varying with the label would hand a second 50 to anyone
+       the backfill reached before they opened the app. */
     await legacy("Old One", "+14757776200");
     await ctx.petals.backfillSignupBonus({ dryRun: false });
     const row = await ctx.store.tx(async (tx) =>
       tx.findLedgerByIdemKey("signup:+14757776200"));
-    expect(row.reason).toBe("signup");
+    expect(row.reason).toBe("signup bonus (retroactive)");
     expect(row.delta).toBe(SIGNUP_BONUS);
+
+    // The live path finds the same key and pays nothing more.
+    const signin = await ctx.petals.claim({ name: "Old One", phone: "4757776200" });
+    expect(signin.signupBonus).toBe(0);
   });
 });
 
@@ -477,6 +482,106 @@ describe("referrals", () => {
     await ctx.petals.credit({ name: "A Friend", phone: FRIEND, orderId: "O1", petals: 10 });
     const third = await ctx.petals.balance({ name: "Third Party", phone: STRANGER });
     expect(third.petals, "the second referrer must earn nothing").toBe(SIGNUP_BONUS);
+  });
+
+  it(`pays the referrer for at most ${REFERRALS_PER_YEAR} friends a year`, async () => {
+    /* The only path here that had no ceiling. One person with a large group
+       chat was the entire marketing budget, and the payout scaled with nothing
+       but their contact list. Six friends, five payouts. */
+    const ctx = setup();
+    const code = await codeOf(ctx.petals);
+    for (let i = 0; i < REFERRALS_PER_YEAR + 1; i++) {
+      const ph = `212555${String(1000 + i)}`;
+      await ctx.petals.claim({ name: `Friend ${i}`, phone: ph, referralCode: code });
+      await ctx.petals.credit({ name: `Friend ${i}`, phone: ph, orderId: `O${i}`, petals: 10 });
+    }
+    const me = await ctx.petals.balance({ name: NAME, phone: PHONE });
+    expect(me.petals).toBe(SIGNUP_BONUS + REFERRAL_BONUS * REFERRALS_PER_YEAR);
+  });
+
+  it("still pays the FRIEND after the referrer is capped out", async () => {
+    /* The friend placed and paid for the order, which is the thing being
+       rewarded. Whether the person who told them about the shop is popular is
+       none of their business, and withholding it would punish a brand-new
+       customer for someone else's success. */
+    const ctx = setup();
+    const code = await codeOf(ctx.petals);
+    let last;
+    for (let i = 0; i < REFERRALS_PER_YEAR + 1; i++) {
+      const ph = `212555${String(2000 + i)}`;
+      await ctx.petals.claim({ name: `Friend ${i}`, phone: ph, referralCode: code });
+      await ctx.petals.credit({ name: `Friend ${i}`, phone: ph, orderId: `P${i}`, petals: 10 });
+      last = { name: `Friend ${i}`, phone: ph };
+    }
+    const friend = await ctx.petals.balance(last);
+    expect(friend.petals, "the sixth friend is paid in full")
+      .toBe(SIGNUP_BONUS + 10 + REFERRAL_BONUS);
+  });
+
+  it("does not count a customer's OWN joining bonus against their cap", async () => {
+    /* Both sides of a referral write reason "referral", so counting reasons
+       would charge someone's own joining bonus against their annual limit and
+       leave them able to refer only four. The idem keys distinguish the two —
+       `referral-referrer:` against `referral-referee:` — and the count reads
+       those. Caught while writing the cap, not after. */
+    const ctx = setup();
+    const sponsor = (await ctx.petals.claim({
+      name: "Sponsor", phone: "9995551111" })).referralCode;
+
+    // NAME joins via Sponsor's code and pays for an order: one `referee` row.
+    await ctx.petals.claim({ name: NAME, phone: PHONE, referralCode: sponsor });
+    await ctx.petals.credit({ name: NAME, phone: PHONE, orderId: "OWN", petals: 10 });
+    const mine = (await ctx.petals.balance({ name: NAME, phone: PHONE }));
+    expect(mine.petals).toBe(SIGNUP_BONUS + 10 + REFERRAL_BONUS);
+
+    // Now NAME refers the full five, and must be paid for all five.
+    const code = (await ctx.petals.claim({ name: NAME, phone: PHONE })).referralCode;
+    for (let i = 0; i < REFERRALS_PER_YEAR; i++) {
+      const ph = `212555${String(3000 + i)}`;
+      await ctx.petals.claim({ name: `F${i}`, phone: ph, referralCode: code });
+      await ctx.petals.credit({ name: `F${i}`, phone: ph, orderId: `Q${i}`, petals: 10 });
+    }
+    const after = await ctx.petals.balance({ name: NAME, phone: PHONE });
+    expect(after.petals - mine.petals, "five referrals, five payouts")
+      .toBe(REFERRAL_BONUS * REFERRALS_PER_YEAR);
+  });
+
+  it("lets a customer who has never ordered themselves refer five", async () => {
+    /* A DELIBERATE DECISION, not an oversight. The gate on a referral is the
+       FRIEND paying — real money through the register, verified by Clover —
+       not the referrer having spent anything. Requiring the referrer to have
+       ordered would block exactly the person the scheme is for: someone who
+       has just heard of the shop and is telling people.
+
+       So yes: sign up, buy nothing, bring five paying friends, collect 500
+       Petals. Five real customers each paying a real bill is worth $28.57 of
+       discount by any measure. */
+    const ctx = setup();
+    const code = await codeOf(ctx.petals);        // joins, never orders
+    for (let i = 0; i < REFERRALS_PER_YEAR; i++) {
+      const ph = `212555${String(4000 + i)}`;
+      await ctx.petals.claim({ name: `G${i}`, phone: ph, referralCode: code });
+      await ctx.petals.credit({ name: `G${i}`, phone: ph, orderId: `R${i}`, petals: 10 });
+    }
+    const me = await ctx.petals.balance({ name: NAME, phone: PHONE });
+    expect(me.petals).toBe(SIGNUP_BONUS + REFERRAL_BONUS * REFERRALS_PER_YEAR);
+  });
+
+  it("starts the referrer's allowance again the following year", async () => {
+    const ctx = setup(JULY_2026);
+    const code = await codeOf(ctx.petals);
+    for (let i = 0; i < REFERRALS_PER_YEAR; i++) {
+      const ph = `212555${String(5000 + i)}`;
+      await ctx.petals.claim({ name: `H${i}`, phone: ph, referralCode: code });
+      await ctx.petals.credit({ name: `H${i}`, phone: ph, orderId: `S${i}`, petals: 10 });
+    }
+    const capped = (await ctx.petals.balance({ name: NAME, phone: PHONE })).petals;
+
+    const next = createPetals({ store: ctx.store, now: () => Date.UTC(2027, 1, 1, 12, 0) });
+    await next.claim({ name: "Next Year", phone: "2125559100", referralCode: code });
+    await next.credit({ name: "Next Year", phone: "2125559100", orderId: "T1", petals: 10 });
+    expect((await next.balance({ name: NAME, phone: PHONE })).petals)
+      .toBe(capped + REFERRAL_BONUS);
   });
 
   it("ignores a code nobody owns", async () => {

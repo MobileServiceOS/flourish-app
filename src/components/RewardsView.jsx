@@ -6,7 +6,7 @@ import {
   CURRENCY_MANY, CURRENCY_RATE_LINE, SEPARATE_FROM_PERKS, currencyAmount, ONE_REWARD_PER_ORDER,
 } from "../lib/loyalty.js";
 import { formatPhone } from "../lib/phone.js";
-import { shareFlourish } from "../lib/share.js";
+import { shareFlourish, shareCode } from "../lib/share.js";
 import { SubHeader } from "./shared.jsx";
 import AddPastOrder from "./AddPastOrder.jsx";
 import { buildLabel, buildDetail } from "../lib/build.js";
@@ -17,11 +17,17 @@ export default function RewardsView({
   /* Claiming a counter receipt. Absent when the customer has no account — you
      cannot add orders to a balance that does not exist yet. */
   onClaimReceipt,
+  /* The customer's own code, from the server. Null when they joined before
+     codes existed and have not signed in since, or when the balance is
+     unreachable — in both cases the card is simply not shown rather than
+     showing an empty box a customer would try to read out. */
+  referralCode = null,
   /* The ladder comes from the server so the cap shown is the cap enforced.
      `ladderFromServer` false means we are rendering the bundled copy. */
   rewards = REWARDS, ladderFromServer = false,
 }) {
   const [shared, setShared] = useState(null);   // null | "shared" | "copied"
+  const [codeShared, setCodeShared] = useState(null);
   /* Two taps, never one. Deleting an account is irreversible and the second tap
      is the only chance to say what that actually costs. */
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -119,6 +125,37 @@ export default function RewardsView({
             expected — they ordered at the counter and earned nothing. */}
         {account && onClaimReceipt && (
           <AddPastOrder onClaim={onClaimReceipt} disabled={!known} />
+        )}
+
+        {/* THE CODE, NOT A LINK. The app sends no SMS and there is no invite
+            flow to build one on, so what a customer can actually do is read
+            six characters to a friend or paste them into a message they write
+            themselves. Anything shaped like "invite your contacts" would be
+            promising a thing that does not exist. */}
+        {referralCode && (
+          <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <Gift size={16} color="var(--leaf-ink)" aria-hidden="true" />
+              <h3 style={{ fontWeight: 700, fontSize: 15, margin: 0 }}>Your referral code</h3>
+            </div>
+            <p style={{ color: "var(--muted)", fontSize: 12.5, margin: "0 0 12px", lineHeight: 1.5 }}>
+              Give it to a friend. When they pay for their first order you both
+              get 100 {CURRENCY_MANY}. Up to five friends a year.
+            </p>
+            <button
+              onClick={() => shareCode(referralCode).then(setCodeShared)
+                .then(() => setTimeout(() => setCodeShared(null), 1800))}
+              aria-label={`Copy your referral code, ${referralCode.split("").join(" ")}`}
+              style={{ width: "100%", padding: "14px 16px", borderRadius: 14, cursor: "pointer",
+                border: "1px dashed var(--leaf-ink)", background: "var(--leaf-lt)",
+                color: "var(--leaf-ink)", fontFamily: "ui-monospace, monospace",
+                fontSize: 22, fontWeight: 700, letterSpacing: "0.18em" }}>
+              {referralCode}
+            </button>
+            <div style={{ color: "var(--muted)", fontSize: 11.5, marginTop: 8, textAlign: "center" }}>
+              {codeShared === "copied" ? "Copied" : codeShared === "shared" ? "Shared" : "Tap to copy"}
+            </div>
+          </div>
         )}
         <div className="card" style={{ padding: 16, marginBottom: 18, borderRadius: 22, border: "1px solid var(--line)", background: "#fff" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>

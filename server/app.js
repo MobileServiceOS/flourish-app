@@ -318,17 +318,16 @@ export function createApp({
      behaviour; a test passes one so it never has to mutate process.env, which
      vitest shares between workers. */
   appKey,
-  /* The two secrets that gate minting Petals, injectable for exactly the same
-     reason and left undefined in production.
+  /* The secret gating every route that mints Petals, injectable for exactly
+     the same reason as appKey and left undefined in production.
 
      This is docs/TECH-DEBT.md #1 being paid down rather than added to. Tests
      that reach for `process.env` are why the suite runs with
      `fileParallelism: false`: process.env is shared, so one file setting a key
      for two assertions can be seen by a request in another and come back 401.
-     Adding two more env-mutating routes would have made a one-in-ten flake
-     more likely, so these take the injected path instead. */
+     Three routes now mint Petals; none of their tests touch the
+     environment. */
   petalsAdminKey,
-  petalsStaffPin,
   /* Server-side Petals, or null when no DATABASE_URL is configured. Null is a
      supported state, not a degraded one: the endpoints answer 503 with a code
      the app understands, ordering carries on untouched, and nothing is redeemed
@@ -1076,40 +1075,35 @@ export function createApp({
     } catch (e) { petalsFail(res, e); }
   });
 
-  /* ---- the Perks balance match, granted by staff ----
+  /* ---- the Perks balance match ----
 
      Clover Perks has 670 enrolled customers whose balances this app cannot
      read: every loyalty path answers 405, the customer API returns empty
      metadata, and the CSV export has no points column. So the match cannot be
-     automated — a human reads the number off the register and types it.
+     automated — a human reads the number off the register.
 
-     THE GATE IS A REAL SECRET, VERIFIED HERE.
+     THERE IS NO STAFF SCREEN, deliberately. One was built and cut: the shop
+     expects fewer than ten of these, and a screen inside the customer app for
+     something that happens ten times is a permanent surface for a temporary
+     job. It is run by hand with scripts/petals-grant.mjs --perks-match.
 
-     The obvious place to put this was "behind the existing staff PIN". There
-     is no existing staff PIN. The lock icon on the menu header opens the
-     kitchen sheet with no check at all — which is defensible for 86'ing an
-     item, and absolutely not defensible for a screen that mints currency.
-     Anyone with the app would have been able to grant themselves 200 Petals.
+     THE CONTROLS STAYED even though the screen went, because a manual grant
+     still has to be bounded:
 
-     So: PETALS_STAFF_PIN, compared on the SERVER. A PIN checked in the client
-     is not a check — the bundle ships to every phone, and the route is
-     reachable with curl regardless of what the UI did. The route does not
-     exist when the variable is unset, the same as /adjust.
+       - the 200 cap lives in the LEDGER, so no request of any shape exceeds it
+       - once per phone number, ever, keyed `perks:<phone>`
+       - the reason on the row reads "perks match", so a balance is explainable
 
-     The CAP IS NOT HERE EITHER. It is in the ledger, so a request that skips
-     this route's validation entirely still cannot exceed 200. */
-  const staffPin = () =>
-    String(petalsStaffPin ?? process.env.PETALS_STAFF_PIN ?? "").trim();
-
+     Behind the admin key, like /adjust and /backfill-signup. It briefly had a
+     staff PIN variable of its own; that existed for THIS ROUTE ALONE and went
+     with the screen. It never protected the kitchen sheet — see CLAUDE.md,
+     "a control everyone referred to and nobody implemented". */
   app.post("/api/clover/petals/perks-match", needPetals, async (req, res) => {
-    const pin = staffPin();
-    if (!pin) {
-      return res.status(404).json({ error: "Not found.", code: "PERKS_MATCH_DISABLED" });
-    }
-    const given = String(req.get("x-staff-pin") ?? "");
-    if (!sameSecret(given, pin)) {
-      console.warn("  petals/perks-match: rejected, bad or missing staff PIN");
-      return res.status(403).json({ error: "Wrong PIN.", code: "STAFF_FORBIDDEN" });
+    const key = adminKey();
+    if (!key) return res.status(404).json({ error: "Not found.", code: "ADJUST_DISABLED" });
+    if (!sameSecret(String(req.get("x-petals-admin-key") ?? ""), key)) {
+      console.warn("  petals/perks-match: rejected, bad or missing admin key");
+      return res.status(403).json({ error: "Not allowed.", code: "ADJUST_FORBIDDEN" });
     }
     try {
       const { name, phone, petals: amount, staff } = req.body ?? {};

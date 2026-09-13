@@ -5,9 +5,10 @@ guesses. Five new ways to earn Petals without placing an app order: a counter
 receipt, a signup bonus, a birthday, a referral, and a staff-granted Perks
 match.
 
-**Read the last section first if you read nothing else.** The referral is the
-only path with no ceiling on it, and the receipt claim is the only one an
-attacker can turn into money at scale.
+**Read this first if you read nothing else.** Every path now has a ceiling —
+the referral was the last one open and is capped at 5 a year. The receipt claim
+remains the only path an attacker can turn into money at scale, and its 3/day
+limit is worth $46,000 a year.
 
 ---
 
@@ -233,26 +234,51 @@ than have ever transacted, so **the backfill cannot cost more than 670 × 50 =
 practice it will be far lower, because server-side Petals are recent and only
 customers who have used the app since are in the table at all.
 
-## The one recommendation before this ships
+## The referral cap, decided
 
-**Cap referrals per customer per year.** Every other path has a ceiling:
+Capped at **5 successful referrals per customer per calendar year — 500
+Petals, $28.57 at the plate rate.** This was the one open-ended number in this
+document and it is now closed.
+
+Two properties worth stating, because both were decisions:
+
+**The friend is always paid.** The cap bounds the referrer only. A sixth friend
+still gets their 100 Petals — they placed and paid for the order, which is the
+thing being rewarded, and whether the person who told them about the shop is
+popular is none of their business.
+
+**A customer who has never ordered can still refer five and collect 500.** The
+gate is the FRIEND paying — real money through the register, verified by Clover
+— not the referrer having spent anything. Requiring the referrer to have ordered
+would block exactly the person the scheme is for: someone who has just heard
+about the shop and is telling people. Five real customers each paying a real
+bill is worth $28.57 of discount by any measure.
+
+At full take-up the referral line therefore moves from unbounded to **670 × 500
+= 335,000 Petals, $16,750** as an absolute annual ceiling — and that requires
+every one of the 670 to bring five paying friends, which would be 3,350 new
+paying customers. If that happens, the discount is not the problem.
+
+---
+
+## Every path now has a ceiling
 
 | path | ceiling |
 |---|---|
-| Signup | once per phone, ever |
+| Signup | once per phone, ever — by any route, including the retroactive backfill |
 | Perks match | once per phone, ever, and never above 200 |
 | Birthday | once per calendar year |
 | Receipt claim | once per order, 3 a day, 7-day window |
-| **Referral** | **none** |
+| Referral | 5 per referrer per calendar year (the friend is always paid) |
 
-Nothing stops one person referring two hundred people. Each referral needs a
-real friend paying for a real order, so it is far from free — but "20 a year" or
-"1,000 Petals a year from referrals" would bound the one open-ended number here,
-and can be added with the same idem-key shape as everything else.
+The referral was the one open-ended number when this document was first
+written. It is closed, and nothing here is unbounded any more.
 
-It was not built because it was not asked for, and adding a cap nobody asked for
-to a promotion is a commercial decision rather than a technical one. It is the
-first thing worth deciding.
+The **receipt rate limit remains the most valuable single control**: 3/day
+against unlimited is the difference between $1,376 and $47,481 of annual
+exposure to one person. Those figures now sit in a box next to
+`RECEIPT_CLAIMS_PER_DAY` in `server/petals/ledger.js`, because whoever raises
+that number later will be reading the constant, not this file.
 
 ---
 

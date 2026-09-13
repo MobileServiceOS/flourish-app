@@ -102,6 +102,8 @@ export default function App() {
      balances moved server-side does not lose it. After that it is never read
      again and never displayed. */
   const [devicePetals, setDevicePetals] = useState(0);
+  /* Signup extras waiting to go to the server with the first claim. */
+  const [joinExtras, setJoinExtras] = useState(null);
   const [orders, setOrders] = useState([]);
   const [active, setActive] = useState(null); // active order being tracked
   const [detailOrder, setDetailOrder] = useState(null); // order number being viewed
@@ -180,6 +182,8 @@ export default function App() {
     name: account?.name,
     phone: account?.phone,
     deviceBalance: devicePetals,
+    birthday: joinExtras?.birthday,
+    referralCode: joinExtras?.referralCode,
     enabled: Boolean(account) && !loadingAcct && clover.status === "online",
   });
   const points = petals.petals;                  // number, or null when unknown
@@ -194,10 +198,21 @@ export default function App() {
     saveAccount({ ...account, points: devicePetals, orders, vouchers });
   }, [account, devicePetals, orders, vouchers, loadingAcct]);
 
-  const signIn = async (name, phone) => {
+  const signIn = async (name, phone, extras = {}) => {
     const acct = { name, phone, since: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }) };
     setAccount(acct);
     flash(`Welcome, ${name.split(" ")[0]}`);
+
+    /* The birth date and a friend's referral code, both optional, and both
+       only meaningful the first time this number reaches the server. They ride
+       on the claim that usePetalsBalance makes on the next render — held here
+       rather than sent separately so there is one call, and so a customer who
+       is offline still gets an account and carries these across when the
+       balance is next reachable. */
+    setJoinExtras({
+      birthday: extras.birthday ?? null,
+      referralCode: extras.referralCode ?? null,
+    });
 
     /* Mirror the customer into Clover so the merchant's own reports show
        customer-level data. Best effort: a customer who can't be synced still
@@ -657,7 +672,7 @@ export default function App() {
         ? <RewardsView {...{ account, points, petalsAvailable, vouchers, orders, redeem, signOut }}
             rewards={ladder.rewards} ladderFromServer={ladder.fromServer}
             onReorder={reorder} onDeleteAccount={deleteMyAccount}
-            onClaimReceipt={addPastOrder} />
+            onClaimReceipt={addPastOrder} referralCode={petals.referralCode} />
         : <SignInView onSignIn={signIn} rewards={ladder.rewards} />)}
       {view === "orderDetail" && detailOrder && (
         <OrderDetail

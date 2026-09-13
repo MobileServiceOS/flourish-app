@@ -62,7 +62,7 @@ function fakeClover(orders = [], over = {}) {
 }
 
 let clock;
-function build({ orders = [], clover = null, adminKey, staffPin } = {}) {
+function build({ orders = [], clover = null, adminKey } = {}) {
   clock = OPEN.getTime();
   const c = clover ?? fakeClover(orders);
   const store = createMemoryStore();
@@ -76,7 +76,6 @@ function build({ orders = [], clover = null, adminKey, staffPin } = {}) {
     /* Injected, never written to process.env — see the note on createApp.
        The suite is serialised precisely because env-mutating tests leak. */
     petalsAdminKey: adminKey,
-    petalsStaffPin: staffPin,
     petals,
   }));
   return { agent, clover: c, petals, store, tick: (ms) => { clock += ms; } };
@@ -303,50 +302,51 @@ describe("the retroactive signup backfill, through the proxy", () => {
   });
 });
 
-describe("the staff Perks match", () => {
-  it("does not exist at all when no PIN is configured", async () => {
-    /* Same shape as /adjust: a route that mints currency is absent rather than
-       merely guarded when it has not been deliberately switched on. */
-    const { agent } = build();
-    const r = await agent.post("/api/clover/petals/perks-match")
+describe("the Perks balance match", () => {
+  /* The staff SCREEN was cut — fewer than ten of these are expected and a
+     permanent surface in the customer app for a ten-time job is not worth it.
+     The route stayed, behind the admin key, because the CONTROLS are the point:
+     a manual grant still has to be capped at 200 and still has to be once per
+     phone. Its dedicated staff PIN went with the screen; it guarded this route
+     alone and nothing else. */
+  const ADMIN = "admin-key-for-tests-0123";
+  const call = (agent, body, key = ADMIN) =>
+    agent.post("/api/clover/petals/perks-match")
+      .set("x-petals-admin-key", key).send(body);
+
+  it("does not exist when no admin key is configured", async () => {
+    const r = await build().agent.post("/api/clover/petals/perks-match")
       .send({ ...CUSTOMER, petals: 200 }).expect(404);
-    expect(r.body.code).toBe("PERKS_MATCH_DISABLED");
+    expect(r.body.code).toBe("ADJUST_DISABLED");
   });
 
-  it("refuses without the PIN, and refuses a wrong one", async () => {
-    const { agent } = build({ staffPin: "8241" });
+  it("refuses without the admin key, and refuses a wrong one", async () => {
+    const { agent } = build({ adminKey: ADMIN });
     await agent.post("/api/clover/petals/perks-match")
       .send({ ...CUSTOMER, petals: 200 }).expect(403);
-    const r = await agent.post("/api/clover/petals/perks-match")
-      .set("x-staff-pin", "0000").send({ ...CUSTOMER, petals: 200 }).expect(403);
-    expect(r.body.code).toBe("STAFF_FORBIDDEN");
+    const r = await call(agent, { ...CUSTOMER, petals: 200 }, "nope").expect(403);
+    expect(r.body.code).toBe("ADJUST_FORBIDDEN");
   });
 
-  it("grants with the right PIN", async () => {
-    const { agent } = build({ staffPin: "8241" });
-    const r = await agent.post("/api/clover/petals/perks-match")
-      .set("x-staff-pin", "8241")
-      .send({ ...CUSTOMER, petals: 140, staff: "Kay" }).expect(200);
+  it("grants with the admin key the grant script already sends", async () => {
+    const { agent } = build({ adminKey: ADMIN });
+    const r = await call(agent, { ...CUSTOMER, petals: 140, staff: "Kay" }).expect(200);
     expect(r.body.credited).toBe(140);
   });
 
   it("caps at 200 even when the request says otherwise", async () => {
     /* The cap lives in the ledger, so it holds for a request that never went
-       near the staff screen — which is the only kind worth defending against. */
-    const { agent } = build({ staffPin: "8241" });
-    const r = await agent.post("/api/clover/petals/perks-match")
-      .set("x-staff-pin", "8241")
-      .send({ ...CUSTOMER, petals: 100000 }).expect(200);
+       near a script — which is the only kind worth defending against. */
+    const { agent } = build({ adminKey: ADMIN });
+    const r = await call(agent, { ...CUSTOMER, petals: 100000 }).expect(200);
     expect(r.body.credited).toBe(PERKS_MATCH_CAP);
     expect(r.body.capped).toBe(true);
   });
 
   it("is once per phone number, ever", async () => {
-    const { agent } = build({ staffPin: "8241" });
-    const send = () => agent.post("/api/clover/petals/perks-match")
-      .set("x-staff-pin", "8241").send({ ...CUSTOMER, petals: 200 }).expect(200);
-    expect((await send()).body.credited).toBe(200);
-    const again = await send();
+    const { agent } = build({ adminKey: ADMIN });
+    expect((await call(agent, { ...CUSTOMER, petals: 200 }).expect(200)).body.credited).toBe(200);
+    const again = await call(agent, { ...CUSTOMER, petals: 200 }).expect(200);
     expect(again.body.credited).toBe(0);
     expect(again.body.alreadyMatched).toBe(true);
   });

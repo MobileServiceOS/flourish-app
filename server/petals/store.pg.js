@@ -224,6 +224,17 @@ export async function createPgStore({ connectionString, ssl, schema } = {}) {
       return Number(rows[0]?.n ?? 0);
     },
 
+    /* By idem-key prefix, not by reason — both sides of a referral share the
+       reason "referral" and only the key distinguishes them. See the note in
+       store.memory.js. */
+    async countLedgerByKeySince(customerId, keyPrefix, since) {
+      const { rows } = await q(
+        `SELECT COUNT(*) AS n FROM petals_ledger
+          WHERE customer_id = $1 AND idem_key LIKE $2 || '%' AND created_at >= $3`,
+        [customerId, keyPrefix, since]);
+      return Number(rows[0]?.n ?? 0);
+    },
+
     async findLedgerByIdemKey(idemKey) {
       const { rows } = await q("SELECT * FROM petals_ledger WHERE idem_key = $1", [idemKey]);
       const r = rows[0];

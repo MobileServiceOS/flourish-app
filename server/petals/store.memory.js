@@ -132,6 +132,20 @@ export function createMemoryStore() {
         r.createdAt >= since).length;
     },
 
+    /* Counting by IDEM KEY PREFIX, not by reason.
+
+       Both sides of a referral write reason "referral" — one for being
+       referred, one for referring — so counting reasons would charge a
+       customer's own joining bonus against their annual cap and let them refer
+       only four friends. The keys tell the two apart exactly:
+       `referral-referrer:` versus `referral-referee:`. */
+    async countLedgerByKeySince(customerId, keyPrefix, since) {
+      return ledger.filter((r) =>
+        r.customerId === customerId &&
+        typeof r.idemKey === "string" && r.idemKey.startsWith(keyPrefix) &&
+        r.createdAt >= since).length;
+    },
+
     async findLedgerByIdemKey(idemKey) {
       const r = ledger.find((x) => x.idemKey && x.idemKey === idemKey);
       return r ? { ...r } : null;

@@ -36,6 +36,12 @@ export const REASONS = Object.freeze({
   ADJUSTED: "adjusted",
   RECEIPT: "receipt",
   SIGNUP: "signup",
+  /* Same entitlement, same key, different WORD — so a ledger read months later
+     shows which customers were swept up by the retroactive run and which earned
+     it as they arrived. The KEY is identical (`signup:<phone>`), which is what
+     makes it once-only; only the label differs. Two keys for one entitlement is
+     how somebody ends up with two, and that mistake is not being made here. */
+  SIGNUP_RETRO: "signup bonus (retroactive)",
   BIRTHDAY: "birthday",
   REFERRAL: "referral",
   PERKS_MATCH: "perks match",
@@ -59,6 +65,23 @@ export const SIGNUP_BONUS = 50;
 
 /** Each side of a referral, when the referred friend's first order is PAID. */
 export const REFERRAL_BONUS = 100;
+
+/**
+ * How many successful referrals one customer is paid for in a calendar year.
+ *
+ * Five, so 500 Petals — $28.57 at the plate rate. Every other earning path
+ * here has a ceiling and this one did not: one person with a large group chat
+ * was, quite literally, the entire marketing budget, and the payout scaled with
+ * nothing but their contact list.
+ *
+ * The cap bounds the REFERRER only. The friend is always paid: they did the
+ * thing being rewarded, and punishing a new customer because whoever told them
+ * about the shop is popular is the wrong way round.
+ *
+ * Somebody who genuinely brings more than five people a year has earned a
+ * conversation rather than an automated payout.
+ */
+export const REFERRALS_PER_YEAR = 5;
 
 /** The Perks match ceiling. Staff type a balance; this is what actually lands. */
 export const PERKS_MATCH_CAP = 200;
@@ -89,12 +112,26 @@ export const RECEIPT_CLAIM_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  * The attack this bounds is someone lifting receipts off the counter, or out of
  * the bin, and claiming other people's orders. Nothing in a printed receipt
  * proves who paid, so the claim cannot be authenticated — it can only be
- * rate-limited and made once-only per order.
+ * rate-limited and made once-only per order. Every other check passes for a
+ * stolen receipt: the order is real, paid, recent and unclaimed.
  *
- * Three a day is set from real data: the shop turns ~741 orders a week and the
- * average order nets $21.58, so an unbounded claimer could take roughly 16,000
- * Petals a week — $800 at the plate rate. Three a day caps one phone at about
- * 450 Petals a week, $23. A genuine customer eating there daily is unaffected.
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ WHAT THIS NUMBER IS WORTH, measured against the live register on         │
+ * │ 13 Sep 2026 — 741 orders a week, $21.58 average net, 22 Petals each,     │
+ * │ priced at the free-plate rate of 5.71c per Petal:                        │
+ * │                                                                          │
+ * │   no limit   106 claims/day   831,532 Petals/yr   $47,481 a year         │
+ * │   3 a day      3 claims/day    24,090 Petals/yr   $ 1,376 a year         │
+ * │   1 a day      1 claim /day     8,030 Petals/yr   $   459 a year         │
+ * │                                                                          │
+ * │ That is the exposure to ONE determined person. Raising this from 3 to    │
+ * │ unlimited is a $46,000 decision, not a UX tweak.                         │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Three a day leaves a genuine customer who eats here every single day
+ * unaffected, and caps a farmer at roughly one average order per day. The full
+ * workings are in docs/PETALS-LIABILITY.md; the numbers are repeated here
+ * because whoever loosens this will be reading this line, not that file.
  */
 export const RECEIPT_CLAIMS_PER_DAY = 3;
 export const RECEIPT_RATE_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -579,11 +616,15 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
    * too. That is deliberate — it is the same person either way, and the
    * alternative is a bonus that depends on which door they came through.
    */
-  async function ensureSignupBonus(tx, customer) {
+  async function ensureSignupBonus(tx, customer, reason = REASONS.SIGNUP) {
     const wrote = await tx.appendLedger({
       customerId: customer.id,
       delta: SIGNUP_BONUS,
-      reason: REASONS.SIGNUP,
+      reason,
+      /* THE KEY NEVER VARIES, whatever the reason says. It is the only thing
+         enforcing "once per phone number, ever, by any route", and a key that
+         changed with the label would hand a second 50 to anyone the backfill
+         reached before they opened the app. */
       idemKey: `signup:${customer.phone}`,
       at: stamp(),
     });
@@ -625,17 +666,31 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
     if (await tx.findLedgerByIdemKey(key)) return 0;
 
     const referrer = await tx.findCustomerById(customer.referredBy);
+
+    /* THE FRIEND IS ALWAYS PAID. They placed and paid for the order, which is
+       the thing being rewarded; whether the person who told them about the
+       shop has already hit their annual cap is none of their business. */
     const wroteReferee = await tx.appendLedger({
       customerId: customer.id, delta: REFERRAL_BONUS, reason: REASONS.REFERRAL,
       idemKey: key, at: stamp(),
     });
-    /* Keyed on the REFEREE's phone, not the referrer's: a referrer earns once
-       per person they bring, and bringing ten people pays ten times. */
+
+    /* The referrer's side is capped per calendar year. Counted from the ledger
+       rather than from a column, so it cannot drift from what was actually
+       paid — the rows ARE the record.
+
+       Keyed on the REFEREE's phone, so a referrer earns once per person they
+       bring rather than once in their life. */
     if (referrer) {
-      await tx.appendLedger({
-        customerId: referrer.id, delta: REFERRAL_BONUS, reason: REASONS.REFERRAL,
-        idemKey: `referral-referrer:${customer.phone}`, at: stamp(),
-      });
+      const year = yearInNewYork(now());
+      const paidThisYear = await tx.countLedgerByKeySince(
+        referrer.id, "referral-referrer:", new Date(Date.UTC(year, 0, 1)));
+      if (paidThisYear < REFERRALS_PER_YEAR) {
+        await tx.appendLedger({
+          customerId: referrer.id, delta: REFERRAL_BONUS, reason: REASONS.REFERRAL,
+          idemKey: `referral-referrer:${customer.phone}`, at: stamp(),
+        });
+      }
     }
     return wroteReferee ? REFERRAL_BONUS : 0;
   }
@@ -831,7 +886,7 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
            the key would stop a double anyway, but re-reading keeps the
            returned count honest. */
         const fresh = await tx.findCustomerByPhone(c.phone);
-        return fresh ? ensureSignupBonus(tx, fresh) : 0;
+        return fresh ? ensureSignupBonus(tx, fresh, REASONS.SIGNUP_RETRO) : 0;
       });
       if (got) { credited += 1; petalsGiven += got; }
     }

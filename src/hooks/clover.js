@@ -356,13 +356,22 @@ export function useReconcileOnLaunch(orders, { enabled = true, onPaid, onVoided 
  * balance as unavailable and refuses to redeem; ordering is untouched, because
  * the app takes no money and an unreachable balance must never cost a sale.
  */
-export function usePetalsBalance({ name, phone, deviceBalance = 0, enabled = true } = {}) {
-  const [state, setState] = useState({ petals: null, known: false, available: false, error: null });
+export function usePetalsBalance({
+  name, phone, deviceBalance = 0, enabled = true, birthday, referralCode,
+} = {}) {
+  const [state, setState] = useState({
+    petals: null, known: false, available: false, error: null,
+    referralCode: null, birthday: null,
+  });
   const claimed = useRef(false);
   /* Read through a ref so a changing device balance cannot re-trigger the
-     claim — the claim is once per install, not once per render. */
+     claim — the claim is once per install, not once per render. The signup
+     extras ride the same ref for the same reason: they belong to the FIRST
+     claim, and a re-render must not turn them into a second one. */
   const pending = useRef(deviceBalance);
   pending.current = deviceBalance;
+  const extras = useRef({ birthday, referralCode });
+  extras.current = { birthday, referralCode };
 
   const ask = useCallback(async (signal) => {
     if (!name || !phone) return;
@@ -370,21 +379,41 @@ export function usePetalsBalance({ name, phone, deviceBalance = 0, enabled = tru
       const body = { name, phone };
       const res = claimed.current
         ? await getPetalsBalance(body, signal)
-        : await claimPetals({ ...body, deviceBalance: pending.current }, signal);
+        : await claimPetals({
+            ...body,
+            deviceBalance: pending.current,
+            birthday: extras.current.birthday ?? undefined,
+            referralCode: extras.current.referralCode ?? undefined,
+          }, signal);
       claimed.current = true;
-      setState({ petals: res.petals ?? 0, known: Boolean(res.known), available: true, error: null });
+      setState((prev) => ({
+        petals: res.petals ?? 0,
+        known: Boolean(res.known),
+        available: true,
+        error: null,
+        /* The balance read does not carry these, so the values from the claim
+           are kept rather than blanked on every later refresh. */
+        referralCode: res.referralCode ?? prev.referralCode ?? null,
+        birthday: res.birthday ?? prev.birthday ?? null,
+      }));
     } catch (e) {
       if (e?.name === "AbortError") return;
       /* Every failure lands here, including PETALS_UNAVAILABLE from a proxy with
          no database. The distinction the UI needs is only "can we ask or not",
          so they are treated the same and the message is kept for the notice. */
-      setState({ petals: null, known: false, available: false, error: e?.message ?? "unavailable" });
+      setState((prev) => ({
+        petals: null, known: false, available: false, error: e?.message ?? "unavailable",
+        referralCode: prev.referralCode, birthday: prev.birthday,
+      }));
     }
   }, [name, phone]);
 
   useEffect(() => {
     if (!enabled || !name || !phone) {
-      setState({ petals: null, known: false, available: false, error: null });
+      setState({
+        petals: null, known: false, available: false, error: null,
+        referralCode: null, birthday: null,
+      });
       return;
     }
     const ctrl = new AbortController();

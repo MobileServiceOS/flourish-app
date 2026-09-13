@@ -7,9 +7,29 @@ import { formatPhone, phoneDigits, isValidPhone, isValidName } from "../lib/phon
 import { Hummingbird, SubHeader, Section } from "./shared.jsx";
 
 /* ---------- REWARDS ---------- */
+const MONTHS = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"];
+
+/* February gets 29: the year is unknown, so a leap-day birthday has to be
+   allowed. The server validates the same way. */
+const DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const daysInMonth = (month) => DAYS[Number(month) - 1] ?? 31;
+
+/** `M-D`, or undefined when either half is missing. Never a year. */
+function birthdayValue(v) {
+  const [m, d] = String(v ?? "").split("-");
+  if (!m || !d) return undefined;
+  return `${m}-${d}`;
+}
+
 export default function SignInView({ onSignIn, rewards = REWARDS }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  /* Both optional, and both only mean anything the first time a number is seen.
+     A required field costs signups, and neither of these is worth a customer
+     abandoning the form over — so nothing below blocks the button. */
+  const [birthday, setBirthday] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   // Only complain about a field the customer has actually left.
   const [touched, setTouched] = useState({});
   const clean = phoneDigits(phone);
@@ -56,8 +76,62 @@ export default function SignInView({ onSignIn, rewards = REWARDS }) {
           We use your number to look up your {CURRENCY_MANY} and to reach you about an order. Nothing else.
         </div>
 
+        <Section title="Optional">
+          {/* MONTH AND DAY ONLY — the year is discarded before anything is
+              sent, and the server has no column for it. A birthday needs to
+              know when to fire, not how old anyone is, and a date of birth is
+              the field that turns a loyalty database into an identity-theft
+              target. The input is a plain month/day pair rather than a date
+              picker for exactly that reason: there is nowhere to type a year. */}
+          <label htmlFor="birth-month" style={{ display: "block", fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>
+            Birthday — we'll send you a free plate
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <select id="birth-month" className="field" style={{ flex: 1, minWidth: 0 }}
+              aria-label="Birth month"
+              value={birthday.split("-")[0] ?? ""}
+              onChange={(e) => setBirthday(`${e.target.value}-${birthday.split("-")[1] ?? ""}`)}>
+              <option value="">Month</option>
+              {MONTHS.map((m, i) => (
+                <option key={m} value={String(i + 1)}>{m}</option>
+              ))}
+            </select>
+            <select className="field" style={{ width: 104, flex: "0 0 auto" }}
+              aria-label="Birth day"
+              value={birthday.split("-")[1] ?? ""}
+              onChange={(e) => setBirthday(`${birthday.split("-")[0] ?? ""}-${e.target.value}`)}>
+              <option value="">Day</option>
+              {Array.from({ length: daysInMonth(birthday.split("-")[0]) }, (_, i) => (
+                <option key={i + 1} value={String(i + 1)}>{i + 1}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field-hint">
+            Month and day only — we never ask for the year.
+          </div>
+
+          <input className="field" style={{ marginTop: 12, textTransform: "uppercase",
+                   fontFamily: "ui-monospace, monospace", letterSpacing: "0.08em" }}
+            placeholder="Referral code" aria-label="Referral code from a friend"
+            autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+            value={referralCode}
+            onChange={(e) => setReferralCode(
+              e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 6))}
+            aria-describedby="referral-hint" />
+          <div id="referral-hint" className="field-hint">
+            Got a code from a friend? You both earn 100 {CURRENCY_MANY} when you
+            pay for your first order.
+          </div>
+        </Section>
+
         <button className="pill-btn" style={{ marginTop: 16 }} disabled={!ok}
-          onClick={() => onSignIn(name.trim(), clean)}>
+          onClick={() => onSignIn(name.trim(), clean, {
+            /* Only sent when BOTH halves are chosen. A half-filled date is not
+               a date, and the server would refuse it — which would turn an
+               optional field into a blocked signup. */
+            birthday: birthdayValue(birthday),
+            referralCode: referralCode || undefined,
+          })}>
           {ok ? "Create my account" : !nameOk ? "Enter your name" : "Enter your phone number"}
         </button>
 
