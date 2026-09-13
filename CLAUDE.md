@@ -776,17 +776,24 @@ rotation. Building on it would have produced an app that looked perfectly
 healthy, browsed the menu, filled a cart, and then failed every single order
 with `401 BAD_APP_KEY`.
 
-**Check before every release build, and compare fingerprints rather than
-values** — printing an app key to a terminal is how the last rotation started:
+**Check before every release build, and print the ANSWER, not the values** —
+printing an app key to a terminal is how the last rotation started:
 
 ```sh
-node -e 'const c=require("crypto"),p=require("child_process"),f=require("fs");
-const fp=v=>c.createHash("sha256").update(String(v)).digest("hex").slice(0,8);
+node -e 'const p=require("child_process"),f=require("fs");
 const l=f.readFileSync(".env.production.local","utf8").split("\n")
   .find(x=>x.startsWith("VITE_APP_KEY=")).slice(13).trim();
 const h=JSON.parse(p.execSync("railway variables --json")).APP_KEY;
-console.log(fp(l), fp(h), l===h?"match":"MISMATCH");'
+console.log(l && h ? (l===h?"match":"MISMATCH") : "one side is unset");'
 ```
+
+An earlier version of this snippet printed a short **sha256 fingerprint** of
+each side so a human could eyeball them. A hash prefix is not key material and
+cannot be reversed — but it is still a derived identifier being narrated when
+one word would do, and a fingerprint in a transcript invites someone to treat
+it as a value and rotate against it. `APP_KEY` is the one variable where a
+needless rotation breaks every phone already carrying the app. **Report
+set/unset, or match/mismatch. Nothing else, including anything derived.**
 
 If they disagree, the live host wins — it is serving the app that is already
 on customers' phones. Change the build file, not Railway. Rotating `APP_KEY` on
