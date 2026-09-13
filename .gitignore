@@ -28,3 +28,6 @@ screenshots/
 
 # iOS build output for the screenshot script
 .screenshot-build/
+
+# Scratch output from scripts/dish-photos.mjs — the mapping belongs in the generator
+.photo-map.json

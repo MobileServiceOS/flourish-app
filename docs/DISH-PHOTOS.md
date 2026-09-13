@@ -29,6 +29,40 @@ cross-origin requests and produced no photo. It was removed deliberately in
 Clover rebuild, and nothing is being wiped by regeneration — there has never
 been a mapping to wipe. If photos appeared once, it was not from this codebase.
 
+## Getting them in: `scripts/dish-photos.mjs`
+
+**The photos cannot be pulled from Uber Eats by tooling here.** There is no
+browser tool in this setup that can hold an authenticated merchant session —
+`WebFetch` fails on private URLs by design, and the available sandbox is a
+remote machine nobody can log into. Download them by hand; everything after
+that is scripted.
+
+```bash
+node scripts/dish-photos.mjs --list    # what is needed, and what to call each file
+node scripts/dish-photos.mjs           # convert ~/Desktop/flourish-photos
+node scripts/dish-photos.mjs --map     # the ITEM_PHOTOS block to paste
+```
+
+Name each file after the dish, in any case, with any punctuation and any
+extension — `Oxtail.jpg`, `oxtail-plate.JPEG` and `Ox Tail.png` all find the
+Oxtail. Conversion uses `sips` and `cwebp`, both already on macOS, so nothing
+needs installing.
+
+**Four dishes share a name with an everyday twin** — both Shrimps, both Salmons,
+both Blue Crabs, both Crab Legs Platters — so the Seafood Fridays one takes a
+`-friday` suffix: `shrimp.jpg` is the everyday $20 dish, `shrimp-friday.jpg` is
+the $21.99 Friday platter. Getting that wrong puts a photo on the wrong price,
+so the script refuses an ambiguous filename rather than guessing, and fails
+outright if two dishes ever resolve to one filename.
+
+It also reports, every run: which files matched nothing, and which dishes still
+have no photo. Anything still over 80KB at the lowest quality is called out —
+that needs a smaller source, not a smaller quality setting.
+
+One thing worth checking before using Uber Eats photos: if any were shot under a
+free-photography programme rather than by the shop, the licence may restrict
+reuse. The shop's own photos are the shop's to use anywhere.
+
 ## The mechanism, now that it exists
 
 `ITEM_PHOTOS` in `scripts/generate-menu.mjs`, keyed by **Clover item id** like
