@@ -394,12 +394,29 @@ export default function App() {
      orders on the register. See placeOrder. */
   const idemRef = useRef(null);
   const awardedRef = useRef(new Set());
+
+  /* An order cancelled at the register. Recorded so the orders list stops
+     saying "Preparing" about it — that field was written once at creation and
+     never touched again, so without this a voided order reads as in the kitchen
+     for the life of the install. */
+  const markVoided = useCallback((order) => {
+    const num = order?.num;
+    if (!num) return;
+    const cancel = (o) => ({ ...o, status: "cancelled", paidBy: "voided" });
+    setOrders((list) => list.map((o) => (o.num === num && o.status !== "cancelled" ? cancel(o) : o)));
+    setActive((a) => (a && a.num === num && a.status !== "cancelled" ? cancel(a) : a));
+  }, []);
+
   const awardPoints = useCallback((order) => {
     const num = order?.num;
     if (!num || order.pointsAwarded || awardedRef.current.has(num)) return;
     awardedRef.current.add(num);
 
-    const settle = (o) => ({ ...o, pointsAwarded: true, paidBy: "paid" });
+    /* `status` is set too, and that is the fix for the orders list. It was
+       written once at creation as "preparing" and updated by nothing, so every
+       order ever placed read "Preparing" — including one paid for four minutes
+       earlier, and including orders collected weeks ago. */
+    const settle = (o) => ({ ...o, pointsAwarded: true, paidBy: "paid", status: "paid" });
     setOrders((list) => list.map((o) => (o.num === num && !o.pointsAwarded ? settle(o) : o)));
     setActive((a) => (a && a.num === num && !a.pointsAwarded ? settle(a) : a));
     petals.refresh();
@@ -413,7 +430,18 @@ export default function App() {
   useReconcileOnLaunch(orders, {
     enabled: !loadingAcct && Boolean(account) && clover.status === "online",
     onPaid: awardPoints,
+    onVoided: markVoided,
   });
+
+  /* Ask again when the Rewards screen is opened.
+
+     The sweep above covers waking the app; this covers moving to the screen
+     while it is already open, which is the other half of the same moment — the
+     customer taps Rewards expecting the Petals they just earned. */
+  useEffect(() => {
+    if (view === "rewards" && account && clover.status === "online") petals.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   /* ---------- placing the order ----------
      Order of operations matters here:

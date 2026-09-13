@@ -3,6 +3,26 @@ import { Receipt, RotateCcw } from "lucide-react";
 import { money } from "../lib/money.js";
 import { SubHeader, Empty } from "./shared.jsx";
 
+/* What an order's badge says. One place, so the list and anything else that
+   needs it cannot disagree.
+
+   "Paid" rather than "Completed": the app knows the register took the money,
+   which is not the same as the customer having collected the food, and saying
+   the stronger thing would be inventing a fact. */
+export function orderBadge(o) {
+  if (o?.status === "cancelled" || o?.paidBy === "voided") return "Cancelled";
+  if (o?.status === "paid" || o?.paidBy === "paid" || o?.pointsAwarded) return "Paid";
+  if (o?.status === "done") return "Completed";
+  return "Preparing";
+}
+
+const badgeStyle = (o) => {
+  const label = orderBadge(o);
+  if (label === "Cancelled") return { background: "rgba(232,154,199,.22)", color: "var(--rose-ink)" };
+  if (label === "Preparing") return {};
+  return { background: "rgba(142,91,196,.1)", color: "var(--orchid-ink)" };
+};
+
 /* ---------- ORDERS ---------- */
 export default function OrdersView({ orders, onReorder, onBrowse }) {
   return (
@@ -21,9 +41,15 @@ export default function OrdersView({ orders, onReorder, onBrowse }) {
                 <div style={{ fontWeight: 700 }}>{o.num}</div>
                 <div style={{ color: "var(--muted)", fontSize: 12.5 }}>{o.when} · {money(o.total)}</div>
               </div>
-              <span className="badge" style={o.status !== "done" ? {} : { background: "rgba(142,91,196,.1)", color: "var(--orchid-ink)" }}>
-                {o.status === "preparing" ? "Preparing" : "Completed"}
-              </span>
+              {/* Derived from the order's own fields rather than from `status`
+                  alone, because that field was written once at creation and
+                  updated by nothing — so every order ever placed read
+                  "Preparing", including one paid for four minutes earlier.
+
+                  It is written now (see awardPoints and markVoided), and this
+                  reads `paidBy` alongside it so an order recorded as paid by an
+                  older build still shows correctly. */}
+              <span className="badge" style={badgeStyle(o)}>{orderBadge(o)}</span>
             </div>
             <div style={{ margin: "10px 0" }}>
               {o.lines.map((l, i) => (
