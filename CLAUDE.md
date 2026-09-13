@@ -762,6 +762,37 @@ With no `APP_KEY` set the proxy serves localhost and **refuses remote callers
 outright**, rather than sitting open. Set `APP_KEY`, `ALLOWED_ORIGINS` and
 `MAX_CHARGE_DOLLARS` before deploying.
 
+**The key in the build and the key on the host must be the same value, and
+nothing checks that until a customer's order is refused.** The header is
+`x-flourish-key`; the browser sends `VITE_APP_KEY` from
+`.env.production.local`, the proxy compares it to `APP_KEY` on Railway. Those
+are two different files on two different machines, and `.env.production.local`
+is gitignored, so a rotation that updates one and not the other leaves no trace
+in the repo at all.
+
+It had drifted before build 7: the build file held a 64-character key that
+neither Railway nor the bundle on the phone had ever seen — left behind by a
+rotation. Building on it would have produced an app that looked perfectly
+healthy, browsed the menu, filled a cart, and then failed every single order
+with `401 BAD_APP_KEY`.
+
+**Check before every release build, and compare fingerprints rather than
+values** — printing an app key to a terminal is how the last rotation started:
+
+```sh
+node -e 'const c=require("crypto"),p=require("child_process"),f=require("fs");
+const fp=v=>c.createHash("sha256").update(String(v)).digest("hex").slice(0,8);
+const l=f.readFileSync(".env.production.local","utf8").split("\n")
+  .find(x=>x.startsWith("VITE_APP_KEY=")).slice(13).trim();
+const h=JSON.parse(p.execSync("railway variables --json")).APP_KEY;
+console.log(fp(l), fp(h), l===h?"match":"MISMATCH");'
+```
+
+If they disagree, the live host wins — it is serving the app that is already
+on customers' phones. Change the build file, not Railway. Rotating `APP_KEY` on
+Railway breaks ordering for every installed copy until a new build clears
+review, so it is never the side to "fix".
+
 ### Petals, and why they are not called points
 
 The shop runs **Clover Perks** at the register: text the code off the receipt,
