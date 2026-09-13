@@ -233,10 +233,20 @@ describe("order push", () => {
 
   /* ---- the caps are enforced here, not just in the sheet ---- */
 
-  it("refuses a free side against a side that costs more than the cap", async () => {
-    /* Pasta is $10 as a standalone side and the free-side reward covers $6. The
-       UI greys it out; this is what stops a crafted request taking a $10 side
-       for nothing. */
+  /* ==========================================================================
+     A CAP IS A CEILING, NOT A GATE
+
+     These three used to assert a 400. The cap decided which items QUALIFIED, so
+     a large oxtail against a "free plate" was refused at the checkout after the
+     customer had chosen it — which reads as broken, and is the wrong shape for
+     an app that takes no money. The customer pays the difference at the counter.
+
+     What they assert now is that the discount is CAPPED and the order goes
+     through. The only refusal left is a cart holding nothing the reward applies
+     to.
+     ========================================================================== */
+
+  it("caps a free side at $6 rather than refusing a $10 side", async () => {
     const pastaSide = [{
       name: "Side", itemId: "6NX7XK602V0ZM", qty: 1, price: 10,
       modifiers: [{ gid: "S032100JQ3P4T", name: "Pasta", price: 10 }],
@@ -245,12 +255,13 @@ describe("order push", () => {
       catalog: async () => ({ ...CATALOG, "S032100JQ3P4T": { "Pasta": { id: "MOD-PASTA", price: 10 } } }),
     });
     const r = await agent.post("/api/clover/orders")
-      .send({ cart: pastaSide, customer: CUSTOMER, rewardId: "r-side" }).expect(400);
-    expect(r.body.code).toBe("REWARD_NOT_APPLICABLE");
-    expect(clover.createOrder).not.toHaveBeenCalled();
+      .send({ cart: pastaSide, customer: CUSTOMER, rewardId: "r-side" }).expect(200);
+
+    expect(r.body.discount).toEqual({ name: "Free side", amount: 6 });
+    expect(clover.createOrder.mock.calls[0][0].orderCart.discounts[0].amount).toBe(-600);
   });
 
-  it("refuses a free drink against a drink over the $3.50 cap", async () => {
+  it("caps a free drink at $3.50 rather than refusing a $6 coconut water", async () => {
     const coconut = [{
       name: "Drink", itemId: "D7MBX5PWRCGCE", qty: 1, price: 6,
       modifiers: [{ gid: "FT5JBR312DVTA", name: "Coconut Water", price: 6 }],
@@ -259,26 +270,31 @@ describe("order push", () => {
       catalog: async () => ({ ...CATALOG, "FT5JBR312DVTA": { "Coconut Water": { id: "MOD-CW", price: 6 } } }),
     });
     const r = await agent.post("/api/clover/orders")
-      .send({ cart: coconut, customer: CUSTOMER, rewardId: "r-drink" }).expect(400);
-    expect(r.body.code).toBe("REWARD_NOT_APPLICABLE");
-    expect(clover.createOrder).not.toHaveBeenCalled();
+      .send({ cart: coconut, customer: CUSTOMER, rewardId: "r-drink" }).expect(200);
+
+    expect(r.body.discount).toEqual({ name: "Free drink", amount: 3.5 });
+    expect(clover.createOrder).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses a free plate against a plate over $22", async () => {
-    // Oxtail Large is $25. Medium, at $20, is what the reward covers.
+  it("caps a free plate at $20 on a $25 large oxtail, and takes the order", async () => {
+    /* The exact case that used to be refused at the checkout: the customer pays
+       the $5 difference plus tax at the counter. */
     const large = [{ ...CART[0], modifiers: [{ gid: "45KGD3ZDMT2ZY", name: "Large", price: 25 }] }];
     const { agent, clover } = app();
     const r = await agent.post("/api/clover/orders")
-      .send({ cart: large, customer: CUSTOMER, rewardId: "r-plate" }).expect(400);
-    expect(r.body.code).toBe("REWARD_NOT_APPLICABLE");
-    expect(clover.createOrder).not.toHaveBeenCalled();
+      .send({ cart: large, customer: CUSTOMER, rewardId: "r-plate" }).expect(200);
+
+    expect(r.body.discount).toEqual({ name: "Free plate", amount: 20 });
+    expect(clover.createOrder.mock.calls[0][0].orderCart.discounts[0].amount).toBe(-2000);
   });
 
-  it("allows the free plate on a plate inside the cap", async () => {
+  it("still refuses a reward the cart holds nothing for", async () => {
+    // The one refusal left: a drink reward against a cart with no drink.
     const { agent, clover } = app();
-    await agent.post("/api/clover/orders")
-      .send({ cart: CART, customer: CUSTOMER, rewardId: "r-plate" }).expect(200);
-    expect(clover.createOrder.mock.calls[0][0].orderCart.discounts[0].amount).toBe(-2000);
+    const r = await agent.post("/api/clover/orders")
+      .send({ cart: CART, customer: CUSTOMER, rewardId: "r-drink" }).expect(400);
+    expect(r.body.code).toBe("REWARD_NOT_APPLICABLE");
+    expect(clover.createOrder).not.toHaveBeenCalled();
   });
 
   it("takes one reward per order and refuses a list of them", async () => {

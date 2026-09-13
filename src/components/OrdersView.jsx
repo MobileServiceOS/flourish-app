@@ -16,7 +16,7 @@ export function orderBadge(o) {
   return "Preparing";
 }
 
-const badgeStyle = (o) => {
+export const badgeStyle = (o) => {
   const label = orderBadge(o);
   if (label === "Cancelled") return { background: "rgba(232,154,199,.22)", color: "var(--rose-ink)" };
   if (label === "Preparing") return {};
@@ -24,7 +24,7 @@ const badgeStyle = (o) => {
 };
 
 /* ---------- ORDERS ---------- */
-export default function OrdersView({ orders, onReorder, onBrowse }) {
+export default function OrdersView({ orders, onReorder, onBrowse, onOpen }) {
   return (
     <>
       <SubHeader title="Your Orders" />
@@ -36,6 +36,14 @@ export default function OrdersView({ orders, onReorder, onBrowse }) {
         )}
         {orders.map((o) => (
           <div key={o.num} className="card" style={{ padding: 16, marginBottom: 12 }}>
+            {/* The whole card opens the detail. A summary is enough until
+                something is wrong, and then the customer needs every line, the
+                totals and the ids — see OrderDetail. */}
+            <div role="button" tabIndex={0}
+              aria-label={`Order ${o.num}, ${o.when}, ${money(o.total)} — see details`}
+              onClick={() => onOpen?.(o)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen?.(o); } }}
+              style={{ cursor: "pointer" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <div style={{ fontWeight: 700 }}>{o.num}</div>
@@ -59,6 +67,10 @@ export default function OrdersView({ orders, onReorder, onBrowse }) {
                 </div>
               ))}
             </div>
+            </div>
+            {/* Outside the clickable region: tapping Reorder must reorder, not
+                open the detail. Reorder stays on the list because it is the
+                thing people come here to do. */}
             <button className="pill-btn ghost" onClick={() => onReorder(o)}
               aria-label={`Reorder ${o.num}`}>
               <RotateCcw size={15} style={{ verticalAlign: -2, marginRight: 6 }} aria-hidden="true" /> Reorder

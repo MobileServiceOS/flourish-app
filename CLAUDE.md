@@ -761,6 +761,24 @@ The maths is deliberately identical to Perks — 1 Petal per $1, 100 Petals = $5
 off — so neither balance is the worse one to hold. `SEPARATE_FROM_PERKS` goes
 wherever a balance is shown and before anyone joins.
 
+### A reward is a discount with a ceiling, not a gift with a gate
+
+The caps used to decide which items QUALIFIED, so a large oxtail at $25 against
+a "free plate" worth $22 was **refused at the checkout**, after the customer had
+chosen it. That reads as broken software, and it is the wrong shape for an app
+that takes no money: there is nothing to settle, because the customer pays at
+the counter either way.
+
+The cap is a ceiling on the discount now. Nothing is ever refused for being too
+expensive — a $25 plate with the 350 reward sends a $20 discount and the
+customer pays the $5 difference plus tax. The only refusal left is a cart
+holding nothing the reward applies to, which is the honest one.
+
+That makes the wording load-bearing, so `capLabel` is the single place it is
+phrased — "Free plate · up to $20.00 off a plate", never "Free plate" alone —
+and it is printed on the tier list, the redemption screen and the sign-up
+screen. A test asserts every reward's label carries a figure.
+
 ### The ladder, and why these numbers
 
 | reward | cost | cap | cents per Petal |
@@ -769,7 +787,14 @@ wherever a balance is shown and before anyone joins.
 | $5 off | 100 | $5.00 | 5.0 |
 | Free side | 120 | $6.00 | 5.0 |
 | Free seafood mac | 160 | $8.00 | 5.0 |
-| Free plate | 350 | $22.00 | **6.3** |
+| **Free lunch** | **250** | **$12.50** | 5.0 |
+| Free plate | 350 | $20.00 | **5.7** |
+
+**Free lunch at 250 exists to give Bloom something to be.** The tier countdown
+read "244 Petals to Bloom" and arriving unlocked nothing — see below. **Free
+plate came down from $22 to $20 at the same time**, so the ladder rises smoothly
+instead of jumping from 5.0% to 6.3%. The two numbers were set together; do not
+restore $22 without revisiting 250.
 
 Four tiers land on exactly the Perks rate. The plate is richer on purpose:
 $350 of spend is a long way to save, and the top of a ladder has to be worth
@@ -791,9 +816,26 @@ $6 off, and the customer paid $4 for a side the reward never covered. The $8
 seafood mac sits over the free-side cap deliberately — it has its own tier, and
 letting the cheaper reward buy it would make the dearer one pointless.
 
-**Caps are enforced in the proxy**, not just greyed out in the sheet — see the
+**Caps are enforced in the proxy**, not just applied in the sheet — see the
 discount section above. And it is **one reward per order**, refused by shape as
 well as by intent.
+
+### The tiers are display-only, and one of them promised nothing
+
+Worth knowing before anyone builds on them: **no code reads TIERS except to
+print a name and a countdown.** Seedling / Bloom / Flourish gate nothing.
+
+Their perk strings used to describe things that were not true. Bloom promised
+"Free side every 120 Petals" — not a tier perk at all, since anyone with 120
+Petals can take a free side regardless of tier — and Flourish promised "Priority
+pickup + birthday plate", neither of which exists anywhere in the app. So "244
+Petals to Bloom" was a countdown to nothing.
+
+Fixed by making the claims true rather than by deleting the tiers: Bloom is
+**Free lunch unlocked** (250, which is why that reward exists), and Flourish is
+**"Every reward within reach"** — true, since the dearest reward costs 350. The
+ladder is shown on the Rewards screen with each tier marked unlocked or not, so
+the names mean something a customer can see.
 
 The half the app cannot police: Perks balances are unreadable through every API,
 so a customer using a Perks $5 off at the counter on an order that already
@@ -993,7 +1035,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 847 tests (+9 more with a test database)
+npm test            # 877 tests (+9 more with a test database)
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

@@ -28,6 +28,7 @@ import TrackView from "./components/TrackView.jsx";
 import SignInView from "./components/SignInView.jsx";
 import RewardsView from "./components/RewardsView.jsx";
 import OrdersView from "./components/OrdersView.jsx";
+import OrderDetail from "./components/OrderDetail.jsx";
 
 /* ============================================================
    FLOURISH BX — Pickup ordering app
@@ -97,6 +98,7 @@ export default function App() {
   const [devicePetals, setDevicePetals] = useState(0);
   const [orders, setOrders] = useState([]);
   const [active, setActive] = useState(null); // active order being tracked
+  const [detailOrder, setDetailOrder] = useState(null); // order number being viewed
   const [toast, setToast] = useState(null);
   const catRefs = useRef({});
 
@@ -427,7 +429,7 @@ export default function App() {
      balance arrives would be overwritten by it, and the Petals would vanish a
      second time. Gated on being signed in because a guest earns nothing, and on
      the proxy being up because there is nobody to ask otherwise. */
-  useReconcileOnLaunch(orders, {
+  const sweepNow = useReconcileOnLaunch(orders, {
     enabled: !loadingAcct && Boolean(account) && clover.status === "online",
     onPaid: awardPoints,
     onVoided: markVoided,
@@ -439,7 +441,13 @@ export default function App() {
      while it is already open, which is the other half of the same moment — the
      customer taps Rewards expecting the Petals they just earned. */
   useEffect(() => {
-    if (view === "rewards" && account && clover.status === "online") petals.refresh();
+    if (!account || clover.status !== "online") return;
+    if (view === "rewards") petals.refresh();
+    /* And the Orders screen, for the same reason and the same moment: the
+       customer has just paid and taps Orders to check. The sweep runs on wake,
+       but moving to the screen with the app already open is the other half —
+       and it was the case actually reported. */
+    if (view === "orders") sweepNow();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
@@ -622,7 +630,20 @@ export default function App() {
         ? <RewardsView {...{ account, points, petalsAvailable, vouchers, orders, redeem, signOut }}
             onReorder={reorder} onDeleteAccount={deleteMyAccount} />
         : <SignInView onSignIn={signIn} />)}
+      {view === "orderDetail" && detailOrder && (
+        <OrderDetail
+          /* Read from the live list, not from the snapshot taken when the card
+             was tapped: the sweep updates status and Petals in place, and a
+             frozen copy would still say "Preparing" while the list behind it
+             said "Paid". */
+          order={orders.find((o) => o.num === detailOrder) ?? null}
+          onBack={() => setView("orders")}
+          onReorder={(o) => { reorder(o); }}
+          flash={flash}
+        />
+      )}
       {view === "orders" && <OrdersView orders={orders} active={active} onReorder={reorder}
+        onOpen={(o) => { setDetailOrder(o.num); setView("orderDetail"); }}
         onBrowse={() => setView("menu")} onTrack={() => active && setView("track")} />}
       {view === "cart" && <CartView {...{ cart, subtotal, saved, account, setQty, removeLine, setView,
           vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher: () => setApplied(null),

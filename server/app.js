@@ -855,6 +855,50 @@ export function createApp({
     } catch (e) { petalsFail(res, e); }
   });
 
+  /* ---- granting and correcting a balance ----
+
+     THIS MINTS CURRENCY, so it is NOT behind APP_KEY. The app key ships inside
+     the browser bundle and is documented as not a secret — anyone who has the
+     app has it, and "anyone who has the app can create Petals" is not a
+     control. It requires PETALS_ADMIN_KEY, a real secret that exists only on
+     the host, and the route does not exist at all when that is unset.
+
+     Every grant is a ledger row with a reason and an idempotency key, so it
+     behaves exactly like earned Petals and can be explained months later. */
+  const adminKey = () => String(process.env.PETALS_ADMIN_KEY ?? "").trim();
+
+  app.post("/api/clover/petals/adjust", needPetals, async (req, res) => {
+    const key = adminKey();
+    if (!key) {
+      return res.status(404).json({
+        error: "Not found.",
+        code: "ADJUST_DISABLED",
+      });
+    }
+    /* Compared with a constant-time-ish check rather than ===, and only after
+       the length matches, so a timing difference does not leak the length. */
+    const given = String(req.get("x-petals-admin-key") ?? "");
+    const ok = given.length === key.length
+      && given.split("").reduce((acc, c, i) => acc | (c.charCodeAt(0) ^ key.charCodeAt(i)), 0) === 0;
+    if (!ok) {
+      console.warn("  petals/adjust: rejected, bad or missing admin key");
+      return res.status(403).json({ error: "Not allowed.", code: "ADJUST_FORBIDDEN" });
+    }
+
+    try {
+      const { name, phone, delta, reason, idempotencyKey } = req.body ?? {};
+      const out = await petals.adjust({ name, phone, delta, reason, idemKey: idempotencyKey });
+      /* Logged with the phone MASKED — grants are exactly the kind of record
+         someone will want to audit, and exactly the kind of log line that must
+         not carry a customer's number. */
+      console.log(
+        `  petals/adjust: ${out.applied >= 0 ? "+" : ""}${out.applied} to ${maskPhone(phone)} ` +
+        `(${String(reason ?? "").slice(0, 60)})${out.alreadyApplied ? " [already applied]" : ""}`
+      );
+      res.json(out);
+    } catch (e) { petalsFail(res, e); }
+  });
+
   /* ---- printers ----
      Staff and whoever is deploying this need to see what the server chose, and
      be able to prove a ticket prints without putting a fake order through the

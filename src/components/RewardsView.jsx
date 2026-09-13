@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Gift, LogOut, Ticket, RotateCcw, Share2, AlertTriangle } from "lucide-react";
 import { money } from "../lib/money.js";
 import {
-  REWARDS, tierFor, nextTier,
+  REWARDS, TIERS, tierFor, nextTier, capLabel,
   CURRENCY_MANY, CURRENCY_RATE_LINE, SEPARATE_FROM_PERKS, currencyAmount, ONE_REWARD_PER_ORDER,
 } from "../lib/loyalty.js";
 import { formatPhone } from "../lib/phone.js";
@@ -52,10 +52,45 @@ export default function RewardsView({
             {!known
               ? "We can't reach your balance right now."
               : next
-                ? `${currencyAmount(next.min - shown)} to ${next.name}`
-                : "Top tier. Thank you for the love 🌺"}
+                ? `${currencyAmount(next.min - shown)} to ${next.name} — ${next.perk}`
+                : `Top tier. ${tier.perk}.`}
           </div>
         </div>
+
+        {/* THE LADDER, VISIBLE.
+
+            The tier names meant nothing: they are display-only, no code reads
+            them for anything but this badge, and "244 Petals to Bloom" counted
+            down to a perk that did not exist. Bloom is Free lunch at 250 now,
+            so the number points at something — and the ladder is shown so a
+            customer can see what they are saving toward instead of inferring
+            it from a badge. */}
+        {known && (
+          <div className="card" style={{ padding: 14, marginBottom: 18, borderRadius: 22,
+            border: "1px solid var(--line)", background: "#fff" }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Your ladder</div>
+            {TIERS.map((t) => {
+              const reached = shown >= t.min;
+              return (
+                <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: 999, flex: "0 0 auto",
+                    background: reached ? "var(--leaf)" : "var(--line)" }} />
+                  <span style={{ fontWeight: reached ? 700 : 500, fontSize: 13,
+                    color: reached ? "var(--ink)" : "var(--muted)" }}>
+                    {t.name}
+                  </span>
+                  <span style={{ color: "var(--muted)", fontSize: 12 }}>
+                    {t.min > 0 ? `${t.min} · ` : ""}{t.perk}
+                  </span>
+                  {reached && (
+                    <span className="badge" style={{ marginLeft: "auto", background: "rgba(47,182,168,.14)",
+                      color: "var(--teal-ink)" }}>Unlocked</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Two programmes run at once and this is the balance screen, so this is
             where the distinction has to be unmissable. A customer who reads
@@ -125,9 +160,17 @@ export default function RewardsView({
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14.5 }}>{r.name}</div>
+                {/* The CEILING is stated whether or not it can be redeemed.
+                    "Free plate" alone invites someone to expect a $50 crab
+                    platter for nothing; the reward is $20 off one. */}
                 <div style={{ color: "var(--muted)", fontSize: 12.5 }}>
-                  {can ? r.desc : `${r.cost - points} more ${CURRENCY_MANY}`}
+                  {capLabel(r)}
                 </div>
+                {!can && (
+                  <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 2 }}>
+                    {currencyAmount(Math.max(0, r.cost - shown))} to go
+                  </div>
+                )}
               </div>
               {/* The visible label is the cost, which is what a customer is
                   scanning for — but two rewards cost 100, so the cost alone

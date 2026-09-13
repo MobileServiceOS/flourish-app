@@ -6,7 +6,7 @@ import {
   CURRENCY_ONE, CURRENCY_MANY, CURRENCY_RATE_LINE, SEPARATE_FROM_PERKS, currencyAmount,
 } from "../lib/currency.js";
 import {
-  REWARDS, discountFor, pointsFor, IN_APP_POINTS_PER_DOLLAR, rateOf, ONE_REWARD_PER_ORDER,
+  REWARDS, TIERS, discountFor, pointsFor, IN_APP_POINTS_PER_DOLLAR, rateOf, capLabel, ONE_REWARD_PER_ORDER,
 } from "../lib/loyalty.js";
 import { DRINK_ID, SIDE_ID } from "../data/menu.data.js";
 import { kitchenNote } from "../lib/cloverOrder.js";
@@ -192,18 +192,24 @@ describe("no screen says points to a customer", () => {
 describe("the reward ladder holds its rate", () => {
   const by = (id) => REWARDS.find((r) => r.id === id);
 
-  it("is the agreed five tiers at the agreed costs", () => {
+  it("is the agreed six tiers at the agreed costs", () => {
+    /* Free lunch at 250 was added to give Bloom something to be — the tier
+       countdown read "244 Petals to Bloom" and arriving unlocked nothing. Free
+       plate came down from $22 to $20 at the same time so the ladder rises
+       smoothly rather than jumping. The two numbers were set together; do not
+       restore $22 without revisiting 250. */
     expect(REWARDS.map((r) => [r.id, r.cost, r.cap])).toEqual([
       ["r-drink", 70, 3.5],
       ["r-5off", 100, 5],
       ["r-side", 120, 6],
       ["r-mac", 160, 8],
-      ["r-plate", 350, 22],
+      ["r-lunch", 250, 12.5],
+      ["r-plate", 350, 20],
     ]);
   });
 
-  it("prices four of the five at exactly the Perks rate", () => {
-    for (const id of ["r-drink", "r-5off", "r-side", "r-mac"]) {
+  it("prices five of the six at exactly the Perks rate", () => {
+    for (const id of ["r-drink", "r-5off", "r-side", "r-mac", "r-lunch"]) {
       expect(rateOf(by(id)), id).toBeCloseTo(0.05, 10);
     }
   });
@@ -211,52 +217,73 @@ describe("the reward ladder holds its rate", () => {
   it("makes the plate richer, because $350 of spend has to be worth it", () => {
     const plate = rateOf(by("r-plate"));
     expect(plate).toBeGreaterThan(0.05);
-    expect(plate).toBeCloseTo(0.063, 3);
+    expect(plate).toBeCloseTo(0.057, 3);   // $20/350, down from $22
   });
 
   it("never lets a cheaper tier beat a dearer one on rate", () => {
     /* The failure the old ladder had: a 60-Petal drink returning 9.2% meant
        saving for anything else was irrational. */
     const rates = REWARDS.map(rateOf);
-    expect(Math.max(...rates.slice(0, 4))).toBeCloseTo(0.05, 10);
+    expect(Math.max(...rates.slice(0, 5))).toBeCloseTo(0.05, 10);
   });
 });
 
-describe("an item reward's cap decides what qualifies, not what it pays", () => {
+describe("a cap is a ceiling on the discount, never a refusal", () => {
+  const by = (id) => REWARDS.find((r) => r.id === id);
   const DRINK = (price) => ({ itemId: DRINK_ID, price });
   const SIDE = (price, meta = "") => ({ itemId: SIDE_ID, price, meta });
 
-  it("gives a $2.50 soda away free", () => {
+  /* This block used to assert the opposite: that an over-cap item was EXCLUDED,
+     so a $10 pasta side got nothing and a $25 oxtail was refused at the
+     checkout after the customer had chosen it. That is the wrong shape for an
+     app that takes no money — there is nothing to settle, because the customer
+     pays at the counter either way, and a refusal reads as broken software.
+
+     What must still hold is that the cap bounds the discount, and that the
+     WORDING says so: "Free plate · up to $20 off any plate", never "Free
+     plate" on its own. */
+
+  it("gives a $2.50 soda away free, because it is under the cap", () => {
     expect(discountFor({ rid: "r-drink" }, [DRINK(2.5)])).toBe(2.5);
   });
 
-  it("excludes the $5.50 juices and the $6 coconut water", () => {
-    /* Not "$3.50 off a $6 drink" — the reward is a free drink up to $3.50, and
-       a $6 coconut water is not what it is. Part-paying it would have the
-       customer handing over $2.50 for a drink they think is free. */
-    expect(discountFor({ rid: "r-drink" }, [DRINK(5.5)])).toBe(0);
-    expect(discountFor({ rid: "r-drink" }, [DRINK(6)])).toBe(0);
+  it("caps the $5.50 juice and the $6 coconut water rather than refusing them", () => {
+    expect(discountFor({ rid: "r-drink" }, [DRINK(5.5)])).toBe(3.5);
+    expect(discountFor({ rid: "r-drink" }, [DRINK(6)])).toBe(3.5);
   });
 
-  it("blocks Pasta at $10 and seafood mac at $8 as a free side", () => {
-    expect(discountFor({ rid: "r-side" }, [SIDE(10)])).toBe(0);
-    expect(discountFor({ rid: "r-side" }, [SIDE(8, "Seafood Mac & Cheese")])).toBe(0);
+  it("caps a $10 Pasta side at $6 instead of excluding it", () => {
+    expect(discountFor({ rid: "r-side" }, [SIDE(10)])).toBe(6);
     expect(discountFor({ rid: "r-side" }, [SIDE(6)])).toBe(6);
+    expect(discountFor({ rid: "r-side" }, [SIDE(3)])).toBe(3);
   });
 
-  it("still covers the $8 seafood mac under its own tier", () => {
-    // Over the free-side cap on purpose; the dearer reward is what buys it.
-    expect(discountFor({ rid: "r-mac" }, [SIDE(8, "Seafood Mac & Cheese")])).toBe(8);
+  it("caps a $25 large oxtail at $20 with the free plate", () => {
+    // The customer pays the $5 difference plus tax at the counter.
+    expect(discountFor({ rid: "r-plate" }, [{ plate: true, price: 25 }])).toBe(20);
   });
 
-  it("takes the dearest line that qualifies, and ignores the ones that don't", () => {
-    const cart = [SIDE(10), SIDE(6), SIDE(3)];
-    expect(discountFor({ rid: "r-side" }, cart)).toBe(6);
+  it("gives Free lunch $12.50 of the same plate", () => {
+    expect(discountFor({ rid: "r-lunch" }, [{ plate: true, price: 25 }])).toBe(12.5);
+    expect(discountFor({ rid: "r-lunch" }, [{ plate: true, price: 10 }])).toBe(10);
   });
 
-  it("excludes a plate over $22", () => {
-    expect(discountFor({ rid: "r-plate" }, [{ plate: true, price: 25 }])).toBe(0);
-    expect(discountFor({ rid: "r-plate" }, [{ plate: true, price: 22 }])).toBe(22);
+  it("takes the dearest matching line when there are several", () => {
+    expect(discountFor({ rid: "r-side" }, [SIDE(3), SIDE(10), SIDE(5)])).toBe(6);
+  });
+
+  it("still refuses when the cart holds nothing the reward applies to", () => {
+    /* The one refusal left, and the right one: a free drink against a cart with
+       no drink cannot be applied to anything. */
+    expect(discountFor({ rid: "r-drink" }, [{ plate: true, price: 20 }])).toBe(0);
+    expect(discountFor({ rid: "r-side" }, [])).toBe(0);
+  });
+
+  it("states the ceiling in the label, so nobody expects a $50 platter free", () => {
+    expect(capLabel(by("r-plate"))).toBe("up to $20.00 off a plate");
+    expect(capLabel(by("r-lunch"))).toBe("up to $12.50 off a plate");
+    expect(capLabel(by("r-5off"))).toBe("$5.00 off any order");
+    for (const r of REWARDS) expect(capLabel(r), r.id).toMatch(/\$\d/);
   });
 });
 

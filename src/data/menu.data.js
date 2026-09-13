@@ -4,7 +4,7 @@
 // Line price = base + selected variant modifier + side upcharges.
 // Defaults to the first available option in each group (Clover's own ordering).
 // oos:true marks a modifier Clover has mispriced; hidden rather than sold wrong.
-// Generated 2026-09-12 from "inventory-export-v2-3.xlsx".
+// Generated 2026-09-13 from "inventory-export-v2-3.xlsx".
 export const MENU = [
   { cat: "Lunch & Dinner", sub: "Plates come with two sides", items: [
     { id: "598S0BJH4J7DE", name: "Crab Legs Platter", emoji: "🦀", desc: "Crab legs and shrimp with two sides", base: 50, lo: 50, hi: 50, prepMinutes: 30, search: "crab legs platter", groups: [

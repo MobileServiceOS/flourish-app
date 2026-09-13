@@ -12,7 +12,7 @@
  * It also refuses to ship data that would charge a customer wrongly, and prints
  * a report of anything mispriced in Clover so it can be fixed at the source.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as XLSX from "xlsx";
@@ -249,6 +249,36 @@ const FRIDAY_COMPARISON = {
      four and six. A badge on either would be false or absurd, and a customer
      who checks and finds the shrimp $1.99 above the weekday price trusts
      nothing else on the screen. */
+};
+
+/* ============================================================================
+   DISH PHOTOS, KEYED BY CLOVER ITEM ID
+
+   Empty, and that is the accurate state: **no dish photo has ever existed in
+   this repo.** Every image ever committed is branding or icons; `public/items/`
+   has never existed in any commit; no item has ever carried an `img` field.
+
+   What existed once was a helper that built a DoorDash CDN URL out of the
+   CLOVER item id. Those are different id namespaces, so it 403'd on every
+   item — 43 failed cross-origin requests per menu render and never a photo.
+   It was removed deliberately in c0fc457 (2026-07-27) and replaced by this
+   `img` field plus an emoji fallback. The fallback is all anyone has ever seen.
+
+   So nothing was "dropped by the Clover rebuild" and nothing is being wiped by
+   regeneration. The mapping lives HERE, keyed by Clover item id like
+   PREP_MINUTES, precisely so that when photos do arrive a regeneration cannot
+   lose them.
+
+   TO ADD ONE:
+     1. put the file in `public/items/`, e.g. public/items/oxtail.webp
+     2. add `"60KCQ1V22Q98M": "/items/oxtail.webp"` below
+     3. `npm run menu -- <export>`
+
+   A missing entry is a supported state, not a bug: the card shows the emoji
+   tile. What is NOT supported is an item losing a photo it had — a test fails
+   on that, and the generator warns about a path that points nowhere. */
+const ITEM_PHOTOS = {
+  // No photos supplied yet. See docs/DISH-PHOTOS.md for what is needed.
 };
 
 const EMOJI = {
@@ -942,7 +972,12 @@ for (const it of items.values()) {
   if (pinned && !cats.includes(pinned)) {
     issues.push(`${it.name}: pinned to "${pinned}" but Clover has it in ${cats.join(", ") || "no kept category"}`);
   }
-  out.push({ id: it.id, name: it.name, cat, base, lo, hi, groups: gs });
+  out.push({
+    id: it.id, name: it.name, cat, base, lo, hi, groups: gs,
+    /* Only present when a photo exists. The card falls back to the emoji tile,
+       which is deliberate rather than a placeholder. */
+    ...(ITEM_PHOTOS[it.id] ? { img: ITEM_PHOTOS[it.id] } : {}),
+  });
 }
 
 /* ---------- emit ---------- */
@@ -982,7 +1017,10 @@ for (const cat of CATEGORY_ORDER) {
     const prep = `, prepMinutes: ${PREP_MINUTES[i.id] ?? DEFAULT_PREP}${noPrep ? ", noPrep: true" : ""}`;
     // Item name + every sellable modifier, flattened and normalised.
     const search = `, search: ${q(searchIndex(i))}`;
-    js += `    { id: ${q(i.id)}, name: ${q(i.name)}, emoji: ${q(EMOJI[i.name] ?? "🍽️")}${desc}${days}, base: ${i.base}, lo: ${i.lo}, hi: ${i.hi}${prep}${search}, groups: [${gs}\n      ] },\n`;
+    /* A photo when one exists; the emoji tile otherwise, which is the
+       deliberate fallback rather than a placeholder for a missing asset. */
+    const img = i.img ? `, img: ${q(i.img)}` : "";
+    js += `    { id: ${q(i.id)}, name: ${q(i.name)}, emoji: ${q(EMOJI[i.name] ?? "🍽️")}${img}${desc}${days}, base: ${i.base}, lo: ${i.lo}, hi: ${i.hi}${prep}${search}, groups: [${gs}\n      ] },\n`;
   }
   js += `  ]},\n`;
 }
@@ -1098,6 +1136,30 @@ for (const [id, cmp] of Object.entries(FRIDAY_COMPARISON)) {
       `${item.name}: Friday $${item.lo} is not below the everyday $${cmp.everyday} — ` +
       `remove it from FRIDAY_COMPARISON rather than claiming a saving`
     );
+  }
+}
+
+/* A photo mapping is only as good as the file behind it. A path that points
+   nowhere renders a broken image where an emoji would have been fine. */
+{
+  const missingFile = [];
+  for (const [id, path] of Object.entries(ITEM_PHOTOS)) {
+    if (!ids.has(id)) {
+      console.warn(`  ! Photo set for ${id}, which is not on the menu anymore`);
+      continue;
+    }
+    const onDisk = resolve(__dirname, "../public", path.replace(/^\//, ""));
+    if (!existsSync(onDisk)) missingFile.push(`${id} -> ${path}`);
+  }
+  if (missingFile.length) {
+    console.warn(`\n  ${missingFile.length} photo path(s) point at a file that is not there:`);
+    for (const m of missingFile) console.warn(`    - ${m}`);
+    console.warn("    The card would render a broken image. Add the file or remove the entry.");
+  }
+  const withPhoto = out.filter((i) => i.img).length;
+  if (withPhoto < out.length) {
+    console.log(`\n  ${out.length - withPhoto} of ${out.length} items have no photo (emoji tile shown).`);
+    if (withPhoto === 0) console.log("    None supplied yet — see docs/DISH-PHOTOS.md.");
   }
 }
 

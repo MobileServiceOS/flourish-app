@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Gift, Award } from "lucide-react";
 import {
-  REWARDS, CURRENCY_ONE, CURRENCY_MANY, SEPARATE_FROM_PERKS, ONE_REWARD_PER_ORDER,
+  REWARDS, capLabel, CURRENCY_ONE, CURRENCY_MANY, SEPARATE_FROM_PERKS, ONE_REWARD_PER_ORDER,
 } from "../lib/loyalty.js";
 import { formatPhone, phoneDigits, isValidPhone, isValidName } from "../lib/phone.js";
 import { Hummingbird, SubHeader, Section } from "./shared.jsx";
@@ -70,7 +70,7 @@ export default function SignInView({ onSignIn }) {
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 14.5 }}>{r.name}</div>
-              <div style={{ color: "var(--muted)", fontSize: 12.5 }}>{r.cost} {CURRENCY_MANY} · {r.desc}</div>
+              <div style={{ color: "var(--muted)", fontSize: 12.5 }}>{r.cost} {CURRENCY_MANY} · {capLabel(r)}</div>
             </div>
           </div>
         ))}

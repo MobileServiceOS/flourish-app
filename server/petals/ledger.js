@@ -308,10 +308,60 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
     });
   }
 
+  /**
+   * Grant or correct a balance, by hand, with a reason on the record.
+   *
+   * The shop will need this: a customer whose order was voided after they had
+   * eaten, a goodwill credit, a balance typed wrong at a counter. Doing it with
+   * a SQL poke would leave a number nobody could explain later, which is the
+   * whole reason the ledger exists rather than a mutable column.
+   *
+   * `reason` is required and stored. `idemKey` is required too — an adjustment
+   * is the one write with no natural key of its own, and without one a retried
+   * request grants twice. The caller names it: `grant:test-1000:<phone>`.
+   *
+   * Negative deltas are allowed, and may take a balance below zero. That is
+   * deliberate: a correction that silently clamped would hide the error it was
+   * made to fix.
+   */
+  async function adjust({ name, phone, delta, reason, idemKey }) {
+    const p = normalisePhone(phone);
+    if (!p) throw new PetalsError("BAD_PHONE", "That doesn't look like a 10-digit US number.");
+    const amount = Math.trunc(Number(delta));
+    if (!Number.isFinite(amount) || amount === 0) {
+      throw new PetalsError("BAD_DELTA", "An adjustment needs a non-zero whole number of Petals.");
+    }
+    const why = String(reason ?? "").trim();
+    if (!why) throw new PetalsError("REASON_REQUIRED", "An adjustment has to say why.");
+    const key = String(idemKey ?? "").trim();
+    if (!key) throw new PetalsError("IDEM_REQUIRED", "An adjustment needs an idempotency key.");
+
+    return store.tx(async (tx) => {
+      let customer = await tx.findCustomerByPhone(p);
+      if (!customer) {
+        customer = await tx.createCustomer({
+          phone: p, name: String(name ?? "").trim() || "Guest", at: stamp(),
+        });
+      }
+      const wrote = await tx.appendLedger({
+        customerId: customer.id,
+        delta: amount,
+        reason: `${REASONS.ADJUSTED}: ${why}`.slice(0, 200),
+        idemKey: `grant:${key}`,
+        at: stamp(),
+      });
+      return {
+        applied: wrote ? amount : 0,
+        alreadyApplied: !wrote,
+        petals: await tx.balanceOf(customer.id),
+      };
+    });
+  }
+
   /** For a caller that wants the sweep without reading a balance. */
   async function expire(customerId = null) {
     return store.tx(async (tx) => ({ released: await expireHeld(tx, customerId) }));
   }
 
-  return { balance, claim, credit, openOrder, settle, release, expire };
+  return { balance, claim, credit, openOrder, settle, release, expire, adjust };
 }
