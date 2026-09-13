@@ -260,9 +260,15 @@ export function useOrderPayment(cloverOrderId, {
 /** Don't re-sweep more often than this, however many focus events arrive. */
 export const RESWEEP_MIN_MS = 20_000;
 
+/**
+ * Returns a `sweepNow()` the caller can fire when a screen that shows order
+ * status is opened — the Orders tab. Subject to the same rate limit, so tapping
+ * between tabs cannot hammer the register.
+ */
 export function useReconcileOnLaunch(orders, { enabled = true, onPaid, onVoided } = {}) {
   const latest = useRef(orders);
   const lastRun = useRef(0);
+  const trigger = useRef(() => {});
   latest.current = orders;
 
   /* Read the callbacks through refs so a parent that re-creates them on every
@@ -301,6 +307,7 @@ export function useReconcileOnLaunch(orders, { enabled = true, onPaid, onVoided 
       }
     };
 
+    trigger.current = sweep;
     sweep();
 
     /* ON FOCUS, not on a timer.
@@ -322,8 +329,11 @@ export function useReconcileOnLaunch(orders, { enabled = true, onPaid, onVoided 
       ctrl?.abort();
       document.removeEventListener("visibilitychange", onWake);
       window.removeEventListener("focus", onWake);
+      trigger.current = () => {};
     };
   }, [enabled]);
+
+  return useCallback(() => { trigger.current(); }, []);
 }
 
 /**

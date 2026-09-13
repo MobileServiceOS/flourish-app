@@ -329,3 +329,157 @@ describe("the live shape today: no database", () => {
     await agent.get("/api/clover/orders/ORD-1/status").expect(200);
   });
 });
+
+/* ============================================================================
+   GRANTING PETALS MINTS CURRENCY
+
+   So it is not behind APP_KEY: that ships inside the browser bundle and is
+   documented as not a secret, and "anyone holding the app can create Petals" is
+   not a control. It needs PETALS_ADMIN_KEY, which exists only on the host, and
+   the route does not exist at all when that is unset.
+   ============================================================================ */
+
+describe("granting and correcting a balance", () => {
+  const ADMIN = "test-admin-key-0123456789";
+  const withAdmin = (fn) => async () => {
+    const had = process.env.PETALS_ADMIN_KEY;
+    process.env.PETALS_ADMIN_KEY = ADMIN;
+    try { await fn(); } finally {
+      if (had === undefined) delete process.env.PETALS_ADMIN_KEY;
+      else process.env.PETALS_ADMIN_KEY = had;
+    }
+  };
+
+  const grant = (agent, body, key = ADMIN) =>
+    agent.post("/api/clover/petals/adjust").set("x-petals-admin-key", key).send(body);
+
+  it("sits behind the app key as well, which is what a bare admin key hits", async () => {
+    /* The reported failure: the grant script sent only x-petals-admin-key and
+       came back 401 BAD_APP_KEY. Every /api/clover path except /health is
+       behind the app-key guard, and that guard runs BEFORE routing — so a
+       missing route and a missing app key are indistinguishable from outside.
+
+       Both keys are required on purpose. The app key is the perimeter and is
+       not a secret; the admin key is the control. Exempting the one route that
+       mints currency from the perimeter would be backwards. */
+    const built = build();
+    const agentWithKey = request(createApp({
+      clover: fakeClover(), catalog: async () => CATALOG,
+      now: () => new Date(clock),
+      printTicket: async () => ({ printed: true }),
+      appKey: "perimeter-key", petals: built.petals,
+    }));
+
+    const had = process.env.PETALS_ADMIN_KEY;
+    process.env.PETALS_ADMIN_KEY = ADMIN;
+    try {
+      const body = { name: "N R", phone: "4757776200", delta: 10, reason: "x", idempotencyKey: "k1" };
+
+      // Admin key only — refused at the perimeter, before the route exists.
+      const bare = await agentWithKey.post("/api/clover/petals/adjust")
+        .set("x-petals-admin-key", ADMIN).send(body).expect(401);
+      expect(bare.body.code).toBe("BAD_APP_KEY");
+
+      // Both — through.
+      const ok = await agentWithKey.post("/api/clover/petals/adjust")
+        .set("x-flourish-key", "perimeter-key")
+        .set("x-petals-admin-key", ADMIN)
+        .send(body).expect(200);
+      expect(ok.body.applied).toBe(10);
+    } finally {
+      if (had === undefined) delete process.env.PETALS_ADMIN_KEY;
+      else process.env.PETALS_ADMIN_KEY = had;
+    }
+  });
+
+  it("has a grant script that sends both keys and says why", async () => {
+    /* The script sent one and could never authenticate. Pinned so it cannot
+       drift back, and so the usage text keeps explaining the difference. */
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(process.cwd(), "scripts/petals-grant.mjs"), "utf8");
+    expect(src).toMatch(/"x-flourish-key"/);
+    expect(src).toMatch(/"x-petals-admin-key"/);
+    expect(src).toMatch(/TWO KEYS ARE REQUIRED/);
+    expect(src).toMatch(/BAD_APP_KEY/);      // explains the failure it hit
+  });
+
+  it("does not exist at all without an admin key configured", async () => {
+    const { agent } = build();
+    const r = await agent.post("/api/clover/petals/adjust")
+      .send({ phone: "3478599413", delta: 1000, reason: "x", idempotencyKey: "k" }).expect(404);
+    expect(r.body.code).toBe("ADJUST_DISABLED");
+  });
+
+  it("refuses without the key, and the app key is not enough", withAdmin(async () => {
+    const { agent, petals } = build();
+    await grant(agent, { phone: "3478599413", delta: 1000, reason: "x", idempotencyKey: "k" }, "")
+      .expect(403);
+    await grant(agent, { phone: "3478599413", delta: 1000, reason: "x", idempotencyKey: "k" }, "wrong-key-here-x")
+      .expect(403);
+    expect((await petals.balance({ name: "Nevaeh Reid", phone: "3478599413" })).petals).toBe(0);
+  }));
+
+  it("credits a balance and records the reason", withAdmin(async () => {
+    const { agent, store } = build();
+    const r = await grant(agent, {
+      name: "Nevaeh Reid", phone: "4757776200", delta: 1000,
+      reason: "test account", idempotencyKey: "test-1000",
+    }).expect(200);
+
+    expect(r.body).toMatchObject({ applied: 1000, petals: 1000, alreadyApplied: false });
+    const row = store.__rows.ledger.at(-1);
+    expect(row.reason).toBe("adjusted: test account");
+    expect(row.idemKey).toBe("grant:test-1000");
+  }));
+
+  it("is a no-op when the same key is used again", withAdmin(async () => {
+    /* What makes a retry safe after a response goes missing. */
+    const { agent } = build();
+    const body = { name: "Nevaeh Reid", phone: "4757776200", delta: 1000, reason: "test", idempotencyKey: "test-1000" };
+    await grant(agent, body).expect(200);
+    const again = await grant(agent, body).expect(200);
+    expect(again.body).toMatchObject({ applied: 0, alreadyApplied: true, petals: 1000 });
+  }));
+
+  it("takes a different key as a separate grant", withAdmin(async () => {
+    const { agent } = build();
+    const base = { name: "Nevaeh Reid", phone: "4757776200", delta: 500, reason: "test" };
+    await grant(agent, { ...base, idempotencyKey: "a" }).expect(200);
+    const second = await grant(agent, { ...base, idempotencyKey: "b" }).expect(200);
+    expect(second.body.petals).toBe(1000);
+  }));
+
+  it("corrects downwards too, and does not clamp at zero", withAdmin(async () => {
+    /* A correction that silently clamped would hide the error it was made to
+       fix. Going negative is visible and explainable; a quiet floor is not. */
+    const { agent } = build();
+    await grant(agent, { phone: "4757776200", name: "N R", delta: 100, reason: "grant", idempotencyKey: "g" }).expect(200);
+    const r = await grant(agent, { phone: "4757776200", name: "N R", delta: -300, reason: "correcting a mistake", idempotencyKey: "c" }).expect(200);
+    expect(r.body.petals).toBe(-200);
+  }));
+
+  it("insists on a reason and a key", withAdmin(async () => {
+    const { agent } = build();
+    const bad = [
+      [{ phone: "4757776200", delta: 10, idempotencyKey: "k" }, "REASON_REQUIRED"],
+      [{ phone: "4757776200", delta: 10, reason: "x" }, "IDEM_REQUIRED"],
+      [{ phone: "4757776200", delta: 0, reason: "x", idempotencyKey: "k" }, "BAD_DELTA"],
+      [{ phone: "nope", delta: 10, reason: "x", idempotencyKey: "k" }, "BAD_PHONE"],
+    ];
+    for (const [body, code] of bad) {
+      const r = await grant(agent, body).expect(400);
+      expect(r.body.code, JSON.stringify(body)).toBe(code);
+    }
+  }));
+
+  it("creates the customer when the number is new", withAdmin(async () => {
+    const { agent, petals } = build();
+    await grant(agent, {
+      name: "Nevaeh Reid", phone: "4757776200", delta: 1000,
+      reason: "test account", idempotencyKey: "test-1000",
+    }).expect(200);
+    expect(await petals.balance({ name: "Nevaeh Reid", phone: "4757776200" }))
+      .toMatchObject({ petals: 1000, known: true });
+  }));
+});

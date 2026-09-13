@@ -54,6 +54,18 @@ createApp({ petals }).listen(PORT, () => {
   const g = describeGuard();
   console.log(`  App key  ${g.appKey}`);
   console.log(`  Petals   ${petals ? "server-side (DATABASE_URL set)" : "OFF — no DATABASE_URL, rewards unavailable"}`);
+  /* Reported for the same reason the app key is: so whether a grant can
+     possibly work is readable from the log, rather than discovered by a 401
+     that came from the perimeter guard and said nothing about this at all.
+     The VALUE is never printed — only whether it is set. */
+  {
+    const admin = String(process.env.PETALS_ADMIN_KEY ?? "").trim();
+    console.log(`  Grants   ${
+      !petals ? "unavailable — Petals are off"
+        : admin ? "enabled — POST /petals/adjust needs APP_KEY + PETALS_ADMIN_KEY"
+          : "disabled — PETALS_ADMIN_KEY unset, /petals/adjust returns 404"
+    }`);
+  }
   console.log(`  Origins  ${g.origins}`);
   console.log(`  Max      ${g.maxCharge} per order`);
   /* These are warnings about a half-configured server, and a correctly deployed
