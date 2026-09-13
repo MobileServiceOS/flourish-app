@@ -1231,6 +1231,45 @@ docs/FRIDAY-PRICING.md — briefly: both Friday SKUs share $21.99 while their
 weekday twins are $22.00 and $20.00, which is a flat flyer price entered against
 each dish rather than two pricing decisions.
 
+### Dish photos are named after the flavour, not the dish
+
+Worth knowing before anyone adds more, because it looks like the tooling is
+broken when it is not. **Uber Eats photographs what a customer orders — "sweet
+chili shrimp", "escovitch fish", "chicken pasta" — while Clover files that as
+ONE item with a flavour group inside it.** So the filenames describe a modifier
+and the menu describes an item, and matching by name finds neither.
+
+On the first pass that was 6 matches out of 19 files, and the thirteen misses
+were the correct answer rather than a failure: guessing which item
+`escovitch-fish.jpeg` belongs to is exactly the thing that puts a photo on the
+wrong price. `scripts/dish-photos.mjs` refuses an ambiguous filename and refuses
+outright if two dishes ever resolve to one file.
+
+The link is **declared** instead, in `ALIASES` in that script, one line per
+photo with its reason — and every one is checkable against the data rather than
+being a matter of taste: *the target item's own flavour group contains that
+flavour.* `escovitch-fish` → Snapper Fish, whose group is Brown Stew / Escovitch
+/ Steam.
+
+**That rule is also what resolves the four name collisions**, which is the part
+that costs money if it is got wrong. Both Shrimps, both Salmons, both Blue Crabs
+and both Crab Legs Platters exist at different prices. Only the **everyday**
+items carry a flavour group at all — the Friday SKUs have none, the same fact
+that hides three of them from the app — so a flavour-named photo has exactly one
+item it can belong to, and the Friday twin keeps its emoji. `POPULAR_IDS`
+corroborates it independently: the generator already annotates its own entries
+`Salmon — honey garlic` and `Shrimp — sweet chilli`.
+
+Two tests in `src/test/dishPhotos.test.js` make it a build failure rather than
+something noticed on a phone: at most one photo across dishes sharing a name,
+and a `-friday` photo only ever on a Seafood Fridays item.
+
+Two smaller decisions recorded in docs/DISH-PHOTOS.md: **nothing is upscaled**
+(`EDGE` is a ceiling, not a target — the tile renders at 82 CSS px so 246 is
+what a 3x screen needs, and every source clears it), and **the generic `Side`
+row keeps its emoji** because it is a picker over 21 sides from $1 to $15 and a
+photo of one of them misrepresents the other twenty.
+
 ## Audits worth reading before you trust a map
 
 Two documents record things measured against the live register rather than
