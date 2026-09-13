@@ -117,3 +117,59 @@ describe("dish photos survive a regeneration", () => {
     }
   });
 });
+
+/* ============================================================================
+   THE GENERATOR WRITES LAST
+
+   The under-quote guard prints "Nothing was written" and exits before the
+   write, which was verified by forcing it. That verification was incomplete:
+   150 lines of further checks ran AFTER writeFileSync, so any of them throwing
+   left menu.data.js on disk in a state nothing had finished validating — while
+   the run exited non-zero and the file looked fine.
+
+   It happened. The photo check read `ids` twenty lines above its `const`, a
+   temporal dead zone and a hard ReferenceError. It was harmless while
+   ITEM_PHOTOS was empty (the loop body never ran) and fired the moment twelve
+   photos were added — after the file had been written.
+
+   So: every check runs first, the write is last, and this is the test that
+   keeps it that way. "Nothing was written" has to be true when it is printed.
+   ============================================================================ */
+describe("the generator cannot write before it has finished checking", () => {
+  const src = readFileSync(resolve(ROOT, "scripts/generate-menu.mjs"), "utf8");
+
+  it("writes the file exactly once", () => {
+    expect(src.match(/writeFileSync\(OUT, js\)/g) ?? []).toHaveLength(1);
+  });
+
+  it("has nothing but logging after the write", () => {
+    /* Anything else here can throw, and a throw after the write is the whole
+       failure mode. Logging cannot fail in a way that matters. */
+    const after = src.slice(src.indexOf("writeFileSync(OUT, js)"))
+      .split("\n").slice(1)
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("//") && !l.startsWith("/*") && !l.startsWith("*"));
+
+    for (const line of after) {
+      expect(line, `"${line}" runs after the write and could leave an unchecked file`)
+        .toMatch(/^(console\.(log|warn|error)|for \(const cat of CATEGORY_ORDER\) console\.log)/);
+    }
+  });
+
+  it("declares `ids` before the checks that read it", () => {
+    /* The exact bug: `const` is block-scoped with a dead zone, so a read above
+       the declaration is a ReferenceError rather than an undefined. */
+    const decl = src.indexOf("const ids = new Set(");
+    expect(decl).toBeGreaterThan(-1);
+    const firstUse = src.indexOf("ids.has(");
+    expect(firstUse).toBeGreaterThan(decl);
+  });
+
+  it("still refuses to write when an override would quote under the register", () => {
+    // The original guarantee, re-pinned now that the ordering has changed.
+    const guard = src.indexOf("Nothing was written");
+    const write = src.indexOf("writeFileSync(OUT, js)");
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard, "the guard must still come before the write").toBeLessThan(write);
+  });
+});
