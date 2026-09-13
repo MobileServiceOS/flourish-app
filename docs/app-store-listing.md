@@ -115,7 +115,7 @@ the whole thing back in the cart.
 PICKUP ONLY
 
 4035 Laconia Ave, Bronx, NY 10466
-Open 11AM to 10PM, until 11PM on Friday and Saturday.
+Open 11AM to 10PM, every day.
 ```
 
 ---
@@ -214,9 +214,8 @@ No verification code is sent.
 Loyalty points are awarded only after the restaurant confirms payment at the
 register, so a test order will not show points until it is paid for in store.
 
-The app enforces the restaurant's opening hours (11AM-10PM, until 11PM Friday
-and Saturday, New York time) and will not accept an order it cannot cook before
-closing. If you are testing outside those hours the checkout will say so; that
+The app enforces the restaurant's opening hours (11AM-10PM every day, New York
+time) and will not accept an order it cannot cook before closing. If you are testing outside those hours the checkout will say so; that
 is intended behaviour, not a fault.
 
 Account deletion is in the app: Rewards tab, "Delete account", with a

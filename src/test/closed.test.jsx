@@ -119,18 +119,28 @@ describe("the proxy refuses food it cannot cook before closing", () => {
     expect(clover.createOrder).toHaveBeenCalled();
   });
 
-  it("gives seafood the extra hour on a Friday and takes it back on Monday", async () => {
-    // 2026-07-31 is a Friday: 11PM close, so 9:50PM is comfortable.
-    const { agent: fri } = proxy(new Date(2026, 6, 31, 21, 50));
-    expect((await order(fri)).status).toBe(200);
+  it("refuses a cooked-to-order plate late on a Friday, same as any night", async () => {
+    /* THE CASE THAT MATTERED. A 30-minute plate at 9:50PM cannot be ready
+       before a 10PM close. The Friday exception used to let it through, so the
+       register took an order the kitchen had already gone home from — and
+       Friday and Saturday are the two busiest nights.
 
-    // 2026-08-01 is a Saturday, also 11PM.
-    const { agent: sat } = proxy(new Date(2026, 7, 1, 22, 20));
-    expect((await order(sat)).status).toBe(200);
+       All three days, same answer. */
+    const fri = proxy(new Date(2026, 6, 31, 21, 50));   // Friday
+    expect((await order(fri.agent)).status).toBe(409);
+    expect(fri.clover.createOrder).not.toHaveBeenCalled();
 
-    // Sunday is back to 10PM.
-    const { agent: sun } = proxy(new Date(2026, 7, 2, 21, 50));
-    expect((await order(sun)).status).toBe(409);
+    const sat = proxy(new Date(2026, 7, 1, 21, 50));    // Saturday
+    expect((await order(sat.agent)).status).toBe(409);
+
+    const sun = proxy(new Date(2026, 7, 2, 21, 50));    // Sunday
+    expect((await order(sun.agent)).status).toBe(409);
+  });
+
+  it("still takes one on a Friday with time to cook it", async () => {
+    // 9:00PM plus 30 minutes is ready at 9:30, comfortably before ten.
+    const { agent } = proxy(new Date(2026, 6, 31, 21, 0));
+    expect((await order(agent)).status).toBe(200);
   });
 
   it("says how long the food needs and when the kitchen shuts", async () => {

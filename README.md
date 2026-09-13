@@ -478,7 +478,7 @@ Then check the boot log. **A correctly configured server prints no warnings:**
   Flourish · Clover proxy on http://localhost:8080
   API      https://api.clover.com
   Mode     PRODUCTION — real money
-  Hours    Open daily 11AM–10PM · 11PM Fri & Sat  (America/New_York)
+  Hours    Open daily 11AM–10PM  (America/New_York)
   App key  set
   Origins  https://flourishbx.com
   Config   complete — no warnings
