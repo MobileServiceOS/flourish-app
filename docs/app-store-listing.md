@@ -374,7 +374,12 @@ and true of build 7; when a release ships nothing a customer would notice, say
 so in a line rather than recycling this text.*
 
 ```
-Rewards that never get refused.
+Photos on the menu, and rewards that never get refused.
+
+Twelve dishes now show what they actually look like instead of an emoji —
+oxtail, jerk chicken, wings, salmon, fried chicken, shrimp, lamb, curried goat,
+snapper, pasta, ackee and shrimp, and the Friday pepper shrimp and mussels.
+Everything else still shows its emoji until we have photographed it.
 
 Every reward is a discount now, not a gift with a price limit. Pick one and its
 value comes straight off the item — if the plate costs more than the reward is
