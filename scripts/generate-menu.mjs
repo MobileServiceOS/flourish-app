@@ -1123,10 +1123,30 @@ export const hasChoices = (i) => i.groups.length > 0;
   }
 }
 
-writeFileSync(OUT, js);
 
-console.log(`Wrote ${out.length} items to src/data/menu.data.js`);
-for (const cat of CATEGORY_ORDER) console.log(`  ${cat}: ${byCat.get(cat).length}`);
+/* ============================================================================
+   EVERY REMAINING CHECK RUNS BEFORE THE WRITE
+
+   These are audits: they warn, and two of them exit. All of them used to run
+   AFTER writeFileSync, which made the guard above a half-measure — it refuses
+   to write when an override quotes under the register, and prints "Nothing was
+   written", but anything down here throwing left menu.data.js on disk in a
+   state no check had finished validating.
+
+   That is not hypothetical. The photo check below read `ids` twenty lines
+   above its `const`, which is a temporal dead zone and a hard ReferenceError.
+   It sat there harmlessly while ITEM_PHOTOS was empty — the loop body never
+   ran — and fired the moment twelve photos were added, AFTER the file had
+   already been written. The run died having produced output nobody had
+   checked, and exited non-zero while the file looked fine.
+
+   So the order is now: build the string, run every check, write last. A throw
+   anywhere in here means the previous menu.data.js is still on disk, which is
+   what "nothing was written" has to mean when it is printed. A test asserts
+   nothing but logging follows the write, so this cannot drift back.
+   ============================================================================ */
+
+const ids = new Set(out.map((i) => i.id));
 
 /* An Uber price that cannot support a claim. A flat number against a two-size
    dish was compared to the cheaper size and produced savings that were false at
@@ -1193,7 +1213,6 @@ for (const [id, cmp] of Object.entries(FRIDAY_COMPARISON)) {
 }
 
 // Warn about UE entries pointing at items that no longer exist
-const ids = new Set(out.map((i) => i.id));
 for (const id of Object.keys(UE)) {
   if (!ids.has(id)) console.warn(`  ! UE price set for ${id}, which is not on the menu anymore`);
 }
@@ -1281,3 +1300,9 @@ if (issues.length) {
   for (const i of issues) console.log(`  - ${i}`);
   console.log("\nSee CLOVER-FIXES.md.");
 }
+
+
+writeFileSync(OUT, js);
+
+console.log(`Wrote ${out.length} items to src/data/menu.data.js`);
+for (const cat of CATEGORY_ORDER) console.log(`  ${cat}: ${byCat.get(cat).length}`);
