@@ -1,7 +1,25 @@
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+/* Stamped into the bundle so "is this build stale?" is answerable from inside
+   the app, in a second, without a laptop.
+
+   That question cost a real debugging round: a device build cut seven hours
+   before a merge behaved exactly as its own code said, and the report read as a
+   broken feature. Merging is not shipping, and a bundle carries no date unless
+   one is put there. */
+const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+const BUILD_STAMP = {
+  version: pkg.version,
+  build: String(pkg.flourish?.ios?.buildNumber ?? ""),
+  at: new Date().toISOString(),
+};
+
 export default defineConfig({
+  define: {
+    __BUILD__: JSON.stringify(BUILD_STAMP),
+  },
   plugins: [react()],
   // Capacitor loads from the filesystem, so assets must be referenced relatively.
   base: "./",

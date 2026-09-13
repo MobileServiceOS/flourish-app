@@ -155,3 +155,34 @@ promise chain, and a rejection handled wrongly there would stall every
 subsequent transaction in the process, which matches the symptom exactly.
 
 Reproduce before fixing. A one-in-many flake needs a loop of full runs, not one.
+
+
+---
+
+## 5. Merging is not shipping — and it cost a debugging round
+
+**Status: addressed, recorded because the failure mode is invisible by design.**
+
+Capped-discount rewards were reported broken on a phone: a $25 plate showed
+"Add a plate under $22 to use" and Apply did nothing. The code on main was
+correct. The bundle was built at **13:55**; the change merged at **21:17**.
+
+The app was behaving exactly as its own seven-hour-old code said, and the person
+reporting it had explicitly ruled staleness out — because they *had* just
+updated the phone, from a bundle cut before the merge. Nothing on any screen
+said when the bundle was made, so there was no way to tell from the device.
+
+Three diagnoses were offered and all three were wrong; the answer came from
+`grep`ping the shipped `.js` for the old string and comparing file mtimes
+against merge timestamps.
+
+**What was done:** the build stamp on the Rewards footer, and the reward ladder
+moved server-side so a stale client cannot display a price the server will not
+honour.
+
+**What is still true:** every other bundled constant can still drift the same
+way — the menu data, the tax rate, the hours. Those are lower-stakes (a stale
+menu shows a stale price the register corrects at the till, and the order
+response already carries the server's totals), but the general lesson holds:
+**anything a customer reads that the server also enforces should come from the
+server.** When something looks broken on a device, check the build date first.

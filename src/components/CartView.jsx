@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ShoppingBag, Plus, Minus, Sparkles, Ticket, Clock } from "lucide-react";
 import { money } from "../lib/money.js";
 import { cleanLineNote, LINE_NOTE_MAX } from "../lib/cloverOrder.js";
-import { rewardOf, discountFor, currencyAmount, ONE_REWARD_PER_ORDER } from "../lib/loyalty.js";
+import { REWARDS, rewardOf, discountFor, currencyAmount, ONE_REWARD_PER_ORDER } from "../lib/loyalty.js";
 import { isOpen, nextOpening, describeOpening, HOURS_LINE } from "../lib/hours.js";
 import { cartPrepMinutes, isCookedToOrder, COOKED_TO_ORDER_MINUTES } from "../lib/prep.js";
 import { SubHeader, Empty } from "./shared.jsx";
@@ -10,6 +10,7 @@ import { SubHeader, Empty } from "./shared.jsx";
 /* ---------- CART ---------- */
 export default function CartView({ cart, subtotal, saved, account, setQty, removeLine, setView,
   vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher, quote = null,
+  rewards = REWARDS,
   setNote }) {
   /* Say it here rather than letting someone build an order, walk to checkout
      and only then find out. Re-checked on a minute tick so a cart left open
@@ -136,8 +137,8 @@ export default function CartView({ cart, subtotal, saved, account, setQty, remov
                 {ONE_REWARD_PER_ORDER}
               </p>
               {vouchers.map((v) => {
-                const r = rewardOf(v);
-                const worth = discountFor(v, cart);
+                const r = rewardOf(v, rewards);
+                const worth = discountFor(v, cart, rewards);
                 const on = applied === v.code;
                 return (
                   <div key={v.code} className="card" style={{ padding: 13, marginBottom: 9, display: "flex", gap: 11,

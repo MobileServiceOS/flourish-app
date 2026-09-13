@@ -34,7 +34,8 @@ import {
 import { cartPrepMinutes, readyWindow } from "../src/lib/prep.js";
 import { unavailableInCart, unavailableMessage, dayOfWeek } from "../src/lib/availability.js";
 import { isValidName, isValidPhone, phoneDigits } from "../src/lib/phone.js";
-import { REWARDS, discountFor } from "../src/lib/loyalty.js";
+import { REWARDS, TIERS, discountFor, serialisableRewards } from "../src/lib/loyalty.js";
+import { CURRENCY_ONE, CURRENCY_MANY } from "../src/lib/currency.js";
 import { MENU, PLATE_IDS, DRINK_ID, SIDE_ID } from "../src/data/menu.data.js";
 
 /* What is actually running. Added because the app is live and the question
@@ -853,6 +854,23 @@ export function createApp({
       const { name, phone, deviceBalance } = req.body ?? {};
       res.json(await petals.claim({ name, phone, deviceBalance }));
     } catch (e) { petalsFail(res, e); }
+  });
+
+  /* THE LADDER THE CLIENT RENDERS FROM.
+
+     A shipped build once showed "up to $22 off a plate" while this server
+     computed $20 — the customer reads one number and is charged by another. The
+     client now asks for the ladder on launch and displays what comes back, so
+     the cap shown and the cap enforced are the same number from the same place.
+
+     Only data crosses the wire; the predicate that decides which cart lines a
+     reward covers stays in the client, keyed by id. */
+  app.get("/api/clover/rewards", (_req, res) => {
+    res.json({
+      rewards: serialisableRewards(REWARDS),
+      tiers: TIERS.map(({ name, min, perk }) => ({ name, min, perk })),
+      currency: { one: CURRENCY_ONE, many: CURRENCY_MANY },
+    });
   });
 
   /* ---- granting and correcting a balance ----

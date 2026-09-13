@@ -8,10 +8,14 @@ import {
 import { formatPhone } from "../lib/phone.js";
 import { shareFlourish } from "../lib/share.js";
 import { SubHeader } from "./shared.jsx";
+import { buildLabel, buildDetail } from "../lib/build.js";
 
 /* ---------- REWARDS / ACCOUNT ---------- */
 export default function RewardsView({
   account, points, petalsAvailable = true, vouchers, orders, redeem, signOut, onReorder, onDeleteAccount,
+  /* The ladder comes from the server so the cap shown is the cap enforced.
+     `ladderFromServer` false means we are rendering the bundled copy. */
+  rewards = REWARDS, ladderFromServer = false,
 }) {
   const [shared, setShared] = useState(null);   // null | "shared" | "copied"
   /* Two taps, never one. Deleting an account is irreversible and the second tap
@@ -145,11 +149,13 @@ export default function RewardsView({
         <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, margin: "0 4px 12px" }}>
           {ONE_REWARD_PER_ORDER}
         </p>
-        {REWARDS.map((r) => {
+        {rewards.map((r) => {
           /* Unreachable balance means no redeeming. Never against a remembered
              number: the server is the only thing that knows, and it is the one
              that has to hold the Petals when the order is placed. */
-          const can = known && shown >= r.cost;
+          /* An id this build has no matcher for: shown, never applied. An old
+             client meeting a new reward should say so rather than guess. */
+          const can = known && shown >= r.cost && !r.unsupported;
           return (
             <div key={r.id} className="card" style={{ padding: 14, marginBottom: 10, display: "flex", gap: 12,
               alignItems: "center", opacity: can ? 1 : .55 }}>
@@ -166,7 +172,11 @@ export default function RewardsView({
                 <div style={{ color: "var(--muted)", fontSize: 12.5 }}>
                   {capLabel(r)}
                 </div>
-                {!can && (
+                {r.unsupported ? (
+                  <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 2 }}>
+                    Update the app to use this reward
+                  </div>
+                ) : !can && (
                   <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 2 }}>
                     {currencyAmount(Math.max(0, r.cost - shown))} to go
                   </div>
@@ -273,6 +283,16 @@ export default function RewardsView({
         <div style={{ color: "var(--muted)", fontSize: 11.5, textAlign: "center", padding: "16px 20px 0", lineHeight: 1.5 }}>
           {CURRENCY_RATE_LINE}. {CURRENCY_MANY} never expire.
           <br />{SEPARATE_FROM_PERKS}
+        </div>
+
+        {/* Which build this is. Glanceable, and the DATE is the part that
+            matters — a version number says what was intended, a date says
+            whether this bundle predates the change someone is looking for.
+            `title` carries the full stamp for a bug report. */}
+        <div style={{ color: "var(--muted)", fontSize: 10.5, textAlign: "center", paddingTop: 10, opacity: .8 }}
+          title={buildDetail()}>
+          Flourish BX {buildLabel()}
+          {!ladderFromServer && " · offline prices"}
         </div>
       </div>
     </>

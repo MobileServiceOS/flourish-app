@@ -4,6 +4,7 @@ import {
 } from "../lib/hours.js";
 import { cartPrepMinutes, readyWindow } from "../lib/prep.js";
 import { MENU, hasChoices } from "../data/menu.data.js";
+import { serialisableRewards } from "../lib/loyalty.js";
 
 /* Beef Patty used to be the convenient one-tap item in these tests. The
    printed-menu cull removed both patties, and everything left that sells on an
@@ -83,6 +84,8 @@ export function stubOnlineProxy({
      how a test makes one order attempt fail — a dropped request, which is the
      case the idempotency key exists for. */
   onOrder = null,
+  /* Override to hand the client a ladder that differs from the bundled one. */
+  serverRewards = null,
   /* The Petals balance the SERVER reports. `null` stands for a proxy with no
      database — the endpoints 503 and the app must show the balance as
      unavailable while still taking orders. */
@@ -90,7 +93,7 @@ export function stubOnlineProxy({
   payment = unpaidOrder(),
   loyalty = { configured: false, reason: "NO_PROGRAM", program: null, tiers: [], source: "in-app" },
 } = {}) {
-  const calls = { orders: [], quotes: [], status: [], petals: [] };
+  const calls = { orders: [], quotes: [], status: [], petals: [], rewards: [] };
   /* The server's balance, mutable so a test can do what the real server does:
      move the number when a payment lands, and let the client find out by
      asking again rather than by doing its own arithmetic. */
@@ -165,6 +168,13 @@ export function stubOnlineProxy({
     },
     "POST /customers": () => ({ customerId: "CUST-TEST", existing: false }),
     "GET /loyalty": () => loyalty,
+    /* The reward ladder the client renders from. Defaults to the bundled one,
+       so tests see the real thing — and a test can hand back a DIFFERENT ladder
+       to prove the client follows the server rather than its own copy. */
+    "GET /rewards": () => {
+      calls.rewards.push(true);
+      return { rewards: serverRewards ?? serialisableRewards(), tiers: [], currency: {} };
+    },
   };
 
   /* Paths with an id in them cannot be looked up by exact string. */
