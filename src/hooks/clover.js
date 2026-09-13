@@ -257,35 +257,73 @@ export function useOrderPayment(cloverOrderId, {
  * not ask for; the tracking screen's own poll and the next launch both get
  * another go.
  */
-export function useReconcileOnLaunch(orders, { enabled = true, onPaid } = {}) {
+/** Don't re-sweep more often than this, however many focus events arrive. */
+export const RESWEEP_MIN_MS = 20_000;
+
+export function useReconcileOnLaunch(orders, { enabled = true, onPaid, onVoided } = {}) {
   const latest = useRef(orders);
-  const ran = useRef(false);
+  const lastRun = useRef(0);
   latest.current = orders;
 
-  useEffect(() => {
-    if (!enabled || ran.current) return;
-    const due = ordersToReconcile(latest.current ?? []);
-    ran.current = true;
-    if (!due.length) return;
+  /* Read the callbacks through refs so a parent that re-creates them on every
+     render does not restart the effect and re-register the listeners. */
+  const paid = useRef(onPaid); paid.current = onPaid;
+  const voided = useRef(onVoided); voided.current = onVoided;
 
+  useEffect(() => {
+    if (!enabled) return;
     let alive = true;
-    const ctrl = new AbortController();
-    (async () => {
+    let ctrl = null;
+
+    const sweep = async () => {
+      /* A focus event is cheap to produce — switching apps, unlocking, tapping
+         a tab — so the sweep is rate-limited rather than fired on each one. */
+      if (Date.now() - lastRun.current < RESWEEP_MIN_MS) return;
+      const due = ordersToReconcile(latest.current ?? []);
+      lastRun.current = Date.now();
+      if (!due.length) return;
+
+      ctrl = new AbortController();
       for (const order of due) {
         if (!alive) return;
         try {
           const s = await getOrderStatus(order.cloverOrderId, ctrl.signal);
-          /* Paid only. A voided order is settled too, and awarding on
-             `settled` would credit food that was cancelled at the register. */
-          if (alive && s?.paid && !s?.voided) onPaid?.(order);
+          if (!alive) return;
+          /* Paid only for the credit. A voided order is `settled` too, and
+             awarding on that would credit food cancelled at the register — but
+             it still has to be RECORDED, or the orders list says "Preparing"
+             about a cancelled order for the life of the install. */
+          if (s?.voided) voided.current?.(order);
+          else if (s?.paid) paid.current?.(order);
         } catch {
-          /* offline, proxy down, or a 500 — try again next launch */
+          /* offline, proxy down, or a 500 — the next focus tries again */
         }
       }
-    })();
+    };
 
-    return () => { alive = false; ctrl.abort(); };
-  }, [enabled, onPaid]);
+    sweep();
+
+    /* ON FOCUS, not on a timer.
+
+       Launch alone missed the moment that matters most: the customer is at the
+       counter, has just paid, and opens the app expecting to see it. Four
+       minutes after a real payment the balance still read zero and the order
+       still read "Preparing", because nothing had asked since launch.
+
+       `visibilitychange` covers the web view coming back to the foreground,
+       which is what a Capacitor app resuming produces; `focus` covers a
+       browser tab. Both are free until something actually changes. */
+    const onWake = () => { if (document.visibilityState !== "hidden") sweep(); };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+
+    return () => {
+      alive = false;
+      ctrl?.abort();
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+    };
+  }, [enabled]);
 }
 
 /**
@@ -340,7 +378,25 @@ export function usePetalsBalance({ name, phone, deviceBalance = 0, enabled = tru
     }
     const ctrl = new AbortController();
     ask(ctrl.signal);
-    return () => ctrl.abort();
+
+    /* ON FOCUS TOO, not only on mount.
+
+       Launch-and-after-an-order missed the moment that matters most: the
+       customer is standing at the counter having just paid, and opens the app
+       to see their Petals. A real order credited 6 Petals server-side at 7:56
+       and the app still read "0 Petals available" at 8:00, because nothing had
+       asked since launch. The server was right and the client never went back.
+
+       Cheap enough to do on every wake: one small POST, and the answer is the
+       thing the screen exists to show. */
+    const onWake = () => { if (document.visibilityState !== "hidden") ask(); };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    return () => {
+      ctrl.abort();
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+    };
   }, [enabled, name, phone, ask]);
 
   /* Called after an order and after a payment is confirmed. The server moved

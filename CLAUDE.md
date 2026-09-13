@@ -830,6 +830,33 @@ They are awarded on one thing only now: Clover confirming the payment.
 - on `paid`, `App.awardPoints` credits the order's `earnable` and the screen
   says **"Points earned!"**
 
+**The client asks again when the customer looks.** Fetching on launch and after
+an order missed the one moment that matters: order FL-5350 was paid by card at
+7:56 and the server credited 6 Petals, and at 8:00 the app still read
+**"0 Petals available"** with the order showing **"Preparing"**. The server was
+right throughout; nothing had asked since launch.
+
+So `usePetalsBalance` re-reads on `visibilitychange`/`focus` — a Capacitor web
+view coming back to the foreground — and App re-reads when the Rewards screen is
+opened, which is the other half of the same moment. Nothing polls: a balance is
+only interesting when someone is looking at it, and both triggers are free until
+they fire. Hidden is checked explicitly, so a background tab asks nothing.
+
+**The orders list was worse than stale.** `status` was written once at creation
+as `"preparing"` and updated by *nothing*, so every order ever placed read
+"Preparing" for the life of the install — including ones collected weeks
+earlier. `awardPoints` writes `status: "paid"` now and `markVoided` writes
+`"cancelled"`, and `orderBadge` in OrdersView derives the label from `status`,
+`paidBy` and `pointsAwarded` together so an order recorded by an older build
+still displays. It says **"Paid"**, never "Completed": the register took the
+money, which is not the same as the customer having collected the food.
+
+The launch sweep is the mechanism for both — it already asked
+`/orders/:id/status` for recent unpaid orders, so it now runs on focus as well,
+rate-limited by `RESWEEP_MIN_MS` (20s) because a focus event is cheap to
+produce. It records voided orders too; without that a cancelled order reads as
+in the kitchen forever, for exactly the same reason.
+
 **And if the app is closed before they pay, the launch sweep catches it.** That
 used to be the end of the story — "no points awarded, they had not been earned"
 — and it was wrong about the ordinary case. The customer orders, locks the
@@ -966,7 +993,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 836 tests (+9 more with a test database)
+npm test            # 847 tests (+9 more with a test database)
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
