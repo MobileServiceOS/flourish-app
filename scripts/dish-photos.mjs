@@ -29,8 +29,16 @@ const OUT_DIR = resolve(ROOT, "public/items");
 
 /* The spec, from docs/DISH-PHOTOS.md. Square because the card is square; 600
    because it renders at 82px and needs to survive a 3x screen; 80KB because a
-   614KB image once broke the launch screen and there is a test pinning that. */
+   614KB image once broke the launch screen and there is a test pinning that.
+
+   EDGE IS A CEILING, NOT A TARGET. A source whose short side is under 600 is
+   cropped at whatever it has and left there — never scaled up. The card renders
+   at 82 CSS px, so a 3x screen asks for 246: every Uber download in hand (short
+   side 440-552) clears that by nearly double, and upscaling would only invent
+   pixels, enlarge the file and soften the result. MIN_EDGE is the floor where
+   the source really is too small to use. */
 const EDGE = 600;
+const MIN_EDGE = 246;            // 82 CSS px at 3x — below this a tile is soft
 const MAX_BYTES = 80 * 1024;
 
 const { MENU } = await import(resolve(ROOT, "src/data/menu.data.js"));
@@ -51,6 +59,41 @@ const slug = (item) => {
   const base = String(item.name).toLowerCase().replace(/\(.*?\)/g, "").trim()
     .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return item.cat === "Seafood Fridays" ? `${base}-friday` : base;
+};
+
+/* MOST OF THESE PHOTOS ARE NAMED AFTER A FLAVOUR, NOT A DISH.
+
+   The merchant's Uber listing photographs the dish people order — "sweet chili
+   shrimp", "escovitch fish" — while Clover files them as one item with a
+   flavour group inside it. Name matching therefore finds nothing, correctly:
+   guessing which item "escovitch-fish.jpeg" belongs to is exactly what the
+   ambiguity check exists to prevent.
+
+   So the link is DECLARED here instead, one line per photo, and every one of
+   them is checkable against the data rather than a matter of taste: the target
+   item's own flavour group contains that flavour. `npm test` re-checks that.
+
+   THIS IS ALSO HOW THE FOUR NAME COLLISIONS ARE RESOLVED, and it is the whole
+   reason the map is worth having. Both Shrimps and both Salmons exist — one
+   everyday, one on Seafood Fridays at a different price. Only the EVERYDAY item
+   carries a flavour group at all (the Friday SKUs have none, which is the same
+   fact that hides three of them from the app), so a flavour-named photo has
+   exactly one item it can belong to and the Friday twin keeps its emoji. Put a
+   Friday picture on an everyday price and the app quotes $22 under a photo of a
+   $21.99 platter.
+
+   Corroborated independently: POPULAR_IDS in the generator annotates its own
+   entries "Salmon — honey garlic" and "Shrimp — sweet chilli", which is the
+   shop saying which flavour represents each dish. Those are the two chosen. */
+const ALIASES = {
+  "chicken-wings":       "wings",          // Wings' flavour group: Chili, Honey BBQ, Jerk…
+  "honey-garlic-salmon": "salmon",         // Salmon's group has Honey Garlic; Friday salmon has no group
+  "sweet-chili-shrimp":  "shrimp",         // Shrimp's group has Sweet Chili; Friday shrimp has no group
+  "escovitch-fish":      "snapper-fish",   // Snapper Fish's group: Brown Stew, Escovitch, Steam
+  "chicken-pasta":       "pasta",          // Pasta's group: Plain, Chicken, Shrimp, Oxtail…
+  "curry-goat":          "curried-goat",   // the register spells it "Curried Goat"
+  /* mac-cheese.jpeg is deliberately NOT aliased to the Side item: that row is a
+     picker over 21 sides from $1 to $15, and a photo of one misrepresents 20. */
 };
 
 /** What filenames an item answers to. The slug, and the full name as typed. */
@@ -78,20 +121,31 @@ function convert(src, outPath) {
     const h = Number(/pixelHeight: (\d+)/.exec(dims)?.[1]);
     if (!w || !h) throw new Error("could not read dimensions");
 
-    /* Scale so the SHORT side is EDGE, then centre-crop. Scaling the long side
+    const short = Math.min(w, h);
+    if (short < MIN_EDGE) throw new Error(`only ${w}x${h} — short side under ${MIN_EDGE}px`);
+
+    /* The edge we will actually produce: the source's short side, or 600 if it
+       has more than that to give. Never more than it has. */
+    const edge = Math.min(EDGE, short);
+    const upscaled = false;
+
+    /* Scale so the SHORT side is `edge`, then centre-crop. Scaling the long side
        instead would letterbox a wide photo into a square with bars, which looks
-       like a broken asset rather than a crop. */
-    const scale = EDGE / Math.min(w, h);
-    const nw = Math.max(EDGE, Math.round(w * scale));
-    const nh = Math.max(EDGE, Math.round(h * scale));
+       like a broken asset rather than a crop. When edge === short this is a
+       no-op resize and the crop does all the work, which is the point: an
+       already-square 600px WebP passes through unchanged rather than being
+       resampled a second time. */
+    const scale = edge / short;
+    const nw = Math.max(edge, Math.round(w * scale));
+    const nh = Math.max(edge, Math.round(h * scale));
     execFileSync("sips", ["-z", String(nh), String(nw), src, "--out", tmp], { stdio: "ignore" });
-    execFileSync("sips", ["-c", String(EDGE), String(EDGE), tmp], { stdio: "ignore" });
+    execFileSync("sips", ["-c", String(edge), String(edge), tmp], { stdio: "ignore" });
 
     for (const q of [82, 74, 66, 58, 50, 42]) {
       execFileSync("cwebp", ["-quiet", "-q", String(q), tmp, "-o", outPath]);
-      if (statSync(outPath).size <= MAX_BYTES) return { q, bytes: statSync(outPath).size };
+      if (statSync(outPath).size <= MAX_BYTES) return { q, bytes: statSync(outPath).size, edge, src: `${w}x${h}`, upscaled };
     }
-    return { q: 42, bytes: statSync(outPath).size, over: true };
+    return { q: 42, bytes: statSync(outPath).size, edge, src: `${w}x${h}`, upscaled, over: true };
   } finally {
     if (existsSync(tmp)) rmSync(tmp);
   }
@@ -133,14 +187,42 @@ function run() {
     }
   }
 
+  /* An alias must name exactly one dish. A typo pointing at nothing, or at a
+     slug two dishes share, is a mapping error and is refused up front rather
+     than quietly putting a photo nowhere. */
+  const bySlug = new Map(items.map((i) => [slug(i), i]));
+  for (const [file, target] of Object.entries(ALIASES)) {
+    if (!bySlug.has(target)) {
+      console.error(`\n  ALIASES: "${file}" points at "${target}", which is no dish's slug.\n`);
+      process.exit(1);
+    }
+  }
+
   const matched = [];
   const unmatched = [];
+  const aliased = new Set();
   for (const f of files) {
-    const key = norm(basename(f, extname(f)));
+    const stem = basename(f, extname(f));
+    const viaAlias = ALIASES[stem] ? bySlug.get(ALIASES[stem]) : null;
+    if (viaAlias) { matched.push({ file: f, item: viaAlias }); aliased.add(f); continue; }
+
+    const key = norm(stem);
     const hit = byKey.get(key)
       ?? [...byKey.entries()].find(([k, v]) => v !== "AMBIGUOUS" && (k.startsWith(key) || key.startsWith(k)))?.[1];
     if (!hit || hit === "AMBIGUOUS") { unmatched.push(f); continue; }
     matched.push({ file: f, item: hit });
+  }
+
+  /* Two photos claiming one dish would convert twice to the same path, and the
+     second would silently win. Say which, and stop. */
+  const claims = new Map();
+  for (const { file, item } of matched) {
+    if (claims.has(item.id)) {
+      console.error(`\n  "${claims.get(item.id)}" and "${file}" both claim ${item.name}.`);
+      console.error("  One photo per dish — drop one, or alias it elsewhere.\n");
+      process.exit(1);
+    }
+    claims.set(item.id, file);
   }
 
   console.log(`\n  ${matched.length} of ${files.length} file(s) matched a dish.\n`);
@@ -151,7 +233,9 @@ function run() {
       const r = convert(resolve(IN_DIR, file), out);
       results.push({ item, path: `/items/${slug(item)}.webp` });
       console.log(
-        `    ${item.name.padEnd(36)} ${String(Math.round(r.bytes / 1024)).padStart(3)}KB q${r.q}` +
+        `    ${(aliased.has(file) ? "~ " : "  ") + item.name.padEnd(32)} ${String(r.src).padStart(9)} -> ${r.edge}²  ` +
+        `${String(Math.round(r.bytes / 1024)).padStart(3)}KB q${r.q}` +
+        (r.edge < EDGE ? `  (under the ${EDGE} spec, not upscaled)` : "") +
         (r.over ? "   !! still over 80KB — needs a smaller source" : "")
       );
     } catch (e) {

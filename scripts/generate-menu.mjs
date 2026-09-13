@@ -277,8 +277,37 @@ const FRIDAY_COMPARISON = {
    A missing entry is a supported state, not a bug: the card shows the emoji
    tile. What is NOT supported is an item losing a photo it had — a test fails
    on that, and the generator warns about a path that points nowhere. */
+/* Keyed by CLOVER ITEM ID so a regeneration cannot drop it — the same reason
+   PREP_MINUTES lives here. Built by scripts/dish-photos.mjs, which converts the
+   sources and prints this block; do not hand-add a path without a file behind
+   it, because a dead path renders a broken image where an emoji was fine.
+   A test asserts every id here still comes out with an `img` and every path
+   still exists on disk.
+
+   The generic "Side" row is deliberately absent too. It is a picker over 21
+   different things, $1 Festival to $15 Pepper Shrimp, so a photo of any one of
+   them claims the row IS that side — the same class of error as a savings pill
+   with nothing to anchor it. The emoji is honestly generic; a photograph is
+   not, and a test asserts that row still renders its emoji.
+
+   The Friday twins are deliberately absent. Both Shrimps, both Salmons, both
+   Blue Crabs and both Crab Legs Platters share a name at different prices, and
+   the photos in hand are of the everyday dishes — identified by flavour, which
+   only the everyday items have. A Friday id here would put a $21.99 platter's
+   picture over a $22.00 plate. See the ALIASES note in dish-photos.mjs. */
 const ITEM_PHOTOS = {
-  // No photos supplied yet. See docs/DISH-PHOTOS.md for what is needed.
+  "60KCQ1V22Q98M": "/items/oxtail.webp",                    // Oxtail            popular
+  "SJGN0N254K8KE": "/items/jerk-chicken.webp",              // Jerk Chicken      popular
+  "C2RD25C1VXNN0": "/items/wings.webp",                     // Wings             popular
+  "H9520PFNBT2NY": "/items/salmon.webp",                    // Salmon            popular — honey garlic
+  "QFNQ2XQB8SPN6": "/items/fried-chicken.webp",             // Fried chicken     popular
+  "VHHCS7EDV70HC": "/items/shrimp.webp",                    // Shrimp            popular — sweet chilli
+  "7916EWVQFPGH8": "/items/lamb.webp",                      // Lamb
+  "NEAR47KAE44HC": "/items/curried-goat.webp",              // Curried Goat
+  "VQZ0T4XK707EC": "/items/snapper-fish.webp",              // Snapper Fish      escovitch
+  "JAD3BJK9BSTW8": "/items/pasta.webp",                     // Pasta             chicken
+  "AYBW9QMTC6154": "/items/ackee-shrimp.webp",              // Ackee & Shrimp
+  "PH221AJ7W66EA": "/items/pepper-shrimp-mussels-friday.webp", // Pepper Shrimp & Mussels
 };
 
 const EMOJI = {
