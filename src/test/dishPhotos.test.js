@@ -10,10 +10,16 @@ import { MENU } from "../data/menu.data.js";
    regeneration cannot drop it — the same reason PREP_MINUTES lives there. This
    is the check that makes that guarantee real rather than intended.
 
-   Note what it does NOT assert: that any item HAS a photo. None do yet, and an
+   Note what it does NOT assert: that any item HAS a photo. Most do not, and an
    emoji tile is a supported state rather than a missing asset. What it catches
    is the regression: an id present in ITEM_PHOTOS whose item comes out of a
    regeneration with no `img`, or an `img` pointing at a file that is not there.
+
+   And the one that costs money: FOUR DISHES SHARE A NAME WITH A FRIDAY TWIN at
+   a different price — both Shrimps, both Salmons, both Blue Crabs, both Crab
+   Legs Platters. A photo on the wrong one advertises a $21.99 platter over a
+   $22.00 plate, or the reverse. The last two tests here make that a failure
+   rather than something somebody notices on a phone.
    ============================================================================ */
 
 const ROOT = resolve(process.cwd());
@@ -61,6 +67,40 @@ describe("dish photos survive a regeneration", () => {
     for (const i of items) {
       expect(typeof i.emoji, i.name).toBe("string");
       expect(i.emoji.length, i.name).toBeGreaterThan(0);
+    }
+  });
+
+  it("gives a photo to at most one of two dishes sharing a name", () => {
+    /* The collision that matters. `Shrimp` exists twice — everyday $20 and
+       Friday $21.99 — and the photos in hand are of the everyday dishes,
+       identified by a flavour only the everyday items have. Two items with one
+       name and one photo between them is correct; two photos would mean
+       somebody guessed. */
+    const base = (n) => n.replace(/\(.*?\)/g, "").trim().toLowerCase();
+    const byBase = new Map();
+    for (const i of items) {
+      if (!byBase.has(base(i.name))) byBase.set(base(i.name), []);
+      byBase.get(base(i.name)).push(i);
+    }
+    for (const [name, group] of byBase) {
+      if (group.length < 2) continue;
+      const withPhoto = group.filter((i) => i.img);
+      expect(withPhoto.length, `${group.length} dishes named "${name}" and ${withPhoto.length} photos`)
+        .toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("never puts a Friday photo on an everyday price, or the reverse", () => {
+    /* The slug carries `-friday` for a Seafood Fridays dish precisely so the
+       two can never resolve to one filename. That naming is only a guarantee
+       while the category and the filename agree, which is what this checks. */
+    for (const c of MENU) {
+      for (const i of c.items) {
+        if (!i.img) continue;
+        const isFridayFile = /-friday\.webp$/.test(i.img);
+        expect(isFridayFile, `${i.name} is in ${c.cat} but its photo is ${i.img}`)
+          .toBe(c.cat === "Seafood Fridays");
+      }
     }
   });
 
