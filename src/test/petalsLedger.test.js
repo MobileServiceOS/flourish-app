@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createMemoryStore } from "../../server/petals/store.memory.js";
 import {
   createPetals, normalisePhone, normaliseName, PetalsError, RESERVATION_TTL_MS,
+  SIGNUP_BONUS,
 } from "../../server/petals/ledger.js";
 
 /* ============================================================================
@@ -62,8 +63,12 @@ describe("a phone number is one customer, however it was typed", () => {
 });
 
 describe("claiming a balance", () => {
-  it("creates the customer and starts at zero", async () => {
-    expect(await petals.claim({ name: NAME, phone: PHONE })).toEqual({ petals: 0, known: true });
+  it("creates the customer and starts on the signup bonus", async () => {
+    /* This used to assert zero, and it was right until joining started paying
+       50 Petals. Written against the constant rather than the number, so the
+       relationship survives someone changing the bonus. */
+    const r = await petals.claim({ name: NAME, phone: PHONE });
+    expect(r).toMatchObject({ petals: SIGNUP_BONUS, known: true, signupBonus: SIGNUP_BONUS });
   });
 
   it("needs the name to match, not just the number", async () => {
@@ -88,12 +93,13 @@ describe("migrating a balance off a device", () => {
   it("carries it across once, and only once, however many times it is tried", async () => {
     /* The app may retry this — a lost response looks identical to a failure.
        The unique key is what makes a retry safe rather than doubling. */
+    const withBonus = 90 + SIGNUP_BONUS;
     expect(await petals.claim({ name: NAME, phone: PHONE, deviceBalance: 90 }))
-      .toMatchObject({ petals: 90 });
+      .toMatchObject({ petals: withBonus });
     expect(await petals.claim({ name: NAME, phone: PHONE, deviceBalance: 90 }))
-      .toMatchObject({ petals: 90 });
+      .toMatchObject({ petals: withBonus });
     expect(await petals.claim({ name: NAME, phone: PHONE, deviceBalance: 500 }))
-      .toMatchObject({ petals: 90 });
+      .toMatchObject({ petals: withBonus });
   });
 
   it("records it as an adjustment, so it is auditable afterwards", async () => {
@@ -108,7 +114,7 @@ describe("migrating a balance off a device", () => {
       const s = createMemoryStore();
       const p = createPetals({ store: s, now: () => clock });
       expect(await p.claim({ name: NAME, phone: PHONE, deviceBalance: junk }))
-        .toMatchObject({ petals: 0 });
+        .toMatchObject({ petals: SIGNUP_BONUS });
     }
   });
 });

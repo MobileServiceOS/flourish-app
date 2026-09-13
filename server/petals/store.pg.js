@@ -78,6 +78,10 @@ export async function createPgStore({ connectionString, ssl, schema } = {}) {
 
   const rowToCustomer = (r) => r && ({
     id: Number(r.id), phone: r.phone, name: r.name, createdAt: r.created_at,
+    birthMonth: r.birth_month === null || r.birth_month === undefined ? null : Number(r.birth_month),
+    birthDay: r.birth_day === null || r.birth_day === undefined ? null : Number(r.birth_day),
+    referredBy: r.referred_by === null || r.referred_by === undefined ? null : Number(r.referred_by),
+    referralCode: r.referral_code ?? null,
   });
   const rowToOrder = (r) => r && ({
     id: Number(r.id), customerId: Number(r.customer_id), orderId: r.order_id,
@@ -170,6 +174,63 @@ export async function createPgStore({ connectionString, ssl, schema } = {}) {
         [id, state, need(at, "setOrderState")]
       );
       return rowCount > 0;
+    },
+
+    /* ---- earning that is not an app order ---- */
+
+    /* Column-per-field rather than a JSON patch: these are the only four
+       mutable fields on a customer, and naming them here means a typo in a
+       caller cannot silently write a column that does not exist. */
+    async updateCustomer(id, patch) {
+      const cols = {
+        name: "name", birthMonth: "birth_month", birthDay: "birth_day",
+        referredBy: "referred_by", referralCode: "referral_code",
+      };
+      const sets = [], vals = [];
+      for (const [k, col] of Object.entries(cols)) {
+        if (k in patch) { vals.push(patch[k]); sets.push(`${col} = $${vals.length + 1}`); }
+      }
+      if (!sets.length) return null;
+      const { rows } = await q(
+        `UPDATE petals_customer SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, [id, ...vals]);
+      return rowToCustomer(rows[0]) ?? null;
+    },
+
+    async findCustomerById(id) {
+      const { rows } = await q("SELECT * FROM petals_customer WHERE id = $1", [id]);
+      return rowToCustomer(rows[0]) ?? null;
+    },
+
+    async findCustomerByReferralCode(code) {
+      const { rows } = await q(
+        "SELECT * FROM petals_customer WHERE referral_code = $1", [code]);
+      return rowToCustomer(rows[0]) ?? null;
+    },
+
+    async countLedgerSince(customerId, reasonPrefix, since) {
+      const { rows } = await q(
+        `SELECT COUNT(*) AS n FROM petals_ledger
+          WHERE customer_id = $1 AND reason LIKE $2 || '%' AND created_at >= $3`,
+        [customerId, reasonPrefix, since]);
+      return Number(rows[0]?.n ?? 0);
+    },
+
+    async findLedgerByIdemKey(idemKey) {
+      const { rows } = await q("SELECT * FROM petals_ledger WHERE idem_key = $1", [idemKey]);
+      const r = rows[0];
+      return r ? {
+        id: Number(r.id), customerId: Number(r.customer_id), delta: Number(r.delta),
+        reason: r.reason, orderId: r.order_id, rewardId: r.reward_id,
+        idemKey: r.idem_key, createdAt: r.created_at,
+      } : null;
+    },
+
+    async countLedgerByReason(customerId, reasonPrefix) {
+      const { rows } = await q(
+        `SELECT COUNT(*) AS n FROM petals_ledger
+          WHERE customer_id = $1 AND reason LIKE $2 || '%'`,
+        [customerId, reasonPrefix]);
+      return Number(rows[0]?.n ?? 0);
     },
 
     /* Only rows that hold something need releasing; an unpaid order with no

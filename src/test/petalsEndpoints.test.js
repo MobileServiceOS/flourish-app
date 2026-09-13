@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { createApp } from "../../server/app.js";
 import { createMemoryStore } from "../../server/petals/store.memory.js";
-import { createPetals } from "../../server/petals/ledger.js";
+import { createPetals, SIGNUP_BONUS } from "../../server/petals/ledger.js";
 import { __resetRateLimit } from "../../server/guard.js";
 import { __resetPrinters } from "../../server/clover.js";
 
@@ -52,6 +52,17 @@ function fakeClover(over = {}) {
   };
 }
 
+/* Joining now pays a signup bonus, so `deviceBalance: 150` no longer produces a
+   150 balance. Every test below wants a customer WITH A GIVEN BALANCE, not a
+   customer with a given device balance, so the seeding is expressed that way
+   and the bonus is subtracted here — in one place. Restating every expected
+   number instead would have quietly turned the "balance too small" test into a
+   "balance is fine" test, which is how a control stops being tested. */
+const seed = (agent, petals) =>
+  agent.post("/api/clover/petals/claim")
+    .send({ ...CUSTOMER, deviceBalance: Math.max(0, petals - SIGNUP_BONUS) })
+    .expect(200);
+
 let clock;
 function build({ withPetals = true, clover = fakeClover() } = {}) {
   clock = OPEN.getTime();
@@ -79,16 +90,15 @@ describe("reading a balance", () => {
 
   it("carries a device balance across on claim, once", async () => {
     const { agent } = build();
-    await agent.post("/api/clover/petals/claim")
-      .send({ ...CUSTOMER, deviceBalance: 150 }).expect(200);
+    await seed(agent, 150);
     const again = await agent.post("/api/clover/petals/claim")
-      .send({ ...CUSTOMER, deviceBalance: 150 }).expect(200);
+      .send({ ...CUSTOMER, deviceBalance: 150 - SIGNUP_BONUS }).expect(200);
     expect(again.body.petals).toBe(150);
   });
 
   it("refuses a mismatched name rather than showing someone else's balance", async () => {
     const { agent } = build();
-    await agent.post("/api/clover/petals/claim").send({ ...CUSTOMER, deviceBalance: 50 }).expect(200);
+    await seed(agent, 50);
     const r = await agent.post("/api/clover/petals/balance")
       .send({ name: "Someone Else", phone: CUSTOMER.phone }).expect(400);
     expect(r.body.code).toBe("NAME_MISMATCH");
@@ -105,7 +115,7 @@ describe("reading a balance", () => {
 describe("redeeming needs a balance the server can verify", () => {
   it("refuses a reward when the balance is too small, before anything reaches Clover", async () => {
     const { agent, clover } = build();
-    await agent.post("/api/clover/petals/claim").send({ ...CUSTOMER, deviceBalance: 50 }).expect(200);
+    await seed(agent, 50);
 
     const r = await agent.post("/api/clover/orders")
       .send({ cart: CART, customer: CUSTOMER, rewardId: "r-5off" }).expect(409);
@@ -127,7 +137,7 @@ describe("redeeming needs a balance the server can verify", () => {
 
   it("takes the order and holds the Petals when the balance covers it", async () => {
     const { agent, clover, petals } = build();
-    await agent.post("/api/clover/petals/claim").send({ ...CUSTOMER, deviceBalance: 200 }).expect(200);
+    await seed(agent, 200);
 
     const r = await agent.post("/api/clover/orders")
       .send({ cart: CART, customer: CUSTOMER, rewardId: "r-5off" }).expect(200);
@@ -143,8 +153,7 @@ describe("held, then settled or released", () => {
   const seedAndOrder = async () => {
     const clover = fakeClover();
     const built = build({ clover });
-    await built.agent.post("/api/clover/petals/claim")
-      .send({ ...CUSTOMER, deviceBalance: 200 }).expect(200);
+    await seed(built.agent, 200);
     await built.agent.post("/api/clover/orders")
       .send({ cart: CART, customer: CUSTOMER, rewardId: "r-5off" }).expect(200);
     return built;
@@ -213,7 +222,7 @@ describe("earning, with no reward involved", () => {
        cart it was computed from is gone. The client used to hold that number. */
     const clover = fakeClover();
     const { agent, petals } = build({ clover });
-    await agent.post("/api/clover/petals/claim").send({ ...CUSTOMER, deviceBalance: 0 }).expect(200);
+    await seed(agent, SIGNUP_BONUS);
     const r = await agent.post("/api/clover/orders")
       .send({ cart: CART, customer: CUSTOMER }).expect(200);
     expect(r.body.petalsEarnable).toBe(20);
@@ -223,7 +232,8 @@ describe("earning, with no reward involved", () => {
       payments: { elements: [{ amount: 2000, result: "SUCCESS" }] },
     });
     await agent.get("/api/clover/orders/ORD-1/status").expect(200);
-    expect((await petals.balance(CUSTOMER)).petals).toBe(20);
+    // The signup bonus they joined with, plus what this order earned.
+    expect((await petals.balance(CUSTOMER)).petals).toBe(SIGNUP_BONUS + 20);
   });
 
   it("earns nothing for a number that never joined", async () => {
@@ -239,11 +249,12 @@ describe("earning, with no reward involved", () => {
   it("credits nothing for an order that was voided", async () => {
     const clover = fakeClover();
     const { agent, petals } = build({ clover });
-    await agent.post("/api/clover/petals/claim").send({ ...CUSTOMER, deviceBalance: 0 }).expect(200);
+    await seed(agent, SIGNUP_BONUS);
     await agent.post("/api/clover/orders").send({ cart: CART, customer: CUSTOMER }).expect(200);
     clover.getOrder.mockResolvedValue({ id: "ORD-1", state: "deleted", total: 2000 });
     await agent.get("/api/clover/orders/ORD-1/status").expect(200);
-    expect((await petals.balance(CUSTOMER)).petals).toBe(0);
+    // Unchanged from the signup bonus: a voided order earns nothing.
+    expect((await petals.balance(CUSTOMER)).petals).toBe(SIGNUP_BONUS);
   });
 });
 

@@ -17,10 +17,21 @@ import { readFileSync } from "node:fs";
 import express from "express";
 import cors from "cors";
 import {
-  api, modifierCatalog, CloverError, humanise,
-  printOrderTicket, resolvePrinter, describePrinter,
-  paymentStatus, loyaltyConfig,
-  sendCustomerMessage, messagingState, printEventUrl,
+  api,
+  modifierCatalog,
+  CloverError,
+  humanise,
+  printOrderTicket,
+  resolvePrinter,
+  describePrinter,
+  paymentStatus,
+  loyaltyConfig,
+  sendCustomerMessage,
+  messagingState,
+  printEventUrl,
+  findOrdersBySuffix,
+  netPaidCents,
+  RECEIPT_MIN_CHARS,
 } from "./clover.js";
 import { CONFIGURED, IS_SANDBOX, describe } from "./env.js";
 import {
@@ -34,7 +45,10 @@ import {
 import { cartPrepMinutes, readyWindow } from "../src/lib/prep.js";
 import { unavailableInCart, unavailableMessage, dayOfWeek } from "../src/lib/availability.js";
 import { isValidName, isValidPhone, phoneDigits } from "../src/lib/phone.js";
-import { REWARDS, TIERS, discountFor, serialisableRewards } from "../src/lib/loyalty.js";
+import { REWARDS, TIERS, discountFor, serialisableRewards, pointsFor } from "../src/lib/loyalty.js";
+import {
+  normaliseOrderRef, RECEIPT_CLAIM_WINDOW_MS,
+} from "./petals/ledger.js";
 import { CURRENCY_ONE, CURRENCY_MANY } from "../src/lib/currency.js";
 import { MENU, PLATE_IDS, DRINK_ID, SIDE_ID } from "../src/data/menu.data.js";
 
@@ -265,6 +279,22 @@ export const confirmationMessage = (orderNumber, pickupLabel) =>
 /* Phone numbers print on tickets and end up in logs. Keep the last two digits —
    enough for staff to match a number they can already see on a ticket, useless
    to anyone reading a log file. */
+/**
+ * Compare a supplied secret with the real one without leaking its length or
+ * content through timing. Used by the two routes that mint or grant Petals.
+ *
+ * Not a substitute for the secret being a secret — it is the difference
+ * between "guessable in a week" and "guessable never", on routes that already
+ * refuse to exist when unconfigured.
+ */
+function sameSecret(given, real) {
+  const a = String(given ?? ""), b = String(real ?? "");
+  if (!b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < b.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 export const maskPhone = (phone) => {
   const d = phoneDigits(phone);
   return d.length ? `(***) ***-**${d.slice(-2)}` : "(none)";
@@ -851,8 +881,98 @@ export function createApp({
      unique key behind it means a retry cannot double it. */
   app.post("/api/clover/petals/claim", needPetals, async (req, res) => {
     try {
-      const { name, phone, deviceBalance } = req.body ?? {};
-      res.json(await petals.claim({ name, phone, deviceBalance }));
+      const { name, phone, deviceBalance, birthday, referralCode } = req.body ?? {};
+      res.json(await petals.claim({ name, phone, deviceBalance, birthday, referralCode }));
+    } catch (e) { petalsFail(res, e); }
+  });
+
+  /* ---- claiming a counter order from its receipt ----
+
+     A customer who ordered at the register has no way to earn otherwise, and
+     the receipt prints the Clover order id. They type the last few characters
+     and the server does the rest.
+
+     WHAT THE SERVER VERIFIES, all of it here and none of it on the client:
+     the order exists, it is inside the window, Clover says it is PAID, it is
+     not voided, and the suffix picked out exactly ONE order. The ledger then
+     enforces once-ever-by-anyone and the per-phone rate limit.
+
+     AMBIGUITY IS REFUSED, NEVER GUESSED. Six characters cannot collide inside
+     a 7-day window at this shop's volume with any meaningful probability
+     (0.0255%, measured), but "unlikely" is not "impossible" and crediting the
+     first of two matches would be crediting somebody else's dinner. */
+  app.post("/api/clover/petals/receipt", needPetals, async (req, res) => {
+    try {
+      const { name, phone, orderRef } = req.body ?? {};
+      const ref = normaliseOrderRef(orderRef);
+      if (ref.length < RECEIPT_MIN_CHARS) {
+        return res.status(400).json({
+          error: `Enter at least the last ${RECEIPT_MIN_CHARS} characters from your receipt.`,
+          code: "REF_TOO_SHORT",
+        });
+      }
+
+      /* The injected clock, not Date.now(): everything else on this server
+         takes its time from `now` so hours and windows are testable, and a
+         route reaching past it is how a window silently measures itself
+         against a different clock — the same bug the Petals store has a
+         `need(at)` guard for. */
+      const sinceMs = now().getTime() - RECEIPT_CLAIM_WINDOW_MS;
+      /* `client: clover` matters: without it this reaches for the module-level
+         `api` and ignores whichever client was injected, so the route would
+         talk to the live register from inside a test. */
+      const { matches } = await findOrdersBySuffix(ref, { sinceMs, client: clover });
+
+      if (!matches.length) {
+        return res.status(404).json({
+          error: "We couldn't find that order from the last 7 days. Check the number on your receipt.",
+          code: "ORDER_NOT_FOUND",
+        });
+      }
+      if (matches.length > 1) {
+        return res.status(409).json({
+          error: "More than one order ends with those characters. Enter a few more from your receipt.",
+          code: "ORDER_AMBIGUOUS",
+          matched: matches.length,
+        });
+      }
+
+      const order = matches[0];
+      const status = paymentStatus(order);
+      if (status.voided) {
+        return res.status(409).json({ error: "That order was cancelled.", code: "ORDER_VOIDED" });
+      }
+      if (!status.paid) {
+        return res.status(409).json({
+          error: "That order isn't showing as paid yet. Petals land once the register takes the money.",
+          code: "ORDER_NOT_PAID",
+        });
+      }
+
+      /* Earned on the same basis as an app order — pre-tax, pre-tip — so the
+         same meal is worth the same however it was ordered. */
+      const net = netPaidCents(order) / 100;
+      const out = await petals.claimReceipt({
+        name, phone, orderId: order.id, petals: pointsFor(net),
+      });
+      console.log(
+        `  petals/receipt: +${out.credited} to ${maskPhone(phone)} for ${order.id}` +
+        (out.referral ? ` (+${out.referral} referral)` : "")
+      );
+      res.json({ ...out, orderId: order.id, net });
+    } catch (e) { petalsFail(res, e); }
+  });
+
+  /* ---- the birthday reward ----
+     Asked for by the client when the Rewards screen opens. Returns credited: 0
+     with a reason in every case that is not "here are your Petals", so the
+     screen can say why without a second round trip. */
+  app.post("/api/clover/petals/birthday", needPetals, async (req, res) => {
+    try {
+      const { name, phone } = req.body ?? {};
+      const out = await petals.birthdayReward({ name, phone });
+      if (out.credited) console.log(`  petals/birthday: +${out.credited} to ${maskPhone(phone)}`);
+      res.json(out);
     } catch (e) { petalsFail(res, e); }
   });
 
@@ -893,12 +1013,8 @@ export function createApp({
         code: "ADJUST_DISABLED",
       });
     }
-    /* Compared with a constant-time-ish check rather than ===, and only after
-       the length matches, so a timing difference does not leak the length. */
     const given = String(req.get("x-petals-admin-key") ?? "");
-    const ok = given.length === key.length
-      && given.split("").reduce((acc, c, i) => acc | (c.charCodeAt(0) ^ key.charCodeAt(i)), 0) === 0;
-    if (!ok) {
+    if (!sameSecret(given, key)) {
       console.warn("  petals/adjust: rejected, bad or missing admin key");
       return res.status(403).json({ error: "Not allowed.", code: "ADJUST_FORBIDDEN" });
     }
@@ -912,6 +1028,52 @@ export function createApp({
       console.log(
         `  petals/adjust: ${out.applied >= 0 ? "+" : ""}${out.applied} to ${maskPhone(phone)} ` +
         `(${String(reason ?? "").slice(0, 60)})${out.alreadyApplied ? " [already applied]" : ""}`
+      );
+      res.json(out);
+    } catch (e) { petalsFail(res, e); }
+  });
+
+  /* ---- the Perks balance match, granted by staff ----
+
+     Clover Perks has 670 enrolled customers whose balances this app cannot
+     read: every loyalty path answers 405, the customer API returns empty
+     metadata, and the CSV export has no points column. So the match cannot be
+     automated — a human reads the number off the register and types it.
+
+     THE GATE IS A REAL SECRET, VERIFIED HERE.
+
+     The obvious place to put this was "behind the existing staff PIN". There
+     is no existing staff PIN. The lock icon on the menu header opens the
+     kitchen sheet with no check at all — which is defensible for 86'ing an
+     item, and absolutely not defensible for a screen that mints currency.
+     Anyone with the app would have been able to grant themselves 200 Petals.
+
+     So: PETALS_STAFF_PIN, compared on the SERVER. A PIN checked in the client
+     is not a check — the bundle ships to every phone, and the route is
+     reachable with curl regardless of what the UI did. The route does not
+     exist when the variable is unset, the same as /adjust.
+
+     The CAP IS NOT HERE EITHER. It is in the ledger, so a request that skips
+     this route's validation entirely still cannot exceed 200. */
+  const staffPin = () => String(process.env.PETALS_STAFF_PIN ?? "").trim();
+
+  app.post("/api/clover/petals/perks-match", needPetals, async (req, res) => {
+    const pin = staffPin();
+    if (!pin) {
+      return res.status(404).json({ error: "Not found.", code: "PERKS_MATCH_DISABLED" });
+    }
+    const given = String(req.get("x-staff-pin") ?? "");
+    if (!sameSecret(given, pin)) {
+      console.warn("  petals/perks-match: rejected, bad or missing staff PIN");
+      return res.status(403).json({ error: "Wrong PIN.", code: "STAFF_FORBIDDEN" });
+    }
+    try {
+      const { name, phone, petals: amount, staff } = req.body ?? {};
+      const out = await petals.perksMatch({ name, phone, petals: amount, staff });
+      console.log(
+        `  petals/perks-match: +${out.credited} to ${maskPhone(phone)}` +
+        `${out.capped ? ` (asked ${out.asked}, capped)` : ""}` +
+        `${out.alreadyMatched ? " [already matched]" : ""}`
       );
       res.json(out);
     } catch (e) { petalsFail(res, e); }

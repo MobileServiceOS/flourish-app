@@ -136,6 +136,16 @@ export const api = {
       body: { orderRef: { id: orderId }, printer: { id: printerId } },
     }),
 
+  /* Orders created since a timestamp, for the receipt-claim lookup.
+     `expand=payments` because paymentState is NOT on the list payload — it
+     comes back OPEN on orders that are fully paid, so the list alone cannot
+     tell you what is claimable. Measured: 8,911 orders in 90 days, 741 in a
+     week, so a 7-day window is one or two pages. */
+  ordersSince: (sinceMs, { limit = 1000, offset = 0 } = {}) =>
+    request(API_BASE, m(
+      `/orders?limit=${limit}&offset=${offset}&expand=payments` +
+      `&filter=${encodeURIComponent(`createdTime>=${sinceMs}`)}`)),
+
   findCustomerByPhone: (phone) =>
     request(API_BASE, m(`/customers?filter=phoneNumber=${encodeURIComponent(phone)}&limit=1`)),
 
@@ -547,3 +557,77 @@ export async function sendCustomerMessage(orderId, message, { client = api } = {
 
 export const __resetMessaging = () => { messaging = { state: "unknown", reason: null }; };
 export { scrub as __scrub };
+
+
+/* ============================================================================
+   FINDING THE ORDER A CUSTOMER READ OFF THEIR RECEIPT
+
+   The receipt prints a 13-character Clover id and nobody is going to type all
+   of it, so the app asks for the last few. That makes collisions the whole
+   problem, and the answer is not a longer default — it is a SHORT WINDOW.
+
+   Measured against the live register:
+
+     alphabet          0123456789ABCDEFGHJKMNPQRSTVWXYZ  (Crockford base32)
+     history           8,911 orders in 90 days
+     a week            741 orders
+     last 5 chars      ALREADY collides once across the 8,911
+     last 6 chars      no collision across the 8,911, and P(collision) inside
+                       a 741-order week is 0.0255%
+
+   So six characters is safe BECAUSE the search is bounded to seven days, not
+   because six characters is inherently enough. Across the full history six
+   would collide with near-certainty once the shop passes ~100,000 orders, which
+   at this rate is three years. Nothing here relies on that not happening: an
+   ambiguous match is REFUSED and the customer is asked for more characters.
+
+   Never credit an ambiguous match. A wrong credit is somebody else's order.
+   ============================================================================ */
+
+export const RECEIPT_MIN_CHARS = 4;
+
+/**
+ * Every order in the window whose id ends with `suffix`.
+ *
+ * Returns `{ matches, scanned }`. The caller decides what to do with 0, 1 or
+ * many — this does not guess, and deliberately returns them all rather than
+ * the first, because "the first" is how a wrong order gets credited.
+ */
+export async function findOrdersBySuffix(suffix, { sinceMs, client = api, maxPages = 5 } = {}) {
+  const want = String(suffix ?? "").toUpperCase();
+  if (want.length < RECEIPT_MIN_CHARS) {
+    return { matches: [], scanned: 0, tooShort: true };
+  }
+  const matches = [];
+  let scanned = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const body = await client.ordersSince(sinceMs, { limit: 1000, offset: page * 1000 });
+    const els = body?.elements ?? [];
+    scanned += els.length;
+    for (const o of els) {
+      if (String(o?.id ?? "").toUpperCase().endsWith(want)) matches.push(o);
+    }
+    if (els.length < 1000) break;
+  }
+  return { matches, scanned, tooShort: false };
+}
+
+/**
+ * What an order earned, on the SAME basis as an order placed in the app.
+ *
+ * The app credits `pointsFor(net)` where net is pre-tax and post-discount, so a
+ * counter claim has to use the same basis or the identical meal earns a
+ * different number depending on where it was ordered — and the counter would
+ * earn ~8.9% more, purely because tax rides along in the total.
+ *
+ * Payments carry `taxAmount` and `tipAmount`, so the net is recoverable
+ * exactly: a real order of total 2722 with 222 tax gives 2500, which is the
+ * $25.00 the app would have earned on. Only SUCCESSful payments count.
+ */
+export function netPaidCents(order) {
+  const pays = order?.payments?.elements ?? [];
+  return pays
+    .filter((p) => String(p?.result ?? "SUCCESS").toUpperCase() === "SUCCESS")
+    .reduce((sum, p) =>
+      sum + (Number(p.amount) || 0) - (Number(p.taxAmount) || 0) - (Number(p.tipAmount) || 0), 0);
+}
