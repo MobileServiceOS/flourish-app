@@ -353,6 +353,57 @@ describe("granting and correcting a balance", () => {
   const grant = (agent, body, key = ADMIN) =>
     agent.post("/api/clover/petals/adjust").set("x-petals-admin-key", key).send(body);
 
+  it("sits behind the app key as well, which is what a bare admin key hits", async () => {
+    /* The reported failure: the grant script sent only x-petals-admin-key and
+       came back 401 BAD_APP_KEY. Every /api/clover path except /health is
+       behind the app-key guard, and that guard runs BEFORE routing — so a
+       missing route and a missing app key are indistinguishable from outside.
+
+       Both keys are required on purpose. The app key is the perimeter and is
+       not a secret; the admin key is the control. Exempting the one route that
+       mints currency from the perimeter would be backwards. */
+    const built = build();
+    const agentWithKey = request(createApp({
+      clover: fakeClover(), catalog: async () => CATALOG,
+      now: () => new Date(clock),
+      printTicket: async () => ({ printed: true }),
+      appKey: "perimeter-key", petals: built.petals,
+    }));
+
+    const had = process.env.PETALS_ADMIN_KEY;
+    process.env.PETALS_ADMIN_KEY = ADMIN;
+    try {
+      const body = { name: "N R", phone: "4757776200", delta: 10, reason: "x", idempotencyKey: "k1" };
+
+      // Admin key only — refused at the perimeter, before the route exists.
+      const bare = await agentWithKey.post("/api/clover/petals/adjust")
+        .set("x-petals-admin-key", ADMIN).send(body).expect(401);
+      expect(bare.body.code).toBe("BAD_APP_KEY");
+
+      // Both — through.
+      const ok = await agentWithKey.post("/api/clover/petals/adjust")
+        .set("x-flourish-key", "perimeter-key")
+        .set("x-petals-admin-key", ADMIN)
+        .send(body).expect(200);
+      expect(ok.body.applied).toBe(10);
+    } finally {
+      if (had === undefined) delete process.env.PETALS_ADMIN_KEY;
+      else process.env.PETALS_ADMIN_KEY = had;
+    }
+  });
+
+  it("has a grant script that sends both keys and says why", async () => {
+    /* The script sent one and could never authenticate. Pinned so it cannot
+       drift back, and so the usage text keeps explaining the difference. */
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(process.cwd(), "scripts/petals-grant.mjs"), "utf8");
+    expect(src).toMatch(/"x-flourish-key"/);
+    expect(src).toMatch(/"x-petals-admin-key"/);
+    expect(src).toMatch(/TWO KEYS ARE REQUIRED/);
+    expect(src).toMatch(/BAD_APP_KEY/);      // explains the failure it hit
+  });
+
   it("does not exist at all without an admin key configured", async () => {
     const { agent } = build();
     const r = await agent.post("/api/clover/petals/adjust")

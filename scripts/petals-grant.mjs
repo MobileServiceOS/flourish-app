@@ -2,9 +2,24 @@
 /**
  * Grant or correct a Petals balance.
  *
- *   PETALS_ADMIN_KEY=... node scripts/petals-grant.mjs \
+ *   PETALS_ADMIN_KEY=... APP_KEY=... node scripts/petals-grant.mjs \
  *     --phone 4757776200 --name "Nevaeh Reid" --petals 1000 \
  *     --reason "test account" --key test-1000
+ *
+ * TWO KEYS ARE REQUIRED, and they do different jobs.
+ *
+ *   APP_KEY           the proxy's perimeter. Every /api/clover path except
+ *                     /health sits behind it, so a request without it is
+ *                     refused with 401 BAD_APP_KEY before routing even
+ *                     happens — which is why a missing route and a missing app
+ *                     key look identical from outside. It is NOT a secret: it
+ *                     ships inside the app bundle and only turns away scanners.
+ *   PETALS_ADMIN_KEY  the real control. This endpoint mints currency, so it
+ *                     needs a secret that exists only on the host, and the
+ *                     route does not exist at all when it is unset.
+ *
+ * Both values are on the Railway service. Read them there; never paste them
+ * into a file, a commit or a chat.
  *
  * Every grant is a ledger row carrying the reason and an idempotency key, so it
  * behaves exactly like earned Petals and can be explained later. Re-running the
@@ -21,6 +36,7 @@ const arg = (n, d) => {
 
 const base = (arg("api", process.env.PETALS_API ?? "https://flourish-api-production.up.railway.app")).replace(/\/$/, "");
 const adminKey = process.env.PETALS_ADMIN_KEY;
+const appKey = process.env.APP_KEY ?? process.env.VITE_APP_KEY;
 const phone = arg("phone");
 const petals = Number(arg("petals"));
 const reason = arg("reason");
@@ -29,6 +45,14 @@ const name = arg("name", "");
 
 if (!adminKey) {
   console.error("\n  PETALS_ADMIN_KEY is not set. It is a secret and lives on the host.\n");
+  process.exit(1);
+}
+if (!appKey) {
+  console.error(
+    "\n  APP_KEY is not set. Every /api/clover path except /health sits behind it,\n" +
+    "  so without it this is refused with 401 before the route is even reached.\n" +
+    "  It is not a secret — it ships in the app bundle — but it is required.\n"
+  );
   process.exit(1);
 }
 for (const [label, v] of [["--phone", phone], ["--petals", petals], ["--reason", reason], ["--key", key]]) {
@@ -42,13 +66,29 @@ for (const [label, v] of [["--phone", phone], ["--petals", petals], ["--reason",
 
 const res = await fetch(`${base}/api/clover/petals/adjust`, {
   method: "POST",
-  headers: { "Content-Type": "application/json", "x-petals-admin-key": adminKey },
+  headers: {
+    "Content-Type": "application/json",
+    "x-flourish-key": appKey,          // the perimeter
+    "x-petals-admin-key": adminKey,    // the control
+  },
   body: JSON.stringify({ name, phone, delta: petals, reason, idempotencyKey: key }),
 });
 const body = await res.json().catch(() => ({}));
 
 if (!res.ok) {
-  console.error(`\n  ${res.status} ${body.code ?? ""} — ${body.error ?? "no detail"}\n`);
+  console.error(`\n  ${res.status} ${body.code ?? ""} — ${body.error ?? "no detail"}`);
+  /* These three are the ones that actually happen, and each has a different
+     fix — worth saying which rather than leaving a bare status code. */
+  if (body.code === "BAD_APP_KEY") {
+    console.error("  That is the APP_KEY, not the admin key. Check it matches the host's.");
+  } else if (body.code === "ADJUST_DISABLED") {
+    console.error("  PETALS_ADMIN_KEY is not set ON THE HOST, so the route does not exist.");
+  } else if (body.code === "ADJUST_FORBIDDEN") {
+    console.error("  The admin key was sent but did not match the host's.");
+  } else if (res.status === 404) {
+    console.error("  The route is missing — is the deployed proxy older than this branch?");
+  }
+  console.error("");
   process.exit(1);
 }
 console.log(

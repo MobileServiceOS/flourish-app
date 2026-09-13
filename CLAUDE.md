@@ -984,6 +984,34 @@ Push the order to Clover **first**, charge **second**. A charged customer with n
 ticket on the register is the one failure staff can't fix at the counter; an
 uncharged order that exists is just "pay at pickup".
 
+### Granting Petals needs two keys, and they do different jobs
+
+`POST /api/clover/petals/adjust` mints currency, so it is the one route with a
+control of its own — but it still sits behind the perimeter like everything
+else:
+
+| | | |
+|---|---|---|
+| `APP_KEY` | `x-flourish-key` | the perimeter. `app.use("/api/clover", …)` guards **every** path except `/health`, and it runs **before routing** — so a missing route and a missing app key both come back `401 BAD_APP_KEY` and look identical from outside. Not a secret: it ships in the app bundle |
+| `PETALS_ADMIN_KEY` | `x-petals-admin-key` | the control. A real secret, host-only. The route returns **404** when it is unset |
+
+Both are required deliberately. Exempting the route that creates Petals from the
+perimeter guard would make the most sensitive endpoint the least protected at
+the edge, which is backwards. `scripts/petals-grant.mjs` sends both and explains
+each failure code rather than printing a bare status.
+
+**The boot banner reports it**, next to the app key and Petals, because
+otherwise the only way to find out whether a grant can work is to try one and
+read a 401 that came from the perimeter and said nothing about the admin key:
+
+```
+  App key  set
+  Petals   server-side (DATABASE_URL set)
+  Grants   enabled — POST /petals/adjust needs APP_KEY + PETALS_ADMIN_KEY
+```
+
+The value is never printed — only whether it is set.
+
 ## Never print a secret value. Print the name.
 
 This has cost once already: `railway variables` prints every value in full, and
@@ -1035,7 +1063,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 877 tests (+9 more with a test database)
+npm test            # 879 tests (+9 more with a test database)
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still
