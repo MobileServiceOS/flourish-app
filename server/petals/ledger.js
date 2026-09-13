@@ -34,7 +34,111 @@ export const REASONS = Object.freeze({
   RESERVED: "reserved",
   RELEASED: "released",
   ADJUSTED: "adjusted",
+  RECEIPT: "receipt",
+  SIGNUP: "signup",
+  /* Same entitlement, same key, different WORD — so a ledger read months later
+     shows which customers were swept up by the retroactive run and which earned
+     it as they arrived. The KEY is identical (`signup:<phone>`), which is what
+     makes it once-only; only the label differs. Two keys for one entitlement is
+     how somebody ends up with two, and that mistake is not being made here. */
+  SIGNUP_RETRO: "signup bonus (retroactive)",
+  BIRTHDAY: "birthday",
+  REFERRAL: "referral",
+  PERKS_MATCH: "perks match",
 });
+
+/* ============================================================================
+   EARNING WITHOUT AN APP ORDER
+
+   Five ways in, and one rule holding all of them: a credit is a ledger row with
+   a deterministic idem_key, and the UNIQUE index is what makes it once-only.
+   Not a check-then-write — two requests in the same second both pass a check.
+
+   THE NUMBERS, AND WHY THEY ARE WHAT THEY ARE. A Petal is worth 5c at every
+   rung of the ladder except the free plate, which is 5.71c (350 -> $20). So
+   "worst case value" below always means the plate rate, because a customer
+   maximising value takes plates.
+   ============================================================================ */
+
+/** First account on a phone number, ever. Worth $2.50 at the plate rate. */
+export const SIGNUP_BONUS = 50;
+
+/** Each side of a referral, when the referred friend's first order is PAID. */
+export const REFERRAL_BONUS = 100;
+
+/**
+ * How many successful referrals one customer is paid for in a calendar year.
+ *
+ * Five, so 500 Petals — $28.57 at the plate rate. Every other earning path
+ * here has a ceiling and this one did not: one person with a large group chat
+ * was, quite literally, the entire marketing budget, and the payout scaled with
+ * nothing but their contact list.
+ *
+ * The cap bounds the REFERRER only. The friend is always paid: they did the
+ * thing being rewarded, and punishing a new customer because whoever told them
+ * about the shop is popular is the wrong way round.
+ *
+ * Somebody who genuinely brings more than five people a year has earned a
+ * conversation rather than an automated payout.
+ */
+export const REFERRALS_PER_YEAR = 5;
+
+/** The Perks match ceiling. Staff type a balance; this is what actually lands. */
+export const PERKS_MATCH_CAP = 200;
+
+/**
+ * The birthday reward, granted as Petals rather than as a special voucher.
+ *
+ * The offer is "a free plate up to $20". 350 Petals is exactly the cost of the
+ * free-plate reward, so the customer can take that plate — and the existing cap
+ * machinery bounds it at $20 with no new code in the order path.
+ *
+ * It is never MORE expensive than the offer: the plate is the only rung worth
+ * 5.71c per Petal, every other rung is 5c, so 350 Petals spent any other way is
+ * worth at most $17.50. Granting the Petals is therefore weakly cheaper than
+ * granting the plate, and strictly more useful to a customer who would rather
+ * have drinks. A dedicated voucher would have meant a reward with no cost
+ * threaded through resolveReward, openOrder and the client — new machinery on
+ * the one path that moves money, to be worth less.
+ */
+export const BIRTHDAY_PETALS = 350;
+
+/** A receipt is claimable for this long after the order. */
+export const RECEIPT_CLAIM_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * How many counter receipts one phone may claim, and over what window.
+ *
+ * The attack this bounds is someone lifting receipts off the counter, or out of
+ * the bin, and claiming other people's orders. Nothing in a printed receipt
+ * proves who paid, so the claim cannot be authenticated — it can only be
+ * rate-limited and made once-only per order. Every other check passes for a
+ * stolen receipt: the order is real, paid, recent and unclaimed.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ WHAT THIS NUMBER IS WORTH, measured against the live register on         │
+ * │ 13 Sep 2026 — 741 orders a week, $21.58 average net, 22 Petals each,     │
+ * │ priced at the free-plate rate of 5.71c per Petal:                        │
+ * │                                                                          │
+ * │   no limit   106 claims/day   831,532 Petals/yr   $47,481 a year         │
+ * │   3 a day      3 claims/day    24,090 Petals/yr   $ 1,376 a year         │
+ * │   1 a day      1 claim /day     8,030 Petals/yr   $   459 a year         │
+ * │                                                                          │
+ * │ That is the exposure to ONE determined person. Raising this from 3 to    │
+ * │ unlimited is a $46,000 decision, not a UX tweak.                         │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Three a day leaves a genuine customer who eats here every single day
+ * unaffected, and caps a farmer at roughly one average order per day. The full
+ * workings are in docs/PETALS-LIABILITY.md; the numbers are repeated here
+ * because whoever loosens this will be reading this line, not that file.
+ */
+export const RECEIPT_CLAIMS_PER_DAY = 3;
+export const RECEIPT_RATE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/* Crockford base32 minus the vowels that make words: a code goes on a flyer and
+   gets read aloud, so it must not be mistakable and must not spell anything. */
+const CODE_ALPHABET = "0123456789BCDFGHJKMNPQRSTVWXYZ";
 
 export class PetalsError extends Error {
   constructor(code, message, extra = {}) {
@@ -61,6 +165,50 @@ export function normalisePhone(phone) {
    protect. */
 export const normaliseName = (name) =>
   String(name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+/**
+ * Tidy a hand-typed order id or suffix from a receipt.
+ *
+ * Clover ids are 13 characters of Crockford base32 — `0123456789ABCDEFGHJKMNPQRSTVWXYZ`,
+ * which deliberately omits I, L, O and U. So a customer who types O for 0, or I
+ * or L for 1, cannot be typing a real character and can be mapped back with no
+ * ambiguity whatsoever. That is Crockford's own decoding rule and it removes
+ * the single most common transcription error for free.
+ */
+export function normaliseOrderRef(ref) {
+  /* ONLY the four characters Clover's alphabet omits may be remapped. Q is a
+     REAL character in it (…MNPQRST…) and mapping Q to 0, as a first draft of
+     this did, silently corrupts every id containing one — turning a valid
+     receipt into "not found", or worse into a different order. Verified against
+     5,000 live ids: the alphabet is 0123456789ABCDEFGHJKMNPQRSTVWXYZ. */
+  return String(ref ?? "").toUpperCase().replace(/[^0-9A-Z]/g, "")
+    .replace(/O/g, "0").replace(/[IL]/g, "1").replace(/U/g, "V");
+}
+
+/**
+ * Month and day, or null. The YEAR is discarded here and never stored.
+ *
+ * Accepts a `YYYY-MM-DD` from a date input and a bare `MM-DD`, and validates
+ * the day against the month so 31 February cannot be stored. February allows 29
+ * because the year is unknown and refusing a leap-day birthday would be absurd.
+ */
+export function parseBirthday(value) {
+  const m = /^(?:\d{4}-)?(\d{1,2})-(\d{1,2})$/.exec(String(value ?? "").trim());
+  if (!m) return null;
+  const month = Number(m[1]), day = Number(m[2]);
+  if (!(month >= 1 && month <= 12) || !(day >= 1)) return null;
+  const maxDay = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  if (day > maxDay) return null;
+  return { month, day };
+}
+
+/** New York's month, for the birthday window — see availability.js for why. */
+export const monthInNewYork = (ms) =>
+  Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "numeric" })
+    .format(new Date(ms)));
+export const yearInNewYork = (ms) =>
+  Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric" })
+    .format(new Date(ms)));
 
 export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATION_TTL_MS }) {
   if (!store) throw new Error("createPetals needs a store");
@@ -130,18 +278,59 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
    * than the handful of people who will bother to forge $22. Every migration
    * row is an `adjusted` entry in the ledger, so it is auditable afterwards.
    */
-  async function claim({ name, phone, deviceBalance = 0 }) {
+  async function claim({ name, phone, deviceBalance = 0, birthday = null, referralCode = null }) {
     const p = normalisePhone(phone);
     if (!p) throw new PetalsError("BAD_PHONE", "That doesn't look like a 10-digit US number.");
     const cleanName = String(name ?? "").trim();
     if (!cleanName) throw new PetalsError("NAME_REQUIRED", "We need the name on the account.");
+    const born = birthday === null || birthday === "" ? null : parseBirthday(birthday);
+    if (birthday && !born) {
+      throw new PetalsError("BAD_BIRTHDAY", "That date doesn't look right.");
+    }
 
     return store.tx(async (tx) => {
       let customer = await tx.findCustomerByPhone(p);
+      const isNewCustomer = !customer;
       if (!customer) {
         customer = await tx.createCustomer({ phone: p, name: cleanName, at: stamp() });
       } else if (normaliseName(customer.name) !== normaliseName(cleanName)) {
         throw new PetalsError("NAME_MISMATCH", "That name doesn't match the one on this number.");
+      }
+
+      /* ---- signup bonus ----
+         Attempted on every claim, not only when the row is created, and made
+         once-only by the key rather than by `isNewCustomer`. Deleting the app
+         and signing up again recreates the local account but not the ledger
+         row, so the key is the thing that actually enforces "once per phone
+         number, ever" — the flag would hand out a second bonus to anyone who
+         reinstalled. */
+      const gotSignup = await ensureSignupBonus(tx, customer);
+
+      /* ---- birthday ----
+         Stored month and day only. Editable, because people mistype — the
+         once-per-year key is what stops an edit being worth anything, not
+         immutability. */
+      const patch = {};
+      if (born && (customer.birthMonth !== born.month || customer.birthDay !== born.day)) {
+        patch.birthMonth = born.month; patch.birthDay = born.day;
+      }
+      if (!customer.referralCode) patch.referralCode = await mintCode(tx);
+
+      /* ---- who referred them ----
+         ONLY on a genuinely new customer, and never overwritten. An existing
+         customer entering a code later would let two people who already eat
+         here pay each other, which is not what the scheme is for. */
+      let referralAccepted = false;
+      const code = String(referralCode ?? "").trim().toUpperCase();
+      if (code && isNewCustomer && !customer.referredBy) {
+        const referrer = await tx.findCustomerByReferralCode(code);
+        if (referrer && referrer.id !== customer.id && referrer.phone !== p) {
+          patch.referredBy = referrer.id;
+          referralAccepted = true;
+        }
+      }
+      if (Object.keys(patch).length) {
+        customer = (await tx.updateCustomer(customer.id, patch)) ?? customer;
       }
 
       const migrate = Math.floor(Number(deviceBalance) || 0);
@@ -155,7 +344,15 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
         });
       }
       await expireHeld(tx, customer.id);
-      return { petals: await tx.balanceOf(customer.id), known: true };
+      return {
+        petals: await tx.balanceOf(customer.id),
+        known: true,
+        signupBonus: gotSignup,
+        referralAccepted,
+        referralCode: customer.referralCode ?? null,
+        birthday: customer.birthMonth
+          ? { month: customer.birthMonth, day: customer.birthDay } : null,
+      };
     });
   }
 
@@ -176,6 +373,8 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
           phone: p, name: String(name ?? "").trim() || "Guest", at: stamp(),
         });
       }
+      // First appearance of this number, whichever door it came through.
+      const signupBonus = await ensureSignupBonus(tx, customer);
       const wrote = await tx.appendLedger({
         customerId: customer.id,
         delta: amount,
@@ -184,7 +383,12 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
         idemKey: `earn:${orderId}`,
         at: stamp(),
       });
-      return { credited: wrote ? amount : 0, petals: await tx.balanceOf(customer.id) };
+      // Their first paid order is the moment a referral becomes payable.
+      const referral = wrote ? await maybePayReferral(tx, customer) : 0;
+      return {
+        credited: wrote ? amount : 0, referral, signupBonus,
+        petals: await tx.balanceOf(customer.id),
+      };
     });
   }
 
@@ -278,8 +482,17 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
         });
         if (wrote) credited = r.earnable;
       }
+      /* Referral pays here too, and only here — the order being PAID is the
+         trigger, never the order being placed. A voided order takes the release
+         path instead and pays nobody. */
+      let referral = 0;
+      if (credited > 0) {
+        const c = await tx.findCustomerById(r.customerId);
+        if (c) referral = await maybePayReferral(tx, c);
+      }
       await tx.setOrderState(r.id, "settled", stamp());
-      return { settled: true, state: "settled", credited, petals: await tx.balanceOf(r.customerId) };
+      return { settled: true, state: "settled", credited, referral,
+               petals: await tx.balanceOf(r.customerId) };
     });
   }
 
@@ -343,6 +556,20 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
           phone: p, name: String(name ?? "").trim() || "Guest", at: stamp(),
         });
       }
+      /* DELIBERATELY NO SIGNUP BONUS HERE, unlike every other path that can
+         create a customer.
+
+         This route is for corrections, not for customers arriving. Paying a
+         bonus as a side effect of one is wrong in both directions: a goodwill
+         credit quietly becomes 50 larger than the person authorising it typed,
+         and — the case that settled it — a NEGATIVE correction against a number
+         the server has not seen before partially cancels itself. Staff clawing
+         back 200 Petals would leave the customer on -150 rather than -200, and
+         nobody would find out until the arithmetic was questioned.
+
+         Nobody is missed by this. A real customer reaches the server through
+         the app, a paid order or a Perks match, and the backfill sweeps up
+         anyone an adjustment created along the way. */
       const wrote = await tx.appendLedger({
         customerId: customer.id,
         delta: amount,
@@ -358,10 +585,326 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
     });
   }
 
+  /* ========================================================================
+     EARNING WITHOUT AN APP ORDER
+     ======================================================================== */
+
+  /**
+   * The signup bonus, on FIRST SERVER-SIDE APPEARANCE of a phone number.
+   *
+   * Not on "the account was created", which is a different event and the wrong
+   * one. Server-side balances arrived after the app did, so there is a whole
+   * population of customers whose accounts exist only on their phone and whom
+   * this server has never heard of. Tying the bonus to account creation would
+   * have paid new customers and silently skipped every one of those, who did
+   * nothing wrong except join early.
+   *
+   * Keying on the PHONE instead makes three cases one mechanism:
+   *
+   *   - a new customer signing up                    -> paid here, first claim
+   *   - an existing customer opening the updated app -> paid here, same call
+   *   - a customer already in the ledger             -> paid by the backfill,
+   *                                                     which is this function
+   *                                                     in a loop
+   *
+   * and it makes "once per phone number, ever" structural rather than a rule
+   * each of those three has to remember. Deleting the app and signing up again
+   * reaches the same key and is credited nothing.
+   *
+   * Called from every path that resolves or creates a customer, so a phone that
+   * first becomes known through a staff Perks match or a paid order is paid
+   * too. That is deliberate — it is the same person either way, and the
+   * alternative is a bonus that depends on which door they came through.
+   */
+  async function ensureSignupBonus(tx, customer, reason = REASONS.SIGNUP) {
+    const wrote = await tx.appendLedger({
+      customerId: customer.id,
+      delta: SIGNUP_BONUS,
+      reason,
+      /* THE KEY NEVER VARIES, whatever the reason says. It is the only thing
+         enforcing "once per phone number, ever, by any route", and a key that
+         changed with the label would hand a second 50 to anyone the backfill
+         reached before they opened the app. */
+      idemKey: `signup:${customer.phone}`,
+      at: stamp(),
+    });
+    return wrote ? SIGNUP_BONUS : 0;
+  }
+
+  /** Mint a referral code that is not already taken. */
+  async function mintCode(tx) {
+    for (let attempt = 0; attempt < 12; attempt++) {
+      let code = "";
+      for (let i = 0; i < 6; i++) {
+        code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+      }
+      if (!(await tx.findCustomerByReferralCode(code))) return code;
+    }
+    /* Thirty characters to the sixth is 729 million codes; twelve misses means
+       something is wrong with the store, not bad luck. Throwing beats handing
+       out a duplicate code, which would pay the wrong referrer. */
+    throw new PetalsError("CODE_EXHAUSTED", "Could not allocate a referral code.");
+  }
+
+  /**
+   * Pay both sides of a referral, if this customer was referred and their
+   * first paid order has just landed.
+   *
+   * Called from every path that writes an EARNED or RECEIPT row, because
+   * "their first order is paid" is true at whichever of those happens first.
+   * NEVER called on order creation — the same rule as ordinary earning, and it
+   * is the thing that stops the scheme being farmed with orders nobody pays
+   * for. A voided order never reaches here, so a referrer earns nothing from
+   * one.
+   */
+  async function maybePayReferral(tx, customer) {
+    if (!customer?.referredBy) return 0;
+
+    /* The referee's own row is keyed on their phone, so this whole block is a
+       no-op the second time regardless of how many orders they pay for. */
+    const key = `referral-referee:${customer.phone}`;
+    if (await tx.findLedgerByIdemKey(key)) return 0;
+
+    const referrer = await tx.findCustomerById(customer.referredBy);
+
+    /* THE FRIEND IS ALWAYS PAID. They placed and paid for the order, which is
+       the thing being rewarded; whether the person who told them about the
+       shop has already hit their annual cap is none of their business. */
+    const wroteReferee = await tx.appendLedger({
+      customerId: customer.id, delta: REFERRAL_BONUS, reason: REASONS.REFERRAL,
+      idemKey: key, at: stamp(),
+    });
+
+    /* The referrer's side is capped per calendar year. Counted from the ledger
+       rather than from a column, so it cannot drift from what was actually
+       paid — the rows ARE the record.
+
+       Keyed on the REFEREE's phone, so a referrer earns once per person they
+       bring rather than once in their life. */
+    if (referrer) {
+      const year = yearInNewYork(now());
+      const paidThisYear = await tx.countLedgerByKeySince(
+        referrer.id, "referral-referrer:", new Date(Date.UTC(year, 0, 1)));
+      if (paidThisYear < REFERRALS_PER_YEAR) {
+        await tx.appendLedger({
+          customerId: referrer.id, delta: REFERRAL_BONUS, reason: REASONS.REFERRAL,
+          idemKey: `referral-referrer:${customer.phone}`, at: stamp(),
+        });
+      }
+    }
+    return wroteReferee ? REFERRAL_BONUS : 0;
+  }
+
+  /**
+   * Credit a counter order the customer proves with their receipt.
+   *
+   * The CALLER verifies the order against Clover — that it exists, is paid, is
+   * within the window and is not ambiguous — because that needs Clover access
+   * and this file has none. What happens here is the part that must be atomic:
+   * the once-ever check and the rate limit, inside the same transaction and the
+   * same row lock as the write.
+   *
+   * ONCE EVER, BY ANYONE. The key is the order id alone and carries no customer
+   * in it, so a second person claiming the same receipt collides with the first
+   * person's row and is credited nothing. That is the only control there is: a
+   * printed receipt does not say who paid, so the claim cannot be
+   * authenticated — only bounded.
+   */
+  async function claimReceipt({ name, phone, orderId, petals }) {
+    const p = normalisePhone(phone);
+    if (!p) throw new PetalsError("BAD_PHONE", "That doesn't look like a 10-digit US number.");
+    if (!orderId) throw new PetalsError("ORDER_REQUIRED", "A claim needs the order from the receipt.");
+    const amount = Math.max(0, Math.floor(Number(petals) || 0));
+
+    return store.tx(async (tx) => {
+      const customer = await tx.findCustomerByPhone(p);
+      if (!customer) throw new PetalsError("NO_BALANCE", "Join first, then add your past orders.");
+      if (normaliseName(customer.name) !== normaliseName(name)) {
+        throw new PetalsError("NAME_MISMATCH", "That name doesn't match the one on this number.");
+      }
+
+      /* Report an already-claimed order as such rather than as a silent
+         no-op: the customer is standing there with a receipt and needs to be
+         told which of the two it is. */
+      const key = `receipt:${orderId}`;
+      const already = await tx.findLedgerByIdemKey(key);
+      if (already) {
+        throw new PetalsError(
+          "ALREADY_CLAIMED",
+          already.customerId === customer.id
+            ? "You've already added that order."
+            : "That order has already been added to an account.");
+      }
+
+      const since = new Date(now() - RECEIPT_RATE_WINDOW_MS);
+      const recent = await tx.countLedgerSince(customer.id, REASONS.RECEIPT, since);
+      if (recent >= RECEIPT_CLAIMS_PER_DAY) {
+        throw new PetalsError("TOO_MANY_CLAIMS",
+          `That's ${RECEIPT_CLAIMS_PER_DAY} receipts added today. Try again tomorrow.`,
+          { limit: RECEIPT_CLAIMS_PER_DAY });
+      }
+
+      const wrote = amount > 0 && await tx.appendLedger({
+        customerId: customer.id, delta: amount, reason: REASONS.RECEIPT,
+        orderId, idemKey: key, at: stamp(),
+      });
+      const referral = wrote ? await maybePayReferral(tx, customer) : 0;
+      return {
+        credited: wrote ? amount : 0,
+        referral,
+        petals: await tx.balanceOf(customer.id),
+      };
+    });
+  }
+
+  /**
+   * The birthday reward: once per calendar year, during the birth month.
+   *
+   * Keyed on phone AND year, which is what makes editing the birth date
+   * useless: a customer who claims in January, changes their birthday to
+   * February and claims again hits the same key and is credited nothing. The
+   * key deliberately does not contain the date itself, because a key that did
+   * would make every edit a fresh entitlement.
+   */
+  async function birthdayReward({ name, phone }) {
+    const p = normalisePhone(phone);
+    if (!p) throw new PetalsError("BAD_PHONE", "That doesn't look like a 10-digit US number.");
+
+    return store.tx(async (tx) => {
+      const customer = await tx.findCustomerByPhone(p);
+      if (!customer) throw new PetalsError("NO_BALANCE", "Join first.");
+      if (normaliseName(customer.name) !== normaliseName(name)) {
+        throw new PetalsError("NAME_MISMATCH", "That name doesn't match the one on this number.");
+      }
+      if (!customer.birthMonth) {
+        return { credited: 0, reason: "NO_BIRTHDAY", petals: await tx.balanceOf(customer.id) };
+      }
+      const month = monthInNewYork(now());
+      if (customer.birthMonth !== month) {
+        return { credited: 0, reason: "NOT_THIS_MONTH", month: customer.birthMonth,
+                 petals: await tx.balanceOf(customer.id) };
+      }
+      const wrote = await tx.appendLedger({
+        customerId: customer.id, delta: BIRTHDAY_PETALS, reason: REASONS.BIRTHDAY,
+        idemKey: `birthday:${p}:${yearInNewYork(now())}`, at: stamp(),
+      });
+      return {
+        credited: wrote ? BIRTHDAY_PETALS : 0,
+        reason: wrote ? null : "ALREADY_THIS_YEAR",
+        petals: await tx.balanceOf(customer.id),
+      };
+    });
+  }
+
+  /**
+   * Match a Clover Perks balance, once per phone, ever. Staff-initiated.
+   *
+   * Perks balances are unreadable through every Clover API — each loyalty path
+   * answers 405 — so a human reads the number off the register and types it.
+   * That makes the cap the only real control, and it is applied HERE rather
+   * than in the UI: a typo, a misread, or a request sent straight to the route
+   * all land at the ceiling and no further.
+   */
+  async function perksMatch({ name, phone, petals, staff }) {
+    const p = normalisePhone(phone);
+    if (!p) throw new PetalsError("BAD_PHONE", "That doesn't look like a 10-digit US number.");
+    const asked = Math.floor(Number(petals) || 0);
+    if (!(asked > 0)) throw new PetalsError("BAD_AMOUNT", "Enter the Perks balance to match.");
+    const amount = Math.min(asked, PERKS_MATCH_CAP);
+
+    return store.tx(async (tx) => {
+      let customer = await tx.findCustomerByPhone(p);
+      if (!customer) {
+        customer = await tx.createCustomer({
+          phone: p, name: String(name ?? "").trim() || "Perks customer", at: stamp() });
+      }
+      const signupBonus = await ensureSignupBonus(tx, customer);
+      const wrote = await tx.appendLedger({
+        customerId: customer.id, delta: amount,
+        reason: `${REASONS.PERKS_MATCH}${staff ? ` by ${String(staff).slice(0, 40)}` : ""}`,
+        idemKey: `perks:${p}`, at: stamp(),
+      });
+      return {
+        signupBonus,
+        credited: wrote ? amount : 0,
+        capped: asked > PERKS_MATCH_CAP,
+        asked,
+        alreadyMatched: !wrote,
+        petals: await tx.balanceOf(customer.id),
+      };
+    });
+  }
+
+  /**
+   * Pay the signup bonus to every customer already in the ledger who never got
+   * one — the retroactive half.
+   *
+   * IT IS THE SAME MECHANISM AS THE LIVE PATH, not a second one. Both call
+   * `ensureSignupBonus`, both key on `signup:<phone>`, so a customer credited
+   * here and then opening the app is credited once, and a backfill run twice
+   * credits nothing the second time. There is no separate "retroactive" key,
+   * because two keys for one entitlement is how somebody ends up with two.
+   *
+   * The reason on the row is plain `signup` for the same reason: a balance
+   * taken apart at a counter should not show two different words for the same
+   * thing. Which run wrote it is recoverable from `created_at`.
+   *
+   * ONE TRANSACTION PER CUSTOMER, not one for the whole run. A single
+   * transaction over hundreds of customers holds locks across all of them and
+   * blocks ordering for as long as it takes; worse, one failure rolls back
+   * work that was already correct. Per-customer means a run that dies halfway
+   * has done half the work, and re-running finishes it.
+   *
+   * `dryRun` reports what WOULD happen and writes nothing. Run it first — the
+   * count is the thing worth knowing before minting currency.
+   */
+  async function backfillSignupBonus({ dryRun = true, limit = Infinity } = {}) {
+    const customers = await store.tx(async (tx) => tx.allCustomers());
+
+    const owed = [];
+    for (const c of customers) {
+      const has = await store.tx(async (tx) => tx.findLedgerByIdemKey(`signup:${c.phone}`));
+      if (!has) owed.push(c);
+    }
+
+    const targets = owed.slice(0, limit === Infinity ? owed.length : limit);
+    if (dryRun) {
+      return {
+        dryRun: true,
+        customers: customers.length,
+        alreadyHave: customers.length - owed.length,
+        wouldCredit: targets.length,
+        petals: targets.length * SIGNUP_BONUS,
+      };
+    }
+
+    let credited = 0, petalsGiven = 0;
+    for (const c of targets) {
+      const got = await store.tx(async (tx) => {
+        /* Re-read under the row lock. The survey above is unlocked, so a
+           customer could have been credited by the live path in between —
+           the key would stop a double anyway, but re-reading keeps the
+           returned count honest. */
+        const fresh = await tx.findCustomerByPhone(c.phone);
+        return fresh ? ensureSignupBonus(tx, fresh, REASONS.SIGNUP_RETRO) : 0;
+      });
+      if (got) { credited += 1; petalsGiven += got; }
+    }
+    return {
+      dryRun: false,
+      customers: customers.length,
+      alreadyHave: customers.length - owed.length,
+      credited,
+      petals: petalsGiven,
+      skipped: targets.length - credited,
+    };
+  }
+
   /** For a caller that wants the sweep without reading a balance. */
   async function expire(customerId = null) {
     return store.tx(async (tx) => ({ released: await expireHeld(tx, customerId) }));
   }
 
-  return { balance, claim, credit, openOrder, settle, release, expire, adjust };
+  return { balance, claim, credit, openOrder, settle, release, expire, adjust,
+           claimReceipt, birthdayReward, perksMatch, backfillSignupBonus };
 }

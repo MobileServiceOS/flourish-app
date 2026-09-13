@@ -800,6 +800,45 @@ on customers' phones. Change the build file, not Railway. Rotating `APP_KEY` on
 Railway breaks ordering for every installed copy until a new build clears
 review, so it is never the side to "fix".
 
+### A control everyone referred to and nobody implemented
+
+**There was no staff PIN. There had never been a staff PIN.**
+
+For days it was discussed as an existing thing — "put the new screen behind the
+staff PIN", "it's already behind the PIN" — in conversation and in planning,
+by everyone involved. It was found only when someone went to reuse it and
+looked for the code.
+
+What actually exists is a lock ICON on the menu header. Tapping it opens the
+kitchen sheet immediately. No PIN, no prompt, no server call, no check of any
+kind. Any customer with the app can open it, and from there they can 86 items —
+which removes them from the customer menu and, when the register is connected,
+pushes the change to Clover.
+
+**Why it survived so long: the icon reads as the control.** A padlock is a
+promise, and every person who saw one assumed the thing behind it was locked.
+Nobody had reason to check, because the feature "worked" — the sheet opened for
+staff, which is what anybody testing it was looking for. A missing control does
+not fail; it simply is not there, and the absence looks identical to success.
+
+That made it nearly ship something much worse. A staff screen for granting
+Clover Perks matches was to sit behind "the existing PIN", and would have let
+any customer grant themselves 200 Petals. The screen was cut for unrelated
+reasons; the finding is what remains, and it is the more useful half.
+
+**The lesson, which generalises past this repo:** a control that everyone names
+and nobody can point to in the code does not exist. Before building on top of
+one, open the file. A padlock icon is decoration until something checks a
+secret, and the check has to be somewhere a customer cannot edit — which means
+the server, not the bundle.
+
+**The kitchen sheet is still open.** That is a real gap and it is recorded
+here deliberately rather than fixed in passing: it arrived attached to a
+feature that was cut, and a security change deserves its own decision rather
+than riding along on something unrelated. It needs a server-verified secret if
+it is ever closed — a PIN compared in the client is not a check, because the
+bundle ships to every phone.
+
 ### Petals, and why they are not called points
 
 The shop runs **Clover Perks** at the register: text the code off the receipt,

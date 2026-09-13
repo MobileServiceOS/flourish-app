@@ -8,7 +8,7 @@ import { rewardOf, discountFor, pointsFor, CURRENCY_MANY } from "./lib/loyalty.j
 import { searchItems } from "./lib/search.js";
 import { loadAccount, saveAccount, deleteAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
-import { createOrder, syncCustomer, setStock } from "./lib/clover.js";
+import { createOrder, syncCustomer, setStock, claimReceipt } from "./lib/clover.js";
 import {
   useCloverHealth, useInventorySync, useReadyQuote, useLoyaltySource, useReconcileOnLaunch,
   usePetalsBalance, useRewardLadder,
@@ -102,6 +102,8 @@ export default function App() {
      balances moved server-side does not lose it. After that it is never read
      again and never displayed. */
   const [devicePetals, setDevicePetals] = useState(0);
+  /* Signup extras waiting to go to the server with the first claim. */
+  const [joinExtras, setJoinExtras] = useState(null);
   const [orders, setOrders] = useState([]);
   const [active, setActive] = useState(null); // active order being tracked
   const [detailOrder, setDetailOrder] = useState(null); // order number being viewed
@@ -160,10 +162,28 @@ export default function App() {
   /* The balance is the SERVER's. Nothing on the device is truth.
      `available: false` means we could not ask — the screens show it as
      unavailable and refuse to redeem rather than guessing a number. */
+  /**
+   * Claim a counter order from its receipt.
+   *
+   * Refreshes the balance on success rather than adding the credited figure to
+   * a local number: the server's total is the only one that counts, and a
+   * referral bonus can land in the same request, which arithmetic here would
+   * miss. The error is re-thrown so the form can show the server's own wording.
+   */
+  const addPastOrder = async (orderRef) => {
+    const r = await claimReceipt({
+      name: account.name, phone: account.phone, orderRef,
+    });
+    petals.refresh?.();
+    return r;
+  };
+
   const petals = usePetalsBalance({
     name: account?.name,
     phone: account?.phone,
     deviceBalance: devicePetals,
+    birthday: joinExtras?.birthday,
+    referralCode: joinExtras?.referralCode,
     enabled: Boolean(account) && !loadingAcct && clover.status === "online",
   });
   const points = petals.petals;                  // number, or null when unknown
@@ -178,10 +198,21 @@ export default function App() {
     saveAccount({ ...account, points: devicePetals, orders, vouchers });
   }, [account, devicePetals, orders, vouchers, loadingAcct]);
 
-  const signIn = async (name, phone) => {
+  const signIn = async (name, phone, extras = {}) => {
     const acct = { name, phone, since: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }) };
     setAccount(acct);
     flash(`Welcome, ${name.split(" ")[0]}`);
+
+    /* The birth date and a friend's referral code, both optional, and both
+       only meaningful the first time this number reaches the server. They ride
+       on the claim that usePetalsBalance makes on the next render — held here
+       rather than sent separately so there is one call, and so a customer who
+       is offline still gets an account and carries these across when the
+       balance is next reachable. */
+    setJoinExtras({
+      birthday: extras.birthday ?? null,
+      referralCode: extras.referralCode ?? null,
+    });
 
     /* Mirror the customer into Clover so the merchant's own reports show
        customer-level data. Best effort: a customer who can't be synced still
@@ -640,7 +671,8 @@ export default function App() {
       {view === "rewards" && (account
         ? <RewardsView {...{ account, points, petalsAvailable, vouchers, orders, redeem, signOut }}
             rewards={ladder.rewards} ladderFromServer={ladder.fromServer}
-            onReorder={reorder} onDeleteAccount={deleteMyAccount} />
+            onReorder={reorder} onDeleteAccount={deleteMyAccount}
+            onClaimReceipt={addPastOrder} referralCode={petals.referralCode} />
         : <SignInView onSignIn={signIn} rewards={ladder.rewards} />)}
       {view === "orderDetail" && detailOrder && (
         <OrderDetail

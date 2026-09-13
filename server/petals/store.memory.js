@@ -35,7 +35,7 @@ export function createMemoryStore() {
   let nextLedgerId = 1;
   let nextReservationId = 1;
 
-  const customers = [];      // { id, phone, name, createdAt }
+  const customers = [];      // { id, phone, name, createdAt, birthMonth, birthDay, referredBy, referralCode }
   const ledger = [];         // { id, customerId, delta, reason, orderId, rewardId, idemKey, createdAt }
   const orders = [];         // { id, customerId, orderId, rewardId, hold, amountCents, earnable, state, createdAt }
 
@@ -95,6 +95,67 @@ export function createMemoryStore() {
 
     /* Only rows that actually hold something need releasing. An unpaid order
        with no reward simply never earns — there is nothing to give back. */
+    /* ---- earning that is not an app order ---- */
+
+    async updateCustomer(id, patch) {
+      const c = customers.find((x) => x.id === id);
+      if (!c) return null;
+      for (const k of ["name", "birthMonth", "birthDay", "referredBy", "referralCode"]) {
+        if (k in patch) c[k] = patch[k];
+      }
+      return { ...c };
+    },
+
+    /* The backfill's access pattern: every customer, oldest first, so a run is
+       reproducible and a partial run resumes in the same order. */
+    async allCustomers() {
+      return customers.slice().sort((a, b) => a.id - b.id).map((c) => ({ ...c }));
+    },
+
+    async findCustomerById(id) {
+      const c = customers.find((x) => x.id === id);
+      return c ? { ...c } : null;
+    },
+
+    async findCustomerByReferralCode(code) {
+      const c = customers.find((x) => x.referralCode && x.referralCode === code);
+      return c ? { ...c } : null;
+    },
+
+    /* The receipt-claim rate limiter, and the "was this order already claimed"
+       lookup. Both read the ledger rather than a second table, because the
+       ledger row IS the record of the claim. */
+    async countLedgerSince(customerId, reasonPrefix, since) {
+      return ledger.filter((r) =>
+        r.customerId === customerId &&
+        String(r.reason).startsWith(reasonPrefix) &&
+        r.createdAt >= since).length;
+    },
+
+    /* Counting by IDEM KEY PREFIX, not by reason.
+
+       Both sides of a referral write reason "referral" — one for being
+       referred, one for referring — so counting reasons would charge a
+       customer's own joining bonus against their annual cap and let them refer
+       only four friends. The keys tell the two apart exactly:
+       `referral-referrer:` versus `referral-referee:`. */
+    async countLedgerByKeySince(customerId, keyPrefix, since) {
+      return ledger.filter((r) =>
+        r.customerId === customerId &&
+        typeof r.idemKey === "string" && r.idemKey.startsWith(keyPrefix) &&
+        r.createdAt >= since).length;
+    },
+
+    async findLedgerByIdemKey(idemKey) {
+      const r = ledger.find((x) => x.idemKey && x.idemKey === idemKey);
+      return r ? { ...r } : null;
+    },
+
+    async countLedgerByReason(customerId, reasonPrefix) {
+      return ledger.filter((r) =>
+        r.customerId === customerId && String(r.reason).startsWith(reasonPrefix)).length;
+    },
+
     async openHoldsBefore(customerId, cutoff) {
       return orders.filter((r) =>
         r.state === "open"

@@ -136,6 +136,29 @@ timed out at the 20s `testTimeout` during one full-suite run. It passed in
 isolation immediately afterwards, and in two further complete runs. So: one
 occurrence, four clean runs, no explanation.
 
+**REPRODUCED, 13 September 2026 — twice in about twelve full-suite runs**, and
+the two occurrences were in *different* tests:
+
+```
+× the server decides when food is ready > says the shop is shut, and when it
+  opens, without a window to sell                              20085ms
+× print event > still confirms the order when the printer is down  20003ms
+```
+
+Both stop at exactly the 20,000ms `testTimeout`, both are in the order-creation
+path, and both pass in isolation — the print test passed five consecutive runs
+on its own. So it is a cross-file interaction, it is not specific to one test,
+and it is not the printer retry: that test injects `sleep: async () => {}`, so
+the two-second retry is instant.
+
+What this rules out further: it is not a slow test, it is a request that never
+gets a response. Something module-level, poisoned by an earlier file, leaves a
+promise unsettled in a later one.
+
+The reproduction recipe, such as it is: run `npm test` in a loop and expect a
+failure roughly one run in eight. That is now enough to bisect with, which it
+was not before.
+
 **What rules out the known cause.** Entry #1 in this file is a shared
 `process.env` race, worked around with `fileParallelism: false`. That workaround
 was already in place when this happened, and serialised files cannot race on the

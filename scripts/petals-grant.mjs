@@ -6,6 +6,14 @@
  *     --phone 4757776200 --name "Nevaeh Reid" --petals 1000 \
  *     --reason "test account" --key test-1000
  *
+ *   node scripts/petals-grant.mjs --perks-match --phone 4757776200 \
+ *     --name "Nevaeh Reid" --petals 140
+ *
+ * --perks-match is the Clover Perks balance match, which has no staff screen:
+ * fewer than ten are expected, so they are run by hand. It is capped at 200 in
+ * the ledger however much is typed, it is once per phone number ever, and the
+ * row reads "perks match".
+ *
  * TWO KEYS ARE REQUIRED, and they do different jobs.
  *
  *   APP_KEY           the proxy's perimeter. Every /api/clover path except
@@ -43,6 +51,13 @@ const reason = arg("reason");
 const key = arg("key");
 const name = arg("name", "");
 
+/* A Perks match is a grant with rules of its own, so it gets a mode rather than
+   a second script: capped at 200 in the LEDGER, once per phone number ever, and
+   recorded with reason "perks match" so a balance can be taken apart later.
+   There is no staff screen for this — fewer than ten are expected, and a
+   permanent surface in the customer app for a ten-time job is not worth it. */
+const perksMatch = process.argv.includes("--perks-match");
+
 if (!adminKey) {
   console.error("\n  PETALS_ADMIN_KEY is not set. It is a secret and lives on the host.\n");
   process.exit(1);
@@ -55,24 +70,35 @@ if (!appKey) {
   );
   process.exit(1);
 }
-for (const [label, v] of [["--phone", phone], ["--petals", petals], ["--reason", reason], ["--key", key]]) {
+const required = perksMatch
+  ? [["--phone", phone], ["--petals", petals]]
+  : [["--phone", phone], ["--petals", petals], ["--reason", reason], ["--key", key]];
+for (const [label, v] of required) {
   if (v === undefined || v === "" || (label === "--petals" && !Number.isFinite(v))) {
     console.error(`\n  ${label} is required.\n  Example:\n` +
-      `    node scripts/petals-grant.mjs --phone 4757776200 --name "Nevaeh Reid" \\\n` +
-      `      --petals 1000 --reason "test account" --key test-1000\n`);
+      (perksMatch
+        ? `    node scripts/petals-grant.mjs --perks-match --phone 4757776200 \\\n` +
+          `      --name "Nevaeh Reid" --petals 140\n\n` +
+          `  --reason and --key are not used: a Perks match has one reason and one\n` +
+          `  key by definition, and the ledger caps it at 200 however much is typed.\n`
+        : `    node scripts/petals-grant.mjs --phone 4757776200 --name "Nevaeh Reid" \\\n` +
+          `      --petals 1000 --reason "test account" --key test-1000\n`));
     process.exit(1);
   }
 }
 
-const res = await fetch(`${base}/api/clover/petals/adjust`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "x-flourish-key": appKey,          // the perimeter
-    "x-petals-admin-key": adminKey,    // the control
-  },
-  body: JSON.stringify({ name, phone, delta: petals, reason, idempotencyKey: key }),
-});
+const res = await fetch(
+  `${base}/api/clover/petals/${perksMatch ? "perks-match" : "adjust"}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-flourish-key": appKey,          // the perimeter
+      "x-petals-admin-key": adminKey,    // the control
+    },
+    body: JSON.stringify(perksMatch
+      ? { name, phone, petals, staff: arg("staff", "") }
+      : { name, phone, delta: petals, reason, idempotencyKey: key }),
+  });
 const body = await res.json().catch(() => ({}));
 
 if (!res.ok) {
@@ -91,8 +117,17 @@ if (!res.ok) {
   console.error("");
   process.exit(1);
 }
-console.log(
-  `\n  ${body.applied >= 0 ? "+" : ""}${body.applied} Petals` +
-  `${body.alreadyApplied ? " (already applied — this key was used before)" : ""}` +
-  `\n  balance is now ${body.petals}\n`
-);
+if (perksMatch) {
+  console.log(
+    `\n  +${body.credited} Petals` +
+    `${body.capped ? ` (asked ${body.asked}, capped at the 200 ceiling)` : ""}` +
+    `${body.alreadyMatched ? " — this number was already matched, nothing changed" : ""}` +
+    `\n  balance is now ${body.petals}\n`
+  );
+} else {
+  console.log(
+    `\n  ${body.applied >= 0 ? "+" : ""}${body.applied} Petals` +
+    `${body.alreadyApplied ? " (already applied — this key was used before)" : ""}` +
+    `\n  balance is now ${body.petals}\n`
+  );
+}

@@ -20,3 +20,33 @@ export async function shareFlourish(nav = globalThis.navigator) {
   }
   return null;
 }
+
+/**
+ * Share a customer's referral code.
+ *
+ * Deliberately shares the CODE and a line of text, not a deep link. There is no
+ * link that applies a code — the friend types it into the signup field — so a
+ * URL here would look like one-tap enrolment and silently do nothing. Promising
+ * less and working is better than the reverse.
+ */
+export async function shareCode(code, nav = globalThis.navigator) {
+  const text =
+    `Use my code ${code} when you join Flourish Rewards and we both get 100 Petals. `
+    + SHARE_URL;
+  try {
+    if (nav?.share) {
+      await nav.share({ title: "Flourish BX", text });
+      return "shared";
+    }
+    if (nav?.clipboard?.writeText) {
+      /* The CODE alone on the clipboard, not the sentence: someone tapping
+         this is usually about to paste it into a message they are already
+         writing, and pasting a whole paragraph into that is worse. */
+      await nav.clipboard.writeText(code);
+      return "copied";
+    }
+  } catch (e) {
+    if (e?.name === "AbortError") return null;
+  }
+  return null;
+}
