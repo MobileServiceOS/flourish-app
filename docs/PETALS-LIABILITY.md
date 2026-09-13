@@ -164,6 +164,75 @@ is $13,400 a year, indefinitely.
 
 ---
 
+## The signup bonus, once it applies retroactively
+
+The bonus fires on **first server-side appearance of a phone number**, not on
+account creation. That is one mechanism covering three populations, and it
+changes the exposure in two ways worth stating separately.
+
+### It is the same 50 Petals, reaching more people
+
+| population | how they get it | when |
+|---|---|---|
+| New customers signing up | the live path | at signup |
+| Customers already in the ledger | the backfill, `--run` | when you run it |
+| Customers whose account exists only on their phone | the live path | first time they open the updated app |
+| Customers staff enrol via a Perks match | the match itself | at the counter |
+
+**The ceiling does not move.** The liability was always counted as "670 × 50 =
+33,500 Petals, $1,675" — one bonus per customer. Making it retroactive does not
+create a 671st customer; it changes *when* the existing ones are paid and
+guarantees nobody is skipped for having joined early.
+
+**What does move is the timing.** Instead of trickling out as customers sign
+up, the backfill mints the whole of group 1 in one run. Run the dry run first
+and you will know the exact figure before a single Petal exists:
+
+```
+node scripts/petals-backfill-signup.mjs          # dry run, writes nothing
+node scripts/petals-backfill-signup.mjs --run
+```
+
+### A matched Perks customer is now worth 250, not 200
+
+The one genuine increase. A Perks match is often the first time a number
+reaches the server, so the match now pays the signup bonus alongside it:
+
+| | Petals | at 5c |
+|---|---|---|
+| Perks match | 200 | $10.00 |
+| Signup bonus, same moment | 50 | $2.50 |
+| **Per matched customer** | **250** | **$12.50** |
+| All 670 matched | 167,500 | **$8,375** |
+
+That $8,375 is the same "one-time subtotal" already in the table above — the
+two lines have simply merged into one event. Nothing new is created; it is paid
+earlier and in one place, which is easier to reason about, not more expensive.
+
+### Admin corrections are deliberately excluded
+
+`/petals/adjust` is the one path that creates customers and does **not** pay the
+bonus. A correction that silently added 50 would be larger than whoever
+authorised it typed, and — the case that settled it — a *negative* correction
+against an unknown number would partially cancel itself: clawing back 200 would
+leave the customer on −150 rather than −200, and nobody would notice until the
+arithmetic was questioned. Nobody is missed by the exclusion, because the
+backfill sweeps up anyone an adjustment created.
+
+### How many would be credited today
+
+**Unknown from here, and that is a real gap rather than an estimate I am
+withholding.** Railway's Postgres is on an internal hostname with no public
+proxy, and the CLI tunnel is blocked in this environment, so I could not count
+the rows. The dry run answers it exactly, from the host, without minting
+anything — and prints the dollar figure alongside the count.
+
+The upper bound is knowable regardless: the ledger cannot hold more customers
+than have ever transacted, so **the backfill cannot cost more than 670 × 50 =
+33,500 Petals ($1,675)** even if every Perks customer were already in it. In
+practice it will be far lower, because server-side Petals are recent and only
+customers who have used the app since are in the table at all.
+
 ## The one recommendation before this ships
 
 **Cap referrals per customer per year.** Every other path has a ceiling:

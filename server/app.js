@@ -318,6 +318,17 @@ export function createApp({
      behaviour; a test passes one so it never has to mutate process.env, which
      vitest shares between workers. */
   appKey,
+  /* The two secrets that gate minting Petals, injectable for exactly the same
+     reason and left undefined in production.
+
+     This is docs/TECH-DEBT.md #1 being paid down rather than added to. Tests
+     that reach for `process.env` are why the suite runs with
+     `fileParallelism: false`: process.env is shared, so one file setting a key
+     for two assertions can be seen by a request in another and come back 401.
+     Adding two more env-mutating routes would have made a one-in-ten flake
+     more likely, so these take the injected path instead. */
+  petalsAdminKey,
+  petalsStaffPin,
   /* Server-side Petals, or null when no DATABASE_URL is configured. Null is a
      supported state, not a degraded one: the endpoints answer 503 with a code
      the app understands, ordering carries on untouched, and nothing is redeemed
@@ -1003,7 +1014,8 @@ export function createApp({
 
      Every grant is a ledger row with a reason and an idempotency key, so it
      behaves exactly like earned Petals and can be explained months later. */
-  const adminKey = () => String(process.env.PETALS_ADMIN_KEY ?? "").trim();
+  const adminKey = () =>
+    String(petalsAdminKey ?? process.env.PETALS_ADMIN_KEY ?? "").trim();
 
   app.post("/api/clover/petals/adjust", needPetals, async (req, res) => {
     const key = adminKey();
@@ -1033,6 +1045,37 @@ export function createApp({
     } catch (e) { petalsFail(res, e); }
   });
 
+  /* ---- the retroactive signup backfill ----
+
+     Pays the signup bonus to every customer already in the ledger who never got
+     one. Behind PETALS_ADMIN_KEY like /adjust, because it mints currency, and
+     it lives on the SERVER rather than in a script run from a laptop for the
+     ordinary reason: the database is only reachable from inside Railway.
+
+     `dryRun` defaults to TRUE. A request that forgets to say what it wants
+     reports and writes nothing, which is the right way round for a route whose
+     other mode creates money. */
+  app.post("/api/clover/petals/backfill-signup", needPetals, async (req, res) => {
+    const key = adminKey();
+    if (!key) return res.status(404).json({ error: "Not found.", code: "ADJUST_DISABLED" });
+    if (!sameSecret(String(req.get("x-petals-admin-key") ?? ""), key)) {
+      console.warn("  petals/backfill-signup: rejected, bad or missing admin key");
+      return res.status(403).json({ error: "Not allowed.", code: "ADJUST_FORBIDDEN" });
+    }
+    try {
+      const dryRun = req.body?.dryRun !== false;
+      const limit = Number(req.body?.limit) > 0 ? Number(req.body.limit) : undefined;
+      const out = await petals.backfillSignupBonus({ dryRun, ...(limit ? { limit } : {}) });
+      console.log(
+        `  petals/backfill-signup${dryRun ? " [dry run]" : ""}: ` +
+        `${out.customers} customer(s), ${out.alreadyHave} already had one, ` +
+        `${dryRun ? out.wouldCredit + " would be" : out.credited + " were"} credited ` +
+        `(${out.petals} Petals)`
+      );
+      res.json(out);
+    } catch (e) { petalsFail(res, e); }
+  });
+
   /* ---- the Perks balance match, granted by staff ----
 
      Clover Perks has 670 enrolled customers whose balances this app cannot
@@ -1055,7 +1098,8 @@ export function createApp({
 
      The CAP IS NOT HERE EITHER. It is in the ledger, so a request that skips
      this route's validation entirely still cannot exceed 200. */
-  const staffPin = () => String(process.env.PETALS_STAFF_PIN ?? "").trim();
+  const staffPin = () =>
+    String(petalsStaffPin ?? process.env.PETALS_STAFF_PIN ?? "").trim();
 
   app.post("/api/clover/petals/perks-match", needPetals, async (req, res) => {
     const pin = staffPin();

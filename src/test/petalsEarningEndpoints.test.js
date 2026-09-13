@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { createApp } from "../../server/app.js";
 import { createMemoryStore } from "../../server/petals/store.memory.js";
@@ -62,7 +62,7 @@ function fakeClover(orders = [], over = {}) {
 }
 
 let clock;
-function build({ orders = [], clover = null } = {}) {
+function build({ orders = [], clover = null, adminKey, staffPin } = {}) {
   clock = OPEN.getTime();
   const c = clover ?? fakeClover(orders);
   const store = createMemoryStore();
@@ -73,6 +73,10 @@ function build({ orders = [], clover = null } = {}) {
     now: () => new Date(clock),
     printTicket: async () => ({ printed: true, printer: "P" }),
     appKey: "",
+    /* Injected, never written to process.env — see the note on createApp.
+       The suite is serialised precisely because env-mutating tests leak. */
+    petalsAdminKey: adminKey,
+    petalsStaffPin: staffPin,
     petals,
   }));
   return { agent, clover: c, petals, store, tick: (ms) => { clock += ms; } };
@@ -82,7 +86,6 @@ const join = (agent, over = {}) =>
   agent.post("/api/clover/petals/claim").send({ ...CUSTOMER, ...over }).expect(200);
 
 beforeEach(() => { __resetRateLimit(); __resetPrinters(); });
-afterEach(() => { delete process.env.PETALS_STAFF_PIN; });
 
 describe("claiming a counter receipt through the proxy", () => {
   it("credits a real, paid, recent order", async () => {
@@ -233,6 +236,73 @@ describe("the birthday route", () => {
   });
 });
 
+describe("the retroactive signup backfill, through the proxy", () => {
+  const ADMIN = "admin-key-for-tests-0123";
+  const withAdmin = async (fn) => fn();   // kept for shape; the key is injected
+  const call = (agent, body = {}, key = ADMIN) =>
+    agent.post("/api/clover/petals/backfill-signup")
+      .set("x-petals-admin-key", key).send(body);
+
+  it("DEFAULTS TO A DRY RUN when the body says nothing", async () => {
+    /* The shape that costs nothing has to be the one you get by typing less.
+       A request that forgets `dryRun` must report, not mint. */
+    await withAdmin(async () => {
+      const { agent } = build({ adminKey: ADMIN });
+      await agent.post("/api/clover/petals/claim")
+        .send({ name: "Old One", phone: "9175551234" }).expect(200);
+
+      const r = await call(agent, {}).expect(200);
+      expect(r.body.dryRun).toBe(true);
+      expect(r.body).toHaveProperty("wouldCredit");
+      expect(r.body).not.toHaveProperty("credited");
+    });
+  });
+
+  it("only writes when asked explicitly", async () => {
+    await withAdmin(async () => {
+      const { agent, petals, store } = build({ adminKey: ADMIN });
+      // A customer the server knew before the bonus existed.
+      await store.tx(async (tx) => {
+        const c = await tx.createCustomer({
+          phone: "+19175551234", name: "Old One", at: new Date(clock) });
+        await tx.appendLedger({
+          customerId: c.id, delta: 40, reason: "earned",
+          idemKey: "earn:OLD", at: new Date(clock) });
+      });
+
+      expect((await call(agent, { dryRun: true }).expect(200)).body.wouldCredit).toBe(1);
+      expect((await petals.balance({ name: "Old One", phone: "9175551234" })).petals).toBe(40);
+
+      const applied = await call(agent, { dryRun: false }).expect(200);
+      expect(applied.body).toMatchObject({ dryRun: false, credited: 1, petals: SIGNUP_BONUS });
+      expect((await petals.balance({ name: "Old One", phone: "9175551234" })).petals)
+        .toBe(40 + SIGNUP_BONUS);
+    });
+  });
+
+  it("credits nobody twice, across the backfill and the live path", async () => {
+    await withAdmin(async () => {
+      const { agent, petals } = build({ adminKey: ADMIN });
+      await agent.post("/api/clover/petals/claim")
+        .send({ name: "New One", phone: "9175551234" }).expect(200);   // paid live
+
+      const r = await call(agent, { dryRun: false }).expect(200);
+      expect(r.body.credited, "the live path already paid them").toBe(0);
+      expect((await petals.balance({ name: "New One", phone: "9175551234" })).petals)
+        .toBe(SIGNUP_BONUS);
+    });
+  });
+
+  it("does not exist without an admin key, and refuses a wrong one", async () => {
+    const off = await build().agent
+      .post("/api/clover/petals/backfill-signup").send({}).expect(404);
+    expect(off.body.code).toBe("ADJUST_DISABLED");
+
+    const bad = await call(build({ adminKey: ADMIN }).agent, {}, "not-the-key").expect(403);
+    expect(bad.body.code).toBe("ADJUST_FORBIDDEN");
+  });
+});
+
 describe("the staff Perks match", () => {
   it("does not exist at all when no PIN is configured", async () => {
     /* Same shape as /adjust: a route that mints currency is absent rather than
@@ -244,8 +314,7 @@ describe("the staff Perks match", () => {
   });
 
   it("refuses without the PIN, and refuses a wrong one", async () => {
-    process.env.PETALS_STAFF_PIN = "8241";
-    const { agent } = build();
+    const { agent } = build({ staffPin: "8241" });
     await agent.post("/api/clover/petals/perks-match")
       .send({ ...CUSTOMER, petals: 200 }).expect(403);
     const r = await agent.post("/api/clover/petals/perks-match")
@@ -254,8 +323,7 @@ describe("the staff Perks match", () => {
   });
 
   it("grants with the right PIN", async () => {
-    process.env.PETALS_STAFF_PIN = "8241";
-    const { agent } = build();
+    const { agent } = build({ staffPin: "8241" });
     const r = await agent.post("/api/clover/petals/perks-match")
       .set("x-staff-pin", "8241")
       .send({ ...CUSTOMER, petals: 140, staff: "Kay" }).expect(200);
@@ -265,8 +333,7 @@ describe("the staff Perks match", () => {
   it("caps at 200 even when the request says otherwise", async () => {
     /* The cap lives in the ledger, so it holds for a request that never went
        near the staff screen — which is the only kind worth defending against. */
-    process.env.PETALS_STAFF_PIN = "8241";
-    const { agent } = build();
+    const { agent } = build({ staffPin: "8241" });
     const r = await agent.post("/api/clover/petals/perks-match")
       .set("x-staff-pin", "8241")
       .send({ ...CUSTOMER, petals: 100000 }).expect(200);
@@ -275,8 +342,7 @@ describe("the staff Perks match", () => {
   });
 
   it("is once per phone number, ever", async () => {
-    process.env.PETALS_STAFF_PIN = "8241";
-    const { agent } = build();
+    const { agent } = build({ staffPin: "8241" });
     const send = () => agent.post("/api/clover/petals/perks-match")
       .set("x-staff-pin", "8241").send({ ...CUSTOMER, petals: 200 }).expect(200);
     expect((await send()).body.credited).toBe(200);

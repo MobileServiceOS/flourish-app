@@ -267,10 +267,7 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
          row, so the key is the thing that actually enforces "once per phone
          number, ever" — the flag would hand out a second bonus to anyone who
          reinstalled. */
-      const gotSignup = await tx.appendLedger({
-        customerId: customer.id, delta: SIGNUP_BONUS, reason: REASONS.SIGNUP,
-        idemKey: `signup:${p}`, at: stamp(),
-      });
+      const gotSignup = await ensureSignupBonus(tx, customer);
 
       /* ---- birthday ----
          Stored month and day only. Editable, because people mistype — the
@@ -313,7 +310,7 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
       return {
         petals: await tx.balanceOf(customer.id),
         known: true,
-        signupBonus: gotSignup ? SIGNUP_BONUS : 0,
+        signupBonus: gotSignup,
         referralAccepted,
         referralCode: customer.referralCode ?? null,
         birthday: customer.birthMonth
@@ -339,6 +336,8 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
           phone: p, name: String(name ?? "").trim() || "Guest", at: stamp(),
         });
       }
+      // First appearance of this number, whichever door it came through.
+      const signupBonus = await ensureSignupBonus(tx, customer);
       const wrote = await tx.appendLedger({
         customerId: customer.id,
         delta: amount,
@@ -349,7 +348,10 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
       });
       // Their first paid order is the moment a referral becomes payable.
       const referral = wrote ? await maybePayReferral(tx, customer) : 0;
-      return { credited: wrote ? amount : 0, referral, petals: await tx.balanceOf(customer.id) };
+      return {
+        credited: wrote ? amount : 0, referral, signupBonus,
+        petals: await tx.balanceOf(customer.id),
+      };
     });
   }
 
@@ -517,6 +519,20 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
           phone: p, name: String(name ?? "").trim() || "Guest", at: stamp(),
         });
       }
+      /* DELIBERATELY NO SIGNUP BONUS HERE, unlike every other path that can
+         create a customer.
+
+         This route is for corrections, not for customers arriving. Paying a
+         bonus as a side effect of one is wrong in both directions: a goodwill
+         credit quietly becomes 50 larger than the person authorising it typed,
+         and — the case that settled it — a NEGATIVE correction against a number
+         the server has not seen before partially cancels itself. Staff clawing
+         back 200 Petals would leave the customer on -150 rather than -200, and
+         nobody would find out until the arithmetic was questioned.
+
+         Nobody is missed by this. A real customer reaches the server through
+         the app, a paid order or a Perks match, and the backfill sweeps up
+         anyone an adjustment created along the way. */
       const wrote = await tx.appendLedger({
         customerId: customer.id,
         delta: amount,
@@ -535,6 +551,44 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
   /* ========================================================================
      EARNING WITHOUT AN APP ORDER
      ======================================================================== */
+
+  /**
+   * The signup bonus, on FIRST SERVER-SIDE APPEARANCE of a phone number.
+   *
+   * Not on "the account was created", which is a different event and the wrong
+   * one. Server-side balances arrived after the app did, so there is a whole
+   * population of customers whose accounts exist only on their phone and whom
+   * this server has never heard of. Tying the bonus to account creation would
+   * have paid new customers and silently skipped every one of those, who did
+   * nothing wrong except join early.
+   *
+   * Keying on the PHONE instead makes three cases one mechanism:
+   *
+   *   - a new customer signing up                    -> paid here, first claim
+   *   - an existing customer opening the updated app -> paid here, same call
+   *   - a customer already in the ledger             -> paid by the backfill,
+   *                                                     which is this function
+   *                                                     in a loop
+   *
+   * and it makes "once per phone number, ever" structural rather than a rule
+   * each of those three has to remember. Deleting the app and signing up again
+   * reaches the same key and is credited nothing.
+   *
+   * Called from every path that resolves or creates a customer, so a phone that
+   * first becomes known through a staff Perks match or a paid order is paid
+   * too. That is deliberate — it is the same person either way, and the
+   * alternative is a bonus that depends on which door they came through.
+   */
+  async function ensureSignupBonus(tx, customer) {
+    const wrote = await tx.appendLedger({
+      customerId: customer.id,
+      delta: SIGNUP_BONUS,
+      reason: REASONS.SIGNUP,
+      idemKey: `signup:${customer.phone}`,
+      at: stamp(),
+    });
+    return wrote ? SIGNUP_BONUS : 0;
+  }
 
   /** Mint a referral code that is not already taken. */
   async function mintCode(tx) {
@@ -709,12 +763,14 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
         customer = await tx.createCustomer({
           phone: p, name: String(name ?? "").trim() || "Perks customer", at: stamp() });
       }
+      const signupBonus = await ensureSignupBonus(tx, customer);
       const wrote = await tx.appendLedger({
         customerId: customer.id, delta: amount,
         reason: `${REASONS.PERKS_MATCH}${staff ? ` by ${String(staff).slice(0, 40)}` : ""}`,
         idemKey: `perks:${p}`, at: stamp(),
       });
       return {
+        signupBonus,
         credited: wrote ? amount : 0,
         capped: asked > PERKS_MATCH_CAP,
         asked,
@@ -724,11 +780,76 @@ export function createPetals({ store, now = () => Date.now(), ttlMs = RESERVATIO
     });
   }
 
+  /**
+   * Pay the signup bonus to every customer already in the ledger who never got
+   * one — the retroactive half.
+   *
+   * IT IS THE SAME MECHANISM AS THE LIVE PATH, not a second one. Both call
+   * `ensureSignupBonus`, both key on `signup:<phone>`, so a customer credited
+   * here and then opening the app is credited once, and a backfill run twice
+   * credits nothing the second time. There is no separate "retroactive" key,
+   * because two keys for one entitlement is how somebody ends up with two.
+   *
+   * The reason on the row is plain `signup` for the same reason: a balance
+   * taken apart at a counter should not show two different words for the same
+   * thing. Which run wrote it is recoverable from `created_at`.
+   *
+   * ONE TRANSACTION PER CUSTOMER, not one for the whole run. A single
+   * transaction over hundreds of customers holds locks across all of them and
+   * blocks ordering for as long as it takes; worse, one failure rolls back
+   * work that was already correct. Per-customer means a run that dies halfway
+   * has done half the work, and re-running finishes it.
+   *
+   * `dryRun` reports what WOULD happen and writes nothing. Run it first — the
+   * count is the thing worth knowing before minting currency.
+   */
+  async function backfillSignupBonus({ dryRun = true, limit = Infinity } = {}) {
+    const customers = await store.tx(async (tx) => tx.allCustomers());
+
+    const owed = [];
+    for (const c of customers) {
+      const has = await store.tx(async (tx) => tx.findLedgerByIdemKey(`signup:${c.phone}`));
+      if (!has) owed.push(c);
+    }
+
+    const targets = owed.slice(0, limit === Infinity ? owed.length : limit);
+    if (dryRun) {
+      return {
+        dryRun: true,
+        customers: customers.length,
+        alreadyHave: customers.length - owed.length,
+        wouldCredit: targets.length,
+        petals: targets.length * SIGNUP_BONUS,
+      };
+    }
+
+    let credited = 0, petalsGiven = 0;
+    for (const c of targets) {
+      const got = await store.tx(async (tx) => {
+        /* Re-read under the row lock. The survey above is unlocked, so a
+           customer could have been credited by the live path in between —
+           the key would stop a double anyway, but re-reading keeps the
+           returned count honest. */
+        const fresh = await tx.findCustomerByPhone(c.phone);
+        return fresh ? ensureSignupBonus(tx, fresh) : 0;
+      });
+      if (got) { credited += 1; petalsGiven += got; }
+    }
+    return {
+      dryRun: false,
+      customers: customers.length,
+      alreadyHave: customers.length - owed.length,
+      credited,
+      petals: petalsGiven,
+      skipped: targets.length - credited,
+    };
+  }
+
   /** For a caller that wants the sweep without reading a balance. */
   async function expire(customerId = null) {
     return store.tx(async (tx) => ({ released: await expireHeld(tx, customerId) }));
   }
 
   return { balance, claim, credit, openOrder, settle, release, expire, adjust,
-           claimReceipt, birthdayReward, perksMatch };
+           claimReceipt, birthdayReward, perksMatch, backfillSignupBonus };
 }

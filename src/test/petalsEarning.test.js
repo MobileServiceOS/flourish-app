@@ -71,27 +71,150 @@ describe("the signup bonus", () => {
     expect(r.petals).toBe(SIGNUP_BONUS);
   });
 
-  it("still pays someone whose row was created by staff before they joined", async () => {
-    /* WHY THE KEY AND NOT AN `isNewCustomer` FLAG — and it is not the fraud
-       case it looks like. Nothing can delete a ledger row while leaving the
-       customer, so a flag cannot be farmed here. What a flag DOES do is deny a
-       real customer their bonus: `perksMatch`, `credit` and `adjust` all create
-       customer rows for phones that never signed up, so a customer who had a
-       Perks match done at the counter is no longer "new" by the time they
-       download the app, and a flag would silently withhold their 50.
+  it("pays someone whose row was created by staff, at the match rather than the join", async () => {
+    /* The bonus follows the PHONE, not the signup event, so it lands at the
+       first moment the server hears of this number — here, a staff Perks match
+       for someone who has not downloaded the app yet. They still get exactly
+       one, and it is already on their balance by the time they join.
 
-       Reverting to `isNewCustomer && …` fails this test and nothing else,
-       which is the honest description of what the key buys. */
-    await ctx.petals.perksMatch({ name: NAME, phone: PHONE, petals: 80, staff: "Kay" });
+       An `isNewCustomer` flag instead of a key would have withheld it
+       permanently: by the time they sign up their row exists, so they are not
+       "new", and the 50 would never be paid at all. */
+    const match = await ctx.petals.perksMatch({
+      name: NAME, phone: PHONE, petals: 80, staff: "Kay" });
+    expect(match.signupBonus, "paid at first appearance").toBe(SIGNUP_BONUS);
+
     const r = await join(ctx.petals);
-    expect(r.signupBonus, "joining after a counter match still earns it").toBe(SIGNUP_BONUS);
-    expect(r.petals).toBe(80 + SIGNUP_BONUS);
+    expect(r.signupBonus, "not paid a second time at the join").toBe(0);
+    expect(r.petals, "80 matched plus one signup bonus").toBe(80 + SIGNUP_BONUS);
+  });
+
+  it("pays a customer who reaches the server through a paid order first", async () => {
+    /* FIRST SERVER-SIDE APPEARANCE, not account creation. This customer never
+       called claim — the server heard of them because the register confirmed a
+       payment — and they are owed the bonus exactly as a new signup is. */
+    const r = await ctx.petals.credit({
+      name: NAME, phone: PHONE, orderId: "O1", petals: 20 });
+    expect(r.signupBonus).toBe(SIGNUP_BONUS);
+    expect(r.petals).toBe(SIGNUP_BONUS + 20);
+
+    // …and joining afterwards does not pay it a second time.
+    expect((await join(ctx.petals)).signupBonus).toBe(0);
+  });
+
+  it("is NOT paid by an admin correction, which is not a customer arriving", async () => {
+    /* The one path deliberately excluded. A correction that silently added 50
+       would be larger than whoever authorised it typed, and a NEGATIVE
+       correction against an unknown number would partially cancel itself —
+       clawing back 200 would leave -150. Nobody is missed: the backfill sweeps
+       up anyone an adjustment created. */
+    const r = await ctx.petals.adjust({
+      name: NAME, phone: PHONE, delta: -200, reason: "clawback", idemKey: "g1" });
+    expect(r.signupBonus).toBeUndefined();
+    expect((await ctx.petals.balance({ name: NAME, phone: PHONE })).petals)
+      .toBe(-200);
+
+    // They still get it the moment they actually turn up.
+    expect((await join(ctx.petals)).signupBonus).toBe(SIGNUP_BONUS);
   });
 
   it("is per phone number, so a different number is a different person", async () => {
     await join(ctx.petals);
     const other = await ctx.petals.claim({ name: "Someone Else", phone: FRIEND });
     expect(other.signupBonus).toBe(SIGNUP_BONUS);
+  });
+});
+
+describe("the retroactive backfill", () => {
+  /* Two populations, one mechanism. Customers already in the ledger are paid by
+     the backfill; customers who exist only on a device are paid the moment the
+     server first hears of them. Both go through ensureSignupBonus and both key
+     on the phone, so neither can pay twice and the two cannot disagree. */
+  let ctx;
+  beforeEach(() => { ctx = setup(); });
+
+  /** A customer the server knows about from before the bonus existed. */
+  const legacy = async (name, phone) => {
+    await ctx.store.tx(async (tx) => {
+      const c = await tx.createCustomer({ phone, name, at: new Date(ctx.at()) });
+      await tx.appendLedger({
+        customerId: c.id, delta: 40, reason: "earned",
+        orderId: `OLD-${phone}`, idemKey: `earn:OLD-${phone}`, at: new Date(ctx.at()),
+      });
+    });
+  };
+
+  it("reports what it would do without writing anything", async () => {
+    await legacy("Old One", "+14757776200");
+    await legacy("Old Two", "+19175551234");
+
+    const plan = await ctx.petals.backfillSignupBonus({ dryRun: true });
+    expect(plan).toMatchObject({
+      dryRun: true, customers: 2, alreadyHave: 0, wouldCredit: 2,
+      petals: 2 * SIGNUP_BONUS,
+    });
+    // Nothing moved.
+    expect((await ctx.petals.balance({ name: "Old One", phone: "4757776200" })).petals).toBe(40);
+  });
+
+  it("credits everyone who never had one", async () => {
+    await legacy("Old One", "+14757776200");
+    await legacy("Old Two", "+19175551234");
+
+    const r = await ctx.petals.backfillSignupBonus({ dryRun: false });
+    expect(r).toMatchObject({ credited: 2, petals: 2 * SIGNUP_BONUS });
+    expect((await ctx.petals.balance({ name: "Old One", phone: "4757776200" })).petals)
+      .toBe(40 + SIGNUP_BONUS);
+  });
+
+  it("credits nothing on a second run", async () => {
+    await legacy("Old One", "+14757776200");
+    await ctx.petals.backfillSignupBonus({ dryRun: false });
+    const again = await ctx.petals.backfillSignupBonus({ dryRun: false });
+    expect(again.credited).toBe(0);
+    expect(again.petals).toBe(0);
+    expect((await ctx.petals.balance({ name: "Old One", phone: "4757776200" })).petals)
+      .toBe(40 + SIGNUP_BONUS);
+  });
+
+  it("skips anyone the live path already paid", async () => {
+    await legacy("Old One", "+14757776200");
+    await ctx.petals.claim({ name: "Old One", phone: "4757776200" });   // paid here
+
+    const plan = await ctx.petals.backfillSignupBonus({ dryRun: true });
+    expect(plan).toMatchObject({ customers: 1, alreadyHave: 1, wouldCredit: 0 });
+  });
+
+  it("does not pay again when a backfilled customer later opens the app", async () => {
+    /* The case the two-mechanism version gets wrong: credited by the backfill,
+       then signing in. One key, so one payment. */
+    await legacy("Old One", "+14757776200");
+    await ctx.petals.backfillSignupBonus({ dryRun: false });
+    const signin = await ctx.petals.claim({ name: "Old One", phone: "4757776200" });
+    expect(signin.signupBonus).toBe(0);
+    expect(signin.petals).toBe(40 + SIGNUP_BONUS);
+  });
+
+  it("can be run in batches and finishes what a partial run started", async () => {
+    for (const [n, ph] of [["A", "+14757776200"], ["B", "+19175551234"], ["C", "+12125559999"]]) {
+      await legacy(n, ph);
+    }
+    expect((await ctx.petals.backfillSignupBonus({ dryRun: false, limit: 2 })).credited).toBe(2);
+    const rest = await ctx.petals.backfillSignupBonus({ dryRun: true });
+    expect(rest.wouldCredit).toBe(1);
+    expect((await ctx.petals.backfillSignupBonus({ dryRun: false })).credited).toBe(1);
+  });
+
+  it("uses the same reason as a live signup, not a second word for it", async () => {
+    /* A balance read out at a counter should not show "signup bonus" for one
+       customer and "signup bonus (retroactive)" for the next — they are the
+       same entitlement, and which run wrote it is in created_at. */
+    await legacy("Old One", "+14757776200");
+    await ctx.petals.backfillSignupBonus({ dryRun: false });
+    const row = await ctx.store.tx(async (tx) =>
+      tx.findLedgerByIdemKey("signup:+14757776200"));
+    expect(row.reason).toBe("signup");
+    expect(row.delta).toBe(SIGNUP_BONUS);
   });
 });
 
@@ -399,7 +522,10 @@ describe("the Perks balance match", () => {
     expect(again.credited).toBe(0);
     expect(again.alreadyMatched).toBe(true);
     const bal = await ctx.petals.balance({ name: NAME, phone: PHONE });
-    expect(bal.petals).toBe(PERKS_MATCH_CAP);
+    /* The cap plus the signup bonus, which the match itself paid because it was
+       this number's first appearance on the server. A matched customer is
+       therefore worth 250, not 200 — see docs/PETALS-LIABILITY.md. */
+    expect(bal.petals).toBe(PERKS_MATCH_CAP + SIGNUP_BONUS);
   });
 
   it("refuses a zero or negative match rather than writing a row", async () => {

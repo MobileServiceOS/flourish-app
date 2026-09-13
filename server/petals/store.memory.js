@@ -106,6 +106,12 @@ export function createMemoryStore() {
       return { ...c };
     },
 
+    /* The backfill's access pattern: every customer, oldest first, so a run is
+       reproducible and a partial run resumes in the same order. */
+    async allCustomers() {
+      return customers.slice().sort((a, b) => a.id - b.id).map((c) => ({ ...c }));
+    },
+
     async findCustomerById(id) {
       const c = customers.find((x) => x.id === id);
       return c ? { ...c } : null;

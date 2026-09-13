@@ -196,6 +196,15 @@ export async function createPgStore({ connectionString, ssl, schema } = {}) {
       return rowToCustomer(rows[0]) ?? null;
     },
 
+    /* The backfill's access pattern. No FOR UPDATE here: this is the survey,
+       and each customer is then credited in its own transaction that takes the
+       lock properly. Holding a lock on every customer at once would block the
+       whole shop for the length of the run. */
+    async allCustomers() {
+      const { rows } = await q("SELECT * FROM petals_customer ORDER BY id");
+      return rows.map(rowToCustomer);
+    },
+
     async findCustomerById(id) {
       const { rows } = await q("SELECT * FROM petals_customer WHERE id = $1", [id]);
       return rowToCustomer(rows[0]) ?? null;

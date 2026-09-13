@@ -42,6 +42,18 @@ beforeEach(() => {
 const earn = (n, orderId = `ORD-${n}`) =>
   petals.credit({ phone: PHONE, name: NAME, orderId, petals: n });
 
+/* Put a customer on a KNOWN BALANCE.
+
+   The first time a phone number reaches the server it is paid the signup
+   bonus, whichever call did it — see ensureSignupBonus in ledger.js. So
+   `earn(200)` now leaves 250, and every test below that wants "a customer with
+   200 Petals" has to say so rather than say "credit 200". Subtracting the
+   bonus in one place keeps each test's number meaning what it says; restating
+   every expectation as `200 + SIGNUP_BONUS` would have quietly turned the
+   insufficient-balance test into a sufficient-balance one. */
+const fund = (target, orderId = "SEED") =>
+  earn(target - SIGNUP_BONUS, orderId);
+
 describe("a phone number is one customer, however it was typed", () => {
   it("stores E.164 and accepts the shapes a keyboard produces", () => {
     for (const input of ["3478599413", "(347) 859-9413", "347-859-9413", "13478599413", "+1 347 859 9413"]) {
@@ -121,7 +133,11 @@ describe("migrating a balance off a device", () => {
 
 describe("earning is credited once per order", () => {
   it("credits a paid order", async () => {
-    expect(await earn(20, "ORD-1")).toMatchObject({ credited: 20, petals: 20 });
+    /* This is also this number's first appearance on the server, so the signup
+       bonus lands in the same call — the balance is 20 earned plus the 50. */
+    expect(await earn(20, "ORD-1")).toMatchObject({
+      credited: 20, signupBonus: SIGNUP_BONUS, petals: 20 + SIGNUP_BONUS,
+    });
   });
 
   it("credits the same order once, however many times payment is reported", async () => {
@@ -129,13 +145,15 @@ describe("earning is credited once per order", () => {
        same payment, and they must not both pay. */
     await earn(20, "ORD-1");
     expect(await earn(20, "ORD-1")).toMatchObject({ credited: 0 });
-    expect((await petals.balance({ name: NAME, phone: PHONE })).petals).toBe(20);
+    expect((await petals.balance({ name: NAME, phone: PHONE })).petals)
+      .toBe(20 + SIGNUP_BONUS);
   });
 
   it("credits different orders separately", async () => {
     await earn(20, "ORD-1");
     await earn(15, "ORD-2");
-    expect((await petals.balance({ name: NAME, phone: PHONE })).petals).toBe(35);
+    expect((await petals.balance({ name: NAME, phone: PHONE })).petals)
+      .toBe(35 + SIGNUP_BONUS);
   });
 
   it("credits nothing for a zero-value order", async () => {
@@ -144,7 +162,7 @@ describe("earning is credited once per order", () => {
 });
 
 describe("reserve on order, deduct on payment, release on void", () => {
-  beforeEach(async () => { await earn(200, "SEED"); });
+  beforeEach(async () => { await fund(200); });
 
   it("holds the cost when the order is created", async () => {
     const r = await petals.openOrder({
@@ -226,7 +244,7 @@ describe("the customer who never came back", () => {
      open in Clover forever and the hold would sit held forever, with no event
      to release it. A day is the limit, released lazily on the next read — no
      cron to monitor, and the only person who cares is the one looking. */
-  beforeEach(async () => { await earn(200, "SEED"); });
+  beforeEach(async () => { await fund(200); });
 
   it("releases a hold older than a day, on the next balance read", async () => {
     await petals.openOrder({ phone: PHONE, name: NAME, orderId: "ORD-A", rewardId: "r-side", cost: 120 });
@@ -272,15 +290,23 @@ describe("the ledger is the balance", () => {
 
     const rows = store.__rows.ledger;
     const sum = rows.reduce((n, l) => n + l.delta, 0);
-    expect(sum).toBe(80);
-    expect((await petals.balance({ name: NAME, phone: PHONE })).petals).toBe(80);
+    /* 100 earned, 70 held and settled, 50 earned, plus the signup bonus that
+       landed when this number first appeared. The number itself is incidental;
+       what this test is for is that the SUM OF THE ROWS and the balance the
+       reads report are the same thing, which is the ledger's whole premise. */
+    expect(sum).toBe(80 + SIGNUP_BONUS);
+    expect((await petals.balance({ name: NAME, phone: PHONE })).petals).toBe(sum);
   });
 
   it("records a reason on every row, so a balance can be explained", async () => {
     await earn(100, "O1");
     await petals.openOrder({ phone: PHONE, name: NAME, orderId: "O2", rewardId: "r-drink", cost: 70 });
     await petals.release("O2");
-    expect(store.__rows.ledger.map((l) => l.reason)).toEqual(["earned", "reserved", "released"]);
+    /* The signup row comes first: crediting O1 was this number's first
+       appearance. Its presence here is the point of the test — every row says
+       where it came from, including that one. */
+    expect(store.__rows.ledger.map((l) => l.reason))
+      .toEqual(["signup", "earned", "reserved", "released"]);
   });
 
   it("never rewrites or deletes a row", async () => {
