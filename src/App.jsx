@@ -11,7 +11,7 @@ import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/res
 import { createOrder, syncCustomer, setStock } from "./lib/clover.js";
 import {
   useCloverHealth, useInventorySync, useReadyQuote, useLoyaltySource, useReconcileOnLaunch,
-  usePetalsBalance,
+  usePetalsBalance, useRewardLadder,
 } from "./hooks/clover.js";
 
 import Splash from "./components/Splash.jsx";
@@ -71,6 +71,12 @@ export default function App() {
      has one. This merchant does not, so the in-app scheme runs — see the note
      in lib/loyalty.js. */
   const loyalty = useLoyaltySource({ enabled: clover.status === "online" });
+
+  /* The reward ladder, from the server. A shipped build once showed "up to $22
+     off a plate" while the server computed $20 — the customer reads one number
+     and is charged by another. Every cap a customer sees now comes from the
+     same place that enforces it. */
+  const ladder = useRewardLadder({ enabled: clover.status === "online" });
 
   /* The manual toggle also pushes back to Clover when connected, so the 86
      shows up on the register and on every other ordering channel — not just
@@ -236,7 +242,7 @@ export default function App() {
 
   const [applied, setApplied] = useState(null); // voucher code applied to this cart
   const appliedVoucher = vouchers.find((v) => v.code === applied) || null;
-  const discount = discountFor(appliedVoucher, cart);
+  const discount = discountFor(appliedVoucher, cart, ladder.rewards);
 
   const query = search.trim();
 
@@ -284,8 +290,13 @@ export default function App() {
 
   const applyVoucher = (code) => {
     const v = vouchers.find((x) => x.code === code);
-    const d = discountFor(v, cart);
-    if (!d) return flash(`Add ${rewardOf(v).needs} to use this`);
+    const d = discountFor(v, cart, ladder.rewards);
+    if (!d) {
+      const r = rewardOf(v, ladder.rewards);
+      return flash(r?.unsupported
+        ? "Update the app to use this reward"
+        : `Add ${r?.needs ?? "something it covers"} to use this`);
+    }
     setApplied(code);
     flash(`${v.name} applied`);
   };
@@ -628,8 +639,9 @@ export default function App() {
         sandbox: clover.status === "online" && clover.sandbox }} />}
       {view === "rewards" && (account
         ? <RewardsView {...{ account, points, petalsAvailable, vouchers, orders, redeem, signOut }}
+            rewards={ladder.rewards} ladderFromServer={ladder.fromServer}
             onReorder={reorder} onDeleteAccount={deleteMyAccount} />
-        : <SignInView onSignIn={signIn} />)}
+        : <SignInView onSignIn={signIn} rewards={ladder.rewards} />)}
       {view === "orderDetail" && detailOrder && (
         <OrderDetail
           /* Read from the live list, not from the snapshot taken when the card
@@ -647,6 +659,9 @@ export default function App() {
         onBrowse={() => setView("menu")} onTrack={() => active && setView("track")} />}
       {view === "cart" && <CartView {...{ cart, subtotal, saved, account, setQty, removeLine, setView,
           vouchers, applied, appliedVoucher, discount, applyVoucher, clearVoucher: () => setApplied(null),
+          /* The cart shows "Saves $X" per voucher and must use the same caps as
+             the server, not the bundled ones. */
+          rewards: ladder.rewards,
           quote, setNote }} />}
       {view === "checkout" && (
         <CheckoutView subtotal={subtotal} points={points} account={account} goJoin={() => setView("rewards")}

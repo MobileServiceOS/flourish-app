@@ -1046,6 +1046,57 @@ carries one specific value baked into its bundle. Rotating `APP_KEY` on the host
 turns away every copy of the app already on a phone, and it stays broken until a
 new build clears review. Never rotate it without a build ready to ship.
 
+## Merging is not shipping
+
+A device build carries a **timestamp**, and the gap between a merge and a bundle
+on a phone is where a whole debugging round was lost.
+
+The report was that capped-discount rewards were broken: a $25 plate showed
+"Add a plate under $22 to use" and Apply did nothing. Three plausible causes
+were raised — the change not on main, client gating diverging from the server,
+the cap living in two places — and all three were wrong. The code was correct on
+main. The bundle on the phone had been built at **13:55** and the change merged
+at **21:17**, so the app was behaving exactly as its own seven-hour-old code
+said. Staleness had been ruled out because the phone had "just been updated" —
+from a bundle cut before the merge.
+
+Two things came out of it, and both are load-bearing:
+
+**The build is on screen.** `src/lib/build.js` reads a `__BUILD__` constant that
+`vite.config.js` stamps from package.json plus `new Date()`, and the Rewards
+footer prints `Flourish BX 1.1.0 (5) · 13 Sep`. The **date** is the part that
+earns its keep: a version number says which release was intended, a date says
+whether this bundle predates the change someone is looking for. `title` carries
+the full ISO stamp for a bug report.
+
+**The client is no longer authoritative about a price.** See below.
+
+### The reward ladder comes from the server
+
+A shipped client saying "up to $22 off a plate" while the server computes $20
+tells the customer one number and charges another — the same class as every
+price divergence in this project, except between our own two halves. A "please
+update" notice is a thing a customer ignores, so the drift is removed instead of
+announced.
+
+`GET /api/clover/rewards` returns the ladder, and the client renders from that.
+Seven of a reward's eight fields are plain data and cross the wire — id, cost,
+cap, kind, name, desc, needs. The eighth, `match`, is a predicate over cart
+lines: it is code, cannot be serialised, and stays in `MATCHERS` keyed by id.
+
+So the cap a customer sees and the cap the proxy enforces are the same number
+from the same place, on every launch. `discountFor(voucher, cart, rewards)`
+takes the ladder rather than closing over the bundled one.
+
+Two states worth knowing:
+
+- **The server did not answer.** The bundled ladder renders so the screen still
+  works, and the footer says `· offline prices`. Nothing can be redeemed anyway,
+  because redemption is already gated on the balance being reachable.
+- **A reward id this build has no matcher for.** Shown, never applied, with
+  "Update the app to use this reward". An old client meeting a new reward must
+  not apply some other predicate to it.
+
 ## Environments
 
 `CLOVER_API_BASE` in `.env.local` decides everything:
@@ -1063,7 +1114,7 @@ can't start billing real cards.
 npm run dev:all     # frontend (5173) + proxy (3001)
 npm run dev         # frontend only — app runs in preview mode
 npm run server      # proxy only
-npm test            # 879 tests (+9 more with a test database)
+npm test            # 892 tests (+9 more with a test database)
 ```
 
 Preview mode is a real, tested state: if the proxy isn't running the app still

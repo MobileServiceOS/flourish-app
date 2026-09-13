@@ -122,6 +122,10 @@ export const createOrder = (payload) => call("/orders", { method: "POST", body: 
 export const quoteOrder = (cart, signal) =>
   call("/quote", { method: "POST", body: { cart }, signal });
 
+/* The reward ladder, so the client never renders a cap the server does not
+   enforce. See the note in lib/loyalty.js. */
+export const getRewards = (signal) => call("/rewards", { signal });
+
 export const getPrinters = (signal) => call("/printers", { signal });
 
 /* ---------- Petals ----------

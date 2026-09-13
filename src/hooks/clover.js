@@ -3,10 +3,11 @@
    order. Nothing here holds a secret. */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
-  health, getInventory, getOrder, quoteOrder, getOrderStatus, getLoyalty,
+  health, getInventory, getOrder, quoteOrder, getOrderStatus, getLoyalty, getRewards,
 } from "../lib/clover.js";
 import { trackingStage } from "../lib/cloverOrder.js";
 import { ordersToReconcile } from "../lib/reconcile.js";
+import { hydrateRewards } from "../lib/loyalty.js";
 import { getPetalsBalance, claimPetals } from "../lib/clover.js";
 
 /**
@@ -415,6 +416,35 @@ export function usePetalsBalance({ name, phone, deviceBalance = 0, enabled = tru
   const refresh = useCallback(() => { ask(); }, [ask]);
 
   return { ...state, refresh };
+}
+
+/**
+ * The reward ladder, from the server.
+ *
+ * Asked once per launch. Until it answers — and if it never does — the bundled
+ * ladder is used so the screen renders, and `fromServer` is false. Redemption
+ * is already gated on the balance being reachable, so a client falling back
+ * cannot spend against a stale cap anyway.
+ */
+export function useRewardLadder({ enabled = true } = {}) {
+  const [state, setState] = useState(() => hydrateRewards(null));
+
+  useEffect(() => {
+    if (!enabled) return;
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        const res = await getRewards(ctrl.signal);
+        setState(hydrateRewards(res?.rewards));
+      } catch {
+        /* Bundled ladder, flagged as such. Nothing is redeemable without a
+           balance, which needs the same server. */
+      }
+    })();
+    return () => ctrl.abort();
+  }, [enabled]);
+
+  return state;
 }
 
 /**

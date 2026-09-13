@@ -7,7 +7,7 @@ import { formatPhone, phoneDigits, isValidPhone, isValidName } from "../lib/phon
 import { Hummingbird, SubHeader, Section } from "./shared.jsx";
 
 /* ---------- REWARDS ---------- */
-export default function SignInView({ onSignIn }) {
+export default function SignInView({ onSignIn, rewards = REWARDS }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   // Only complain about a field the customer has actually left.
@@ -62,7 +62,7 @@ export default function SignInView({ onSignIn }) {
         </button>
 
         <h3 className="serif" style={{ fontWeight: 700, fontSize: 18, margin: "26px 4px 10px" }}>What you unlock</h3>
-        {REWARDS.map((r) => (
+        {rewards.map((r) => (
           <div key={r.id} className="card" style={{ padding: 14, marginBottom: 10, display: "flex", gap: 12, alignItems: "center" }}>
             <div style={{ width: 40, height: 40, borderRadius: 12, flex: "0 0 auto",
               background: "linear-gradient(135deg,var(--leaf-lt),var(--teal))", display: "flex", alignItems: "center", justifyContent: "center" }}>

@@ -106,7 +106,64 @@ export const capLabel = (r) =>
   r.kind === "money" ? `$${r.cap.toFixed(2)} off any order`
     : `up to $${r.cap.toFixed(2)} off ${r.needs === "anything" ? "your order" : r.needs}`;
 
-export const rewardOf = (v) => (v ? REWARDS.find((r) => r.id === v.rid) : null);
+/* ============================================================================
+   THE LADDER IS THE SERVER'S; ONLY THE MATCHER IS LOCAL
+
+   A shipped client showed "up to $22 off a plate" while the server computed
+   $20, because the bundle was cut before the cap changed. The customer reads
+   one number and is charged by another — the same class as every price
+   divergence in this project, except between our own two halves.
+
+   Seven of a reward's eight fields are plain data and can come down the wire:
+   id, cost, cap, kind, name, desc, needs. The eighth is `match`, which is code
+   — a predicate over cart lines — and cannot be serialised. So `match` stays
+   here, keyed by id, and EVERYTHING THE CUSTOMER READS comes from the server.
+
+   That makes the drift structurally impossible rather than merely unlikely: the
+   cap a customer is shown and the cap the server enforces are the same number,
+   read from the same place, on every launch.
+
+   A reward the server offers whose id has no matcher here is DISPLAYED but not
+   redeemable — an old client meeting a new reward should say "update to use
+   this", not silently apply the wrong predicate to it. */
+const MATCHERS = {
+  "r-drink": (l) => l.itemId === DRINK_ID,
+  "r-5off": () => true,
+  "r-side": (l) => l.itemId === SIDE_ID,
+  "r-mac": (l) => l.itemId === SIDE_ID && /seafood mac/i.test(l.meta || ""),
+  "r-lunch": (l) => l.plate,
+  "r-plate": (l) => l.plate,
+};
+
+/**
+ * Merge the server's ladder with the local matchers.
+ *
+ * `serverRewards` null or empty means the server has not answered — the bundled
+ * ladder is used so the screen still renders, and `fromServer` is false so the
+ * caller can say so. Redemption is already gated on the balance being
+ * reachable, so a client on the bundled ladder cannot spend anything anyway.
+ */
+export function hydrateRewards(serverRewards) {
+  if (!Array.isArray(serverRewards) || !serverRewards.length) {
+    return { rewards: REWARDS, fromServer: false };
+  }
+  const rewards = serverRewards.map((r) => ({
+    ...r,
+    match: MATCHERS[r.id] ?? null,
+    /* No matcher means this client does not know which lines the reward covers.
+       Shown, never applied. */
+    unsupported: !MATCHERS[r.id],
+  }));
+  return { rewards, fromServer: true };
+}
+
+/** What the server should send. The shape, with the code left behind. */
+export const serialisableRewards = (rewards = REWARDS) =>
+  rewards.map(({ id, cost, kind, cap, name, desc, needs }) =>
+    ({ id, cost, kind, cap, name, desc, needs }));
+
+export const rewardOf = (v, rewards = REWARDS) =>
+  (v ? rewards.find((r) => r.id === v.rid) : null);
 
 /**
  * What a reward takes off this cart. 0 means it does not apply at all.
@@ -120,9 +177,11 @@ export const rewardOf = (v) => (v ? REWARDS.find((r) => r.id === v.rid) : null);
  * "money" — the cart total, capped, so a $3 order cannot take $5 off and end up
  *           owing nothing.
  */
-export function discountFor(voucher, cart) {
-  const r = rewardOf(voucher);
-  if (!r) return 0;
+export function discountFor(voucher, cart, rewards = REWARDS) {
+  const r = rewardOf(voucher, rewards);
+  /* An unsupported reward is worth nothing to THIS client. The server may still
+     honour it; this one must not pretend to know what it covers. */
+  if (!r || r.unsupported || typeof r.match !== "function") return 0;
   const lines = Array.isArray(cart) ? cart : [];
   const price = (l) => Number(l.price) || 0;
 
