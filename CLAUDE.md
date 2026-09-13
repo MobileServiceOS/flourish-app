@@ -241,10 +241,29 @@ so the phone talks to Vite and Vite talks to 3001.
 
 ### Hours and the ready window
 
-Open **11AM**, closing 10PM Sunday to Thursday and 11PM Friday and Saturday.
-All of it comes from `src/lib/hours.js` — `OPEN_HOUR`, `closeHourFor`,
-`HOURS_LINE` — and every screen reads those constants rather than repeating a
-time. The printed trifold still says 9AM-10PM daily and is now the stale one.
+Open **11AM, closed 10PM. Every day, no exceptions.**
+
+There used to be a `closeHourFor(dow)` returning 11PM on Friday and Saturday.
+That was wrong, and while it stood **the app took orders for an hour after the
+kitchen had gone home on the two busiest nights of the week** — including
+cooked-to-order plates it could not possibly have ready.
+
+The day-varying function is **deleted**, not made to return the same value for
+every day: a closing hour that varies by day, with no day that varies, is
+somewhere for the rule to drift back to. A test asserts `closeHourFor` is no
+longer exported at all. If a late night ever returns it should be re-added
+deliberately, with the copy and the ready-time guard in the same commit.
+
+It is one constant now — `CLOSE_HOUR` in `src/lib/hours.js`, with `OPEN_HOUR`
+and `HOURS_LINE` — and every screen, the server guard and the startup banner
+read it rather than repeating a time. That single-source property is what made
+this a four-line change: the cart's "kitchen closes at…", the checkout's slot
+list, the 409 refusal and the banner all corrected themselves, because every one
+of them already derived from `closingOn()`. Only the one literal, `HOURS_LINE`,
+had to be edited.
+
+The printed trifold says 9AM-10PM daily: the **close now agrees** and only the
+opening differs, so the trifold is stale on that half alone.
 
 **There is no ASAP, and no single prep constant.** Fish, seafood and lamb are
 cooked to order and cannot be promised in fifteen minutes, so how long an order

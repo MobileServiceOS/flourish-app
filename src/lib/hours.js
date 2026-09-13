@@ -1,8 +1,9 @@
 /* Operating hours and pickup slots.
-   Open 11AM daily. Closes 10PM Sunday to Thursday, 11PM Friday and Saturday.
+   Open 11AM, closed 10PM. Every day, no exceptions.
 
-   The printed trifold says 9AM-10PM every day; these hours supersede it, so the
-   menu is the stale one. Worth reprinting.
+   The printed trifold says 9AM-10PM every day. The CLOSE now agrees; only the
+   opening differs, and these hours supersede it — the trifold is still the
+   stale one on that half. Worth reprinting.
 
    Every function takes `now` rather than reading the clock itself, so the
    checkout can be tested at 9:58PM on a Friday without waiting until Friday.
@@ -21,8 +22,23 @@ export const OPEN_HOUR = 11;
 
 export const SLOT_MINUTES = 15;   // granularity of the pickup picker
 
-/** 10PM, except Friday and Saturday which run to 11PM. 0=Sun ... 6=Sat. */
-export const closeHourFor = (dow) => (dow === 5 || dow === 6 ? 23 : 22);
+/* ONE CLOSING TIME, AND NO FUNCTION TO VARY IT.
+
+   There used to be `closeHourFor(dow)` returning 23 on Friday and Saturday.
+   That rule was wrong — the kitchen shuts at 10PM every day — and while it
+   stood, the app took orders for an hour after the kitchen had gone home on the
+   two busiest nights of the week.
+
+   The day-varying function is deleted rather than made to return 22 for every
+   day. A function whose only purpose was a special case, kept after the special
+   case is gone, is somewhere for the rule to drift back to — and the whole
+   shape of that failure (one rule in several places, one of them moved) is the
+   same one that produced every price divergence in this project.
+
+   If a late night ever comes back it should be re-added deliberately, with the
+   copy and the ready-time guard updated in the same commit, not found lying
+   here already half-built. */
+export const CLOSE_HOUR = 22;
 
 const at = (d, hour, min = 0) => {
   const x = new Date(d);
@@ -31,7 +47,7 @@ const at = (d, hour, min = 0) => {
 };
 
 export const openingOn = (d) => at(d, OPEN_HOUR);
-export const closingOn = (d) => at(d, closeHourFor(d.getDay()));
+export const closingOn = (d) => at(d, CLOSE_HOUR);
 
 export function isOpen(now = new Date()) {
   return now >= openingOn(now) && now < closingOn(now);
@@ -117,4 +133,4 @@ export function describeOpening(open, now = new Date()) {
 }
 
 /** Human hours line for the footer. */
-export const HOURS_LINE = "Open daily 11AM–10PM · 11PM Fri & Sat";
+export const HOURS_LINE = "Open daily 11AM–10PM";

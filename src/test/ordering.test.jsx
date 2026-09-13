@@ -169,7 +169,9 @@ describe("pickup time", () => {
     expect(opts).not.toContain("10:15 PM");
   });
 
-  it("runs an hour later on a Friday", async () => {
+  it("offers no later slot on a Friday than on a Monday", async () => {
+    /* The Friday exception is gone. It was wrong, and while it stood the
+       picker offered a 10:45PM pickup from a kitchen that shut at ten. */
     const { user } = await renderApp(FRI_NOON);
     await addItem(user);
     await user.click(await screen.findByRole("button", { name: /cart, 1 item/i }));
@@ -177,7 +179,9 @@ describe("pickup time", () => {
 
     const opts = within(screen.getByLabelText(/schedule it/i))
       .getAllByRole("option").map((o) => o.textContent);
-    expect(opts[opts.length - 1]).toBe("11:00 PM");
+    expect(opts[opts.length - 1]).toBe("10:00 PM");
+    expect(opts).not.toContain("10:15 PM");
+    expect(opts).not.toContain("11:00 PM");
   });
 
   it("scheduling a slot puts that time on the confirmation", async () => {
