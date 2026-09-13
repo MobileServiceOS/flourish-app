@@ -68,19 +68,26 @@ export default function AddPastOrder({ onClaim, disabled = false }) {
         <h3 style={{ fontWeight: 700, fontSize: 15, margin: 0 }}>Ordered at the counter?</h3>
       </div>
       <p style={{ color: "var(--muted)", fontSize: 12.5, margin: "0 0 12px", lineHeight: 1.5 }}>
-        Add it and earn {CURRENCY_MANY} for it. Type the last few characters of the
-        order number printed on your receipt — orders from the last 7 days.
+        Add it and earn {CURRENCY_MANY} for it. Your receipt prints a{" "}
+        <strong>Clover ID</strong> near the bottom — type the last few
+        characters of it. Orders from the last 7 days.
       </p>
 
+      {/* "Clover ID", NOT "order number". This app already calls FL-3412 the
+          order number — OrderDetail labels it exactly that — so asking for the
+          "order number from your receipt" sent customers looking for an FL
+          number that is not printed on a counter receipt, and the claim then
+          failed with "we couldn't find that order". The receipt says
+          "Clover ID"; so does this. */}
       <label htmlFor="past-order-ref" style={{ display: "block", fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>
-        Order number from your receipt
+        Clover ID from your receipt
       </label>
       <div style={{ display: "flex", gap: 8 }}>
         <input
           id="past-order-ref"
           value={ref}
           onChange={(e) => { setRef(tidy(e.target.value)); setResult(null); }}
-          placeholder="e.g. K8730"
+          placeholder="last 6, e.g. 4E3KNE"
           inputMode="text"
           autoCapitalize="characters"
           autoCorrect="off"

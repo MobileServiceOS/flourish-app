@@ -8,7 +8,9 @@ import { rewardOf, discountFor, pointsFor, CURRENCY_MANY } from "./lib/loyalty.j
 import { searchItems } from "./lib/search.js";
 import { loadAccount, saveAccount, deleteAccount } from "./lib/storage.js";
 import { DOW, TODAY_IS_FRIDAY, SEAFOOD_CAT, POPULAR, ALL_ITEMS } from "./lib/restaurant.js";
-import { createOrder, syncCustomer, setStock, claimReceipt } from "./lib/clover.js";
+import {
+  createOrder, syncCustomer, setStock, claimReceipt, claimPetals, checkReferralCode,
+} from "./lib/clover.js";
 import {
   useCloverHealth, useInventorySync, useReadyQuote, useLoyaltySource, useReconcileOnLaunch,
   usePetalsBalance, useRewardLadder,
@@ -173,6 +175,22 @@ export default function App() {
   const addPastOrder = async (orderRef) => {
     const r = await claimReceipt({
       name: account.name, phone: account.phone, orderRef,
+    });
+    petals.refresh?.();
+    return r;
+  };
+
+  /**
+   * Add a friend's referral code after signing up.
+   *
+   * Goes through `claim`, which is the one place that decides whether a code
+   * can still be applied — open until the customer's first paid order. The
+   * server's answer is returned as-is so the card can say which of the four
+   * refusals happened rather than a shrug.
+   */
+  const enterReferralCode = async (code) => {
+    const r = await claimPetals({
+      name: account.name, phone: account.phone, referralCode: code,
     });
     petals.refresh?.();
     return r;
@@ -672,8 +690,11 @@ export default function App() {
         ? <RewardsView {...{ account, points, petalsAvailable, vouchers, orders, redeem, signOut }}
             rewards={ladder.rewards} ladderFromServer={ladder.fromServer}
             onReorder={reorder} onDeleteAccount={deleteMyAccount}
-            onClaimReceipt={addPastOrder} referralCode={petals.referralCode} />
-        : <SignInView onSignIn={signIn} rewards={ladder.rewards} />)}
+            onClaimReceipt={addPastOrder}
+            referral={petals.referral} onEnterReferralCode={enterReferralCode}
+            signupBonus={petals.signupBonus} birthdayPetals={petals.birthdayPetals} />
+        : <SignInView onSignIn={signIn} rewards={ladder.rewards}
+            onCheckCode={checkReferralCode} />)}
       {view === "orderDetail" && detailOrder && (
         <OrderDetail
           /* Read from the live list, not from the snapshot taken when the card

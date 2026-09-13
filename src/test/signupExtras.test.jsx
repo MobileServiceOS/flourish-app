@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import SignInView from "../components/SignInView.jsx";
@@ -148,5 +148,120 @@ describe("sharing a referral code", () => {
     const share = vi.fn().mockRejectedValue(
       Object.assign(new Error("cancelled"), { name: "AbortError" }));
     expect(await shareCode("K7M2X9", { share })).toBeNull();
+  });
+});
+
+/* ============================================================================
+   THE CONVERSION MOMENT, AND CORRECTING A CODE BEFORE IT IS TOO LATE
+   ============================================================================ */
+
+describe("what the signup screen offers a walk-in", () => {
+  it("names the receipt they are holding", () => {
+    /* A walk-in with a receipt is who the claim feature is FOR, and they could
+       not see it: "Add a past order" lives on Rewards, which only exists once
+       an account does. The form never mentioned the money already spent. */
+    render(<SignInView onSignIn={vi.fn()} />);
+    expect(screen.getByText(/ordered at the counter/i)).toBeInTheDocument();
+    expect(screen.getByText(/your receipt is worth/i)).toBeInTheDocument();
+    expect(screen.getByText(/clover id/i)).toBeInTheDocument();
+  });
+
+  it("says the joining bonus out loud", () => {
+    /* 50 Petals were being paid and never mentioned — a reason to sign up
+       thrown away, and then an unexplained balance. */
+    render(<SignInView onSignIn={vi.fn()} />);
+    expect(screen.getByText(/50 Petals just for joining/i)).toBeInTheDocument();
+  });
+});
+
+describe("correcting a referral code before the account exists", () => {
+  const fillForm = async (user) => {
+    await user.type(screen.getByLabelText(/full name/i), "Nevaeh Reid");
+    await user.type(screen.getByLabelText(/phone number/i), "3478599413");
+  };
+
+  it("confirms a good code on blur", async () => {
+    const user = userEvent.setup();
+    const onCheckCode = vi.fn().mockResolvedValue({ valid: true });
+    render(<SignInView onSignIn={vi.fn()} onCheckCode={onCheckCode} />);
+    await fillForm(user);
+    await user.type(screen.getByLabelText(/referral code/i), "K7M2X9");
+    await user.tab();
+
+    expect(onCheckCode).toHaveBeenCalledWith({ phone: "3478599413", code: "K7M2X9" });
+    expect(await screen.findByText(/code looks good/i)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["UNKNOWN_CODE", /don't recognise that code/i],
+    ["OWN_CODE", /can't refer yourself/i],
+    ["ALREADY_REFERRED", /already a friend's code/i],
+    ["WINDOW_CLOSED", /before your first order/i],
+  ])("shows %s as something fixable, before signing up", async (reason, text) => {
+    /* THE POINT: correctable HERE. Once the account exists and has ordered,
+       nothing in the app can apply a code, so a refusal discovered later is a
+       refusal discovered never. */
+    const user = userEvent.setup();
+    render(<SignInView onSignIn={vi.fn()}
+      onCheckCode={vi.fn().mockResolvedValue({ valid: false, reason })} />);
+    await fillForm(user);
+    await user.type(screen.getByLabelText(/referral code/i), "ZZZZZZ");
+    await user.tab();
+    expect(await screen.findByText(text)).toBeInTheDocument();
+  });
+
+  it("still lets them sign up with a bad code rather than trapping them", async () => {
+    /* An optional field must never block joining. The code is sent anyway and
+       the claim decides; what changed is that they were TOLD. */
+    const user = userEvent.setup();
+    const onSignIn = vi.fn();
+    render(<SignInView onSignIn={onSignIn}
+      onCheckCode={vi.fn().mockResolvedValue({ valid: false, reason: "UNKNOWN_CODE" })} />);
+    await fillForm(user);
+    await user.type(screen.getByLabelText(/referral code/i), "ZZZZZZ");
+    await user.tab();
+    await screen.findByText(/don't recognise/i);
+
+    const button = screen.getByRole("button", { name: /create my account/i });
+    expect(button).toBeEnabled();
+    await user.click(button);
+    expect(onSignIn).toHaveBeenCalled();
+  });
+
+  it("clears the verdict as soon as the code is edited", async () => {
+    const user = userEvent.setup();
+    render(<SignInView onSignIn={vi.fn()}
+      onCheckCode={vi.fn().mockResolvedValue({ valid: false, reason: "UNKNOWN_CODE" })} />);
+    await fillForm(user);
+    await user.type(screen.getByLabelText(/referral code/i), "ZZZZZZ");
+    await user.tab();
+    await screen.findByText(/don't recognise/i);
+    await user.type(screen.getByLabelText(/referral code/i), "1");
+    expect(screen.queryByText(/don't recognise/i)).toBeNull();
+  });
+
+  it("says nothing about the code when the server cannot be reached", async () => {
+    /* Accusing a code because the network failed is worse than silence: the
+       claim will decide, and a customer who retypes a correct code is being
+       sent in circles. */
+    const user = userEvent.setup();
+    render(<SignInView onSignIn={vi.fn()}
+      onCheckCode={vi.fn().mockRejectedValue(new Error("offline"))} />);
+    await fillForm(user);
+    await user.type(screen.getByLabelText(/referral code/i), "K7M2X9");
+    await user.tab();
+    await waitFor(() =>
+      expect(screen.queryByText(/checking that code/i)).toBeNull());
+    expect(screen.queryByText(/don't recognise/i)).toBeNull();
+    expect(screen.getByText(/got a code from a friend/i)).toBeInTheDocument();
+  });
+
+  it("does not ask the server about an empty field", async () => {
+    const user = userEvent.setup();
+    const onCheckCode = vi.fn();
+    render(<SignInView onSignIn={vi.fn()} onCheckCode={onCheckCode} />);
+    await user.click(screen.getByLabelText(/referral code/i));
+    await user.tab();
+    expect(onCheckCode).not.toHaveBeenCalled();
   });
 });

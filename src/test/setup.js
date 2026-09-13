@@ -69,3 +69,26 @@ if (!globalThis.requestAnimationFrame) {
   globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 0);
   globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
 }
+
+/* ---------------------------------------------------------------------------
+   A SAFETY NET FOR FAKE TIMERS.
+
+   Twenty test files call `vi.useFakeTimers()`. Every one of them restores in
+   its own cleanup today — but a file that throws, or is killed by a timeout,
+   between faking and restoring leaves the timers frozen for every file that
+   runs after it. And frozen timers do not fail: `waitFor` polls on real timers
+   and simply never fires, so the next file's tests hang until the 20s
+   `testTimeout` and report as an unexplained timeout in code that is fine.
+
+   That is exactly the signature of docs/TECH-DEBT.md #4 — two occurrences, in
+   two unrelated files, both stopping at precisely 20,000ms, both passing in
+   isolation. It was also reproduced first-hand while writing
+   petalsHook.test.jsx, where freezing the timers without `shouldAdvanceTime`
+   made all eight tests in the file time out at 20s each.
+
+   This does not prove #4's cause. It removes the mechanism cheaply, which is
+   worth doing either way: nothing legitimately needs fake timers to survive
+   the test that installed them. */
+afterEach(() => {
+  vi.useRealTimers();
+});

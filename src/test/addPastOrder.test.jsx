@@ -20,12 +20,24 @@ import AddPastOrder from "../components/AddPastOrder.jsx";
 const ok = (over = {}) => vi.fn().mockResolvedValue({ credited: 25, net: 25, ...over });
 
 describe("adding a past order", () => {
+  it("asks for the CLOVER ID, which is what a counter receipt prints", async () => {
+    /* It used to say "order number from your receipt". This app calls FL-3412
+       the order number in OrderDetail, so customers went looking for an FL
+       number that no counter receipt carries, typed it, and were told the
+       order did not exist. The receipt says "Clover ID"; so does this. */
+    render(<AddPastOrder onClaim={ok()} />);
+    expect(screen.getByLabelText(/clover id from your receipt/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/order number/i)).toBeNull();
+    expect(screen.getByPlaceholderText(/4E3KNE/i), "the real last 6 of a real id")
+      .toBeInTheDocument();
+  });
+
   it("sends what was typed and reports what the server credited", async () => {
     const user = userEvent.setup();
     const onClaim = ok();
     render(<AddPastOrder onClaim={onClaim} />);
 
-    await user.type(screen.getByLabelText(/order number from your receipt/i), "k8730");
+    await user.type(screen.getByLabelText(/clover id from your receipt/i), "k8730");
     await user.click(screen.getByRole("button", { name: /add/i }));
 
     expect(onClaim).toHaveBeenCalledWith("K8730");
@@ -36,7 +48,7 @@ describe("adding a past order", () => {
     const user = userEvent.setup();
     const onClaim = ok();
     render(<AddPastOrder onClaim={onClaim} />);
-    await user.type(screen.getByLabelText(/order number/i), "k 87-30");
+    await user.type(screen.getByLabelText(/clover id/i), "k 87-30");
     await user.click(screen.getByRole("button", { name: /add/i }));
     expect(onClaim).toHaveBeenCalledWith("K8730");
   });
@@ -48,7 +60,7 @@ describe("adding a past order", () => {
     const user = userEvent.setup();
     const onClaim = ok();
     render(<AddPastOrder onClaim={onClaim} />);
-    await user.type(screen.getByLabelText(/order number/i), "OIIIO");
+    await user.type(screen.getByLabelText(/clover id/i), "OIIIO");
     await user.click(screen.getByRole("button", { name: /add/i }));
     expect(onClaim).toHaveBeenCalledWith("OIIIO");
   });
@@ -57,7 +69,7 @@ describe("adding a past order", () => {
     const user = userEvent.setup();
     const onClaim = ok();
     render(<AddPastOrder onClaim={onClaim} />);
-    await user.type(screen.getByLabelText(/order number/i), "873");
+    await user.type(screen.getByLabelText(/clover id/i), "873");
     expect(screen.getByRole("button", { name: /add/i })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: /add/i }));
     expect(onClaim).not.toHaveBeenCalled();
@@ -71,7 +83,7 @@ describe("adding a past order", () => {
     const onClaim = vi.fn().mockRejectedValue(
       new Error("That order has already been added to an account."));
     render(<AddPastOrder onClaim={onClaim} />);
-    await user.type(screen.getByLabelText(/order number/i), "K8730");
+    await user.type(screen.getByLabelText(/clover id/i), "K8730");
     await user.click(screen.getByRole("button", { name: /add/i }));
     expect(await screen.findByRole("status"))
       .toHaveTextContent(/already been added to an account/i);
@@ -83,7 +95,7 @@ describe("adding a past order", () => {
     const user = userEvent.setup();
     const onClaim = ok();
     render(<AddPastOrder onClaim={onClaim} />);
-    await user.type(screen.getByLabelText(/order number/i), "000000");
+    await user.type(screen.getByLabelText(/clover id/i), "000000");
     await user.click(screen.getByRole("button", { name: /add/i }));
     expect(onClaim).toHaveBeenCalledWith("000000");
   });
@@ -91,7 +103,7 @@ describe("adding a past order", () => {
   it("clears the field after a success so the next receipt can be typed", async () => {
     const user = userEvent.setup();
     render(<AddPastOrder onClaim={ok()} />);
-    const field = screen.getByLabelText(/order number/i);
+    const field = screen.getByLabelText(/clover id/i);
     await user.type(field, "K8730");
     await user.click(screen.getByRole("button", { name: /add/i }));
     await waitFor(() => expect(field).toHaveValue(""));
@@ -101,7 +113,7 @@ describe("adding a past order", () => {
     const user = userEvent.setup();
     const onClaim = vi.fn().mockRejectedValue(new Error("More than one order ends with those."));
     render(<AddPastOrder onClaim={onClaim} />);
-    const field = screen.getByLabelText(/order number/i);
+    const field = screen.getByLabelText(/clover id/i);
     await user.type(field, "K8730");
     await user.click(screen.getByRole("button", { name: /add/i }));
     await screen.findByRole("status");
@@ -113,7 +125,7 @@ describe("adding a past order", () => {
     let release;
     const onClaim = vi.fn(() => new Promise((r) => { release = () => r({ credited: 25, net: 25 }); }));
     render(<AddPastOrder onClaim={onClaim} />);
-    await user.type(screen.getByLabelText(/order number/i), "K8730");
+    await user.type(screen.getByLabelText(/clover id/i), "K8730");
     const button = screen.getByRole("button", { name: /add/i });
     await user.click(button);
     expect(button).toBeDisabled();
@@ -134,7 +146,7 @@ describe("adding a past order", () => {
     let release;
     const onClaim = vi.fn(() => new Promise((r) => { release = () => r({ credited: 25, net: 25 }); }));
     const { container } = render(<AddPastOrder onClaim={onClaim} />);
-    await user.type(screen.getByLabelText(/order number/i), "K8730");
+    await user.type(screen.getByLabelText(/clover id/i), "K8730");
 
     const form = container.querySelector("form");
     fireEvent.submit(form);
@@ -146,7 +158,7 @@ describe("adding a past order", () => {
 
   it("is disabled, with a reason, when the balance cannot be reached", async () => {
     render(<AddPastOrder onClaim={ok()} disabled />);
-    expect(screen.getByLabelText(/order number/i)).toBeDisabled();
+    expect(screen.getByLabelText(/clover id/i)).toBeDisabled();
     expect(screen.getByRole("button", { name: /add/i })).toBeDisabled();
     expect(screen.getByText(/once your balance is reachable/i)).toBeInTheDocument();
   });

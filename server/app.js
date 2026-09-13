@@ -896,6 +896,23 @@ export function createApp({
     } catch (e) { petalsFail(res, e); }
   });
 
+  /* ---- checking a referral code before an account exists ----
+
+     Read-only, and the reason it exists rather than the claim reporting it:
+     a mistyped code has to be correctable ON THE SIGNUP SCREEN. Validating it
+     inside the claim means the customer row, the signup bonus and the account
+     are all already created by the time they are told it was wrong — and the
+     window rules then make it unfixable from inside the app.
+
+     It answers only whether the code resolves for this phone. Never whose it
+     is. */
+  app.post("/api/clover/petals/referral-check", needPetals, async (req, res) => {
+    try {
+      const { phone, code } = req.body ?? {};
+      res.json(await petals.referralCheck({ phone, code }));
+    } catch (e) { petalsFail(res, e); }
+  });
+
   /* ---- claiming a counter order from its receipt ----
 
      A customer who ordered at the register has no way to earn otherwise, and
