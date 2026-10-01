@@ -136,11 +136,25 @@
   <h2>Who we share it with</h2>
   <div class="callout">
     <p style="margin:0">
-      <strong>Nobody.</strong> We do not sell your personal information, we do not rent it,
-      and we do not share it with advertisers, data brokers, analytics companies, or
-      any other third party. The only place your order goes is our own kitchen register.
+      <strong>Nobody who sells or profiles you.</strong> We do not sell your personal
+      information, we do not rent it, and we do not share it with advertisers, data
+      brokers, analytics companies, or any other third party for their own purposes.
+      The only places your information goes are the two service providers below, each
+      doing one specific job for us and nothing more.
     </p>
   </div>
+  <p>
+    <strong>Twilio Verify</strong> sends and checks the one-time 6-digit code that
+    verifies your phone number when you sign in. We send Twilio your phone number and
+    the code you enter &mdash; nothing else about your order, your account or your
+    points &mdash; and Twilio uses it only to deliver and confirm that one code. Message
+    and data rates from your carrier may apply to that one text.
+  </p>
+  <p>
+    <strong>Clover</strong>, our point-of-sale provider, receives your order and your
+    name and phone number so staff can call out and look up your order at the counter
+    &mdash; see Payments below for card handling.
+  </p>
 
   <h2>Payments</h2>
   <p>
@@ -154,13 +168,47 @@
     <strong>Clover</strong>, our point-of-sale provider, which is PCI-DSS compliant &mdash; and
     that happens at the register, not in the app.
   </p>
+  <!-- ============================================================================
+       PHASE 2 — DO NOT UNCOMMENT UNTIL IN-APP PAYMENTS ARE ACTUALLY LIVE.
+
+       This paragraph becomes true only once a Stripe charge can really happen
+       from this app — the kill switch in docs/payments-runbook.md defaults
+       payments OFF, and this page must not describe a capability nobody can
+       yet use. Uncomment it in the SAME change that flips that switch on for
+       real customers, not before — see CLAUDE.md's "Copy cannot claim what
+       the data contradicts" and the Phase 1 "text message" correction, both
+       examples of exactly this mistake in the other direction.
+
+  <p>
+    If you choose to pay in the app instead of at the counter, card payments and Apple Pay
+    are processed by <strong>Stripe</strong>, a PCI-DSS Level 1 payment processor. We never
+    see or store your full card number: Stripe's own secure fields collect it directly, and
+    we receive only a one-time authorization token. Apple Pay transactions are handled by
+    Apple and Stripe together; we never see your card number, and Apple does not share it
+    with us either. A card you save for a faster checkout is stored by Stripe, not by us or
+    on your device, and tied to your account only so we can show you "Visa ending 4242"
+    without holding the number ourselves.
+  </p>
+  -->
+  <!-- ============================================================================ -->
 
   <h2>Where your information is kept</h2>
   <p>
     Your name, phone number, order history and points are stored on your own device so the
-    app works when you open it, and in our Clover point-of-sale account so staff can look up
-    your order and your points at the counter. We keep them for as long as you have an
-    account with us.
+    app works when you open it; in our own server database, hosted by <strong>Railway</strong>,
+    which is how your points balance stays correct and available from any device you sign in
+    on; and in our Clover point-of-sale account so staff can look up your order and your
+    points at the counter. We keep them for as long as you have an account with us.
+  </p>
+  <p>
+    Verifying your phone number also creates a sign-in session: a random token, not your
+    phone number itself, is stored on your device, and a matching record (your phone number
+    and that token, not the code you were sent) is stored on our server so it recognizes you
+    without asking for a new code every time. A session lasts up to 180 days, or until you
+    sign out or delete your account, whichever comes first. We also keep a short record of
+    when codes were sent and checked for your number &mdash; never the codes themselves
+    &mdash; for up to 24 hours, solely to stop someone from guessing codes or flooding a
+    number with texts; it is deleted automatically after that window passes.
   </p>
 
   <h2>Deleting your account</h2>
@@ -170,17 +218,28 @@
     what goes before you do.
   </p>
   <p>
-    Deleting removes your saved name and phone number, your order history in the app, and
-    your points balance including any rewards you have not used. <strong>Unspent points are
-    forfeited and cannot be restored.</strong> It happens on your device, immediately, and
-    works even with no internet connection.
+    This removes, <strong>from this phone, immediately, and even with no internet
+    connection</strong>: your saved name and phone number, your order history in the app, and
+    the points balance as shown on this device, including any rewards you have not used.
+    <strong>Unspent points are forfeited and cannot be restored</strong> &mdash; starting a
+    new account starts at zero.
   </p>
   <p>
-    What it does <strong>not</strong> remove are the restaurant&rsquo;s own records of orders
-    you have already placed. Those are the shop&rsquo;s receipts for food it cooked and sold,
-    kept as its business and tax records, in the same way a paper receipt from the counter
-    would be. They are not part of your app account and deleting the account does not change
-    them. To ask about those, call the restaurant on
+    Deleting also asks our server, when it can be reached, to end your sign-in session, so the
+    verification from your last sign-in stops working anywhere it might still be remembered.
+    If no connection is available at the moment you delete, the device-side deletion above
+    still succeeds in full, and the session simply expires on its own (see "Where your
+    information is kept" above).
+  </p>
+  <p>
+    What it does <strong>not</strong> remove is the underlying record our server keeps of your
+    phone number and points balance, or the restaurant&rsquo;s own records of orders you have
+    already placed. Neither is part of what "delete account" promises today, for the same
+    reason: both are the shop&rsquo;s own operational records &mdash; one is how staff look up
+    a balance at the counter even after you have deleted the app, the other is the receipt for
+    food already cooked and sold, kept as a business and tax record &mdash; not a copy of your
+    account that lives alongside it. Deleting does not change either one. To have either
+    corrected or removed by hand, call the restaurant on
     <a href="tel:+13478599413">(347) 859-9413</a>.
   </p>
   <p>
