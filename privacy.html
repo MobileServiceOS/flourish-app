@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Privacy Policy — Flourish BX</title>
-<meta name="description" content="Privacy policy for the Flourish BX pickup ordering app. We collect your name, phone and order history. Nothing is sold or shared." />
+<meta name="description" content="Privacy policy for the Flourish BX pickup ordering app. We collect your name, phone and order history. Nothing is sold." />
 <meta name="theme-color" content="#8E5BC4" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -80,7 +80,7 @@
     <div class="wordmark">Flourish</div>
     <div class="eyebrow" style="margin-top:8px">Flourish BX &middot; Bronx, NY</div>
     <h1>Privacy Policy</h1>
-    <div class="effective">Effective July 2026</div>
+    <div class="effective">Effective October 2026</div>
   </div>
 </header>
 
@@ -90,7 +90,8 @@
     Flourish BX is a pickup ordering app for our restaurant at 4035 Laconia Ave.
     We ask for the least we can: your name so we know whose order to call out,
     and your phone number so staff can reach you about an order.
-    We do not sell your information, and we do not share it with anyone.
+    We do not sell your information, and we share it only with the service providers
+    listed below, each for one specific job.
   </p>
 
   <h2>What we collect</h2>
@@ -146,7 +147,7 @@
       <strong>Nobody who sells or profiles you.</strong> We do not sell your personal
       information, we do not rent it, and we do not share it with advertisers, data
       brokers, analytics companies, or any other third party for their own purposes.
-      The only places your information goes are the two service providers below, each
+      The only places your information goes are the service providers below, each
       doing one specific job for us and nothing more.
     </p>
   </div>
@@ -162,42 +163,40 @@
     name and phone number so staff can call out and look up your order at the counter
     &mdash; see Payments below for card handling.
   </p>
+  <p>
+    <strong>Stripe</strong> processes card and Apple Pay payments if you pay in the app.
+    We send Stripe the payment amount, our own order reference and your phone number so
+    we can match the payment to your order; Stripe collects your card details directly
+    and we never see them. See Payments below.
+  </p>
+  <p>
+    <strong>Apple</strong> delivers the order-status alerts this app can send to your
+    own phone (that your order was received, is ready, or was canceled) through Apple
+    Push Notification service. To do that, on an iPhone, we register a notification
+    token for the single order you placed &mdash; see Notifications below for what
+    that token is and when it is deleted.
+  </p>
 
   <h2>Payments</h2>
   <p>
-    <strong>This app does not take payment.</strong> You order here and you pay at the counter
-    when you collect, by card or cash. Your order is sent to our register unpaid and settles
-    in the shop, the same way it would if you had walked in and ordered at the till.
+    You can pay at the counter when you collect, by card or cash &mdash; your order is
+    sent to our register unpaid and settles in the shop, the same way it would if you had
+    walked in and ordered at the till &mdash; or you can pay in the app when you check out.
   </p>
   <p>
-    There is no card form anywhere in this app, and no card number is ever entered into it,
-    seen by it or stored by it. Card payments you make at the counter are handled by
-    <strong>Clover</strong>, our point-of-sale provider, which is PCI-DSS compliant &mdash; and
-    that happens at the register, not in the app.
+    Either way, we do not build our own card form and never see, handle or store your full
+    card number. At the counter, card payments are handled by <strong>Clover</strong>, our
+    point-of-sale provider, which is PCI&#8209;DSS compliant. If you choose to pay in the
+    app, card payments and Apple Pay are processed by <strong>Stripe</strong>, a PCI&#8209;DSS
+    Level&nbsp;1 payment processor: Stripe's own secure fields collect your card directly, and
+    we receive only a one-time authorization token, never the number itself &mdash; along with
+    the amount, our own order reference, and your phone number, so we can match the payment to
+    your order. When you pay with Apple Pay, we never receive your card number. Apple passes
+    an encrypted payment token to Stripe, which processes the payment. Stripe may also collect
+    device information to prevent fraud, as described in Stripe's privacy policy. We do not
+    offer a saved card for faster checkout; we do not keep your card for next time. Stripe
+    keeps a record of each payment, as required for processing, refunds and disputes.
   </p>
-  <!-- ============================================================================
-       PHASE 2 — DO NOT UNCOMMENT UNTIL IN-APP PAYMENTS ARE ACTUALLY LIVE.
-
-       This paragraph becomes true only once a Stripe charge can really happen
-       from this app — the kill switch in docs/payments-runbook.md defaults
-       payments OFF, and this page must not describe a capability nobody can
-       yet use. Uncomment it in the SAME change that flips that switch on for
-       real customers, not before — see CLAUDE.md's "Copy cannot claim what
-       the data contradicts" and the Phase 1 "text message" correction, both
-       examples of exactly this mistake in the other direction.
-
-  <p>
-    If you choose to pay in the app instead of at the counter, card payments and Apple Pay
-    are processed by <strong>Stripe</strong>, a PCI-DSS Level 1 payment processor. We never
-    see or store your full card number: Stripe's own secure fields collect it directly, and
-    we receive only a one-time authorization token. Apple Pay transactions are handled by
-    Apple and Stripe together; we never see your card number, and Apple does not share it
-    with us either. A card you save for a faster checkout is stored by Stripe, not by us or
-    on your device, and tied to your account only so we can show you "Visa ending 4242"
-    without holding the number ourselves.
-  </p>
-  -->
-  <!-- ============================================================================ -->
 
   <h2>Where your information is kept</h2>
   <p>
@@ -240,13 +239,15 @@
   </p>
   <p>
     What it does <strong>not</strong> remove is the underlying record our server keeps of your
-    phone number and points balance, or the restaurant&rsquo;s own records of orders you have
-    already placed. Neither is part of what "delete account" promises today, for the same
-    reason: both are the shop&rsquo;s own operational records &mdash; one is how staff look up
-    a balance at the counter even after you have deleted the app, the other is the receipt for
-    food already cooked and sold, kept as a business and tax record &mdash; not a copy of your
-    account that lives alongside it. Deleting does not change either one. To have either
-    corrected or removed by hand, call the restaurant on
+    phone number and points balance, the restaurant&rsquo;s own records of orders you have
+    already placed, or a notification token already registered for an order you placed before
+    deleting (see Notifications below for when that is removed on its own). None of these is
+    part of what "delete account" promises today, for the same reason: each is the shop&rsquo;s
+    own operational record &mdash; one is how staff look up a balance at the counter even after
+    you have deleted the app, another is the receipt for food already cooked and sold, kept as
+    a business and tax record, and the last exists only to tell one order apart from another
+    &mdash; not a copy of your account that lives alongside it. Deleting does not change any of
+    them. To have any of them corrected or removed by hand, call the restaurant on
     <a href="tel:+13478599413">(347) 859-9413</a>.
   </p>
   <p>
@@ -255,11 +256,28 @@
 
   <h2>Notifications</h2>
   <p>
-    If you allow it, the app can notify you when your order is ready. That notification is
-    scheduled on your own device &mdash; nothing is sent to us or to anyone else, and no
-    notification token or device identifier is collected. Declining costs you nothing: the
-    order status is on screen the whole time either way, and you can change your mind in
-    your phone&rsquo;s settings.
+    If you allow it, the app can let you know about your order two ways:
+  </p>
+  <ul>
+    <li>
+      A notification scheduled on your own device for the estimated ready time &mdash;
+      nothing about this one is sent to us or to anyone else, and no token or device
+      identifier is involved.
+    </li>
+    <li>
+      A real-time alert confirming your order was received, sent the moment you turn
+      this on; and a further alert when staff mark your order ready, or when staff
+      cancel it. To send these, we register a notification token for your device with
+      <strong>Apple</strong>'s Push Notification service, and store that token on our
+      server &mdash; tied only to the single order you placed, never to your account or
+      to any other order. We remove it once that order is completed or canceled, and in
+      any case within 48 hours; it is not reused for a later order, and placing a new
+      order registers a new one.
+    </li>
+  </ul>
+  <p>
+    Declining either costs you nothing: the order status is on screen the whole time
+    either way, and you can change your mind in your phone&rsquo;s settings.
   </p>
 
   <h2>Cookies and tracking</h2>
